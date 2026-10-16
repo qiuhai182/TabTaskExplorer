@@ -22,8 +22,8 @@
 
     <!-- 地址栏与搜索 -->
     <Grid Grid.Row="1" ColumnDefinitions="*,240" Margin="8,0,8,4">
-      <TextBox Grid.Column="0" x:Name="AddressBox" Watermark="输入路径后按回车跳转" KeyDown="OnAddressKeyDown" />
-      <TextBox Grid.Column="1" x:Name="SearchBox" Watermark="搜索当前目录" Margin="8,0,0,0" TextChanged="OnSearchTextChanged" />
+      <TextBox Grid.Column="0" x:Name="AddressBox" PlaceholderText="输入路径后按回车跳转" KeyDown="OnAddressKeyDown" />
+      <TextBox Grid.Column="1" x:Name="SearchBox" PlaceholderText="搜索当前目录" Margin="8,0,0,0" TextChanged="OnSearchTextChanged" />
     </Grid>
 
     <!-- 列表区与信息窗格 -->
@@ -31,68 +31,80 @@
 
       <!-- 列表：双击空白处返回上一级 -->
       <Grid Grid.Column="0" RowDefinitions="Auto,*" DoubleTapped="OnListBackgroundDoubleTapped">
-        <Grid Grid.Row="0" ColumnDefinitions="30,3*,130,140,110" Margin="0,0,0,4">
+        <Grid Grid.Row="0" ColumnDefinitions="30,3*,130,140,110" Margin="0,0,12,4">
           <TextBlock Grid.Column="0" />
           <Button Grid.Column="1" Content="名称" Tag="Name" Click="OnSortClick" HorizontalAlignment="Left" Background="Transparent" />
           <Button Grid.Column="2" Content="类型" Tag="Type" Click="OnSortClick" HorizontalAlignment="Left" Background="Transparent" />
           <Button Grid.Column="3" Content="修改日期" Tag="Modified" Click="OnSortClick" HorizontalAlignment="Left" Background="Transparent" />
           <Button Grid.Column="4" Content="大小" Tag="Size" Click="OnSortClick" HorizontalAlignment="Left" Background="Transparent" />
         </Grid>
-        <ScrollViewer Grid.Row="1">
-          <StackPanel>
-            <!-- 详细信息视图 -->
-            <ItemsControl ItemsSource="{Binding VisibleRows}" IsVisible="{Binding IsDetailsLayout}">
-              <ItemsControl.ItemTemplate>
-                <DataTemplate>
-                  <Border DoubleTapped="OnRowDoubleTapped" Background="Transparent" Padding="0,2">
-                    <Border.ContextMenu>
-                      <ContextMenu>
-                        <MenuItem Header="打开" Click="OnMenuOpenClick" />
-                        <MenuItem Header="在新标签打开" Click="OnMenuOpenInNewTabClick" />
-                        <MenuItem Header="重命名" Click="OnMenuRenameClick" />
-                        <MenuItem Header="删除" Click="OnMenuDeleteClick" />
-                      </ContextMenu>
-                    </Border.ContextMenu>
-                    <Grid ColumnDefinitions="30,3*,130,140,110">
-                      <CheckBox Grid.Column="0" IsChecked="{Binding IsSelected, Mode=TwoWay}" Checked="OnRowCheckChanged" Unchecked="OnRowCheckChanged" />
-                      <TextBlock Grid.Column="1" Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" />
-                      <TextBlock Grid.Column="2" Text="{Binding TypeText}" Opacity="0.8" />
-                      <TextBlock Grid.Column="3" Text="{Binding ModifiedText}" Opacity="0.8" />
-                      <TextBlock Grid.Column="4" Text="{Binding SizeText}" Opacity="0.8" />
-                    </Grid>
-                  </Border>
-                </DataTemplate>
-              </ItemsControl.ItemTemplate>
-            </ItemsControl>
-            <!-- 图标视图（大图标 / 中图标） -->
-            <ItemsControl ItemsSource="{Binding VisibleRows}" IsVisible="{Binding IsIconsLayout}">
-              <ItemsControl.ItemsPanel>
-                <ItemsPanelTemplate>
-                  <WrapPanel />
-                </ItemsPanelTemplate>
-              </ItemsControl.ItemsPanel>
-              <ItemsControl.ItemTemplate>
-                <DataTemplate>
-                  <Border Width="{Binding $parent[ItemsControl].DataContext.TileWidth}" DoubleTapped="OnRowDoubleTapped"
-                          Background="Transparent" Margin="4" Padding="6" HorizontalAlignment="Left">
-                    <Border.ContextMenu>
-                      <ContextMenu>
-                        <MenuItem Header="打开" Click="OnMenuOpenClick" />
-                        <MenuItem Header="在新标签打开" Click="OnMenuOpenInNewTabClick" />
-                        <MenuItem Header="重命名" Click="OnMenuRenameClick" />
-                        <MenuItem Header="删除" Click="OnMenuDeleteClick" />
-                      </ContextMenu>
-                    </Border.ContextMenu>
-                    <StackPanel Spacing="4">
-                      <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}" Checked="OnRowCheckChanged" Unchecked="OnRowCheckChanged" HorizontalAlignment="Left" />
-                      <TextBlock Text="{Binding DisplayName}" TextWrapping="Wrap" />
-                      <TextBlock Text="{Binding SizeText}" FontSize="11" Opacity="0.7" />
-                    </StackPanel>
-                  </Border>
-                </DataTemplate>
-              </ItemsControl.ItemTemplate>
-            </ItemsControl>
-          </StackPanel>
+
+        <!-- 详细信息视图：ListBox 自带虚拟化，大目录也流畅 -->
+        <ListBox Grid.Row="1" ItemsSource="{Binding VisibleRows}" IsVisible="{Binding IsDetailsLayout}"
+                 SelectionMode="Single" Background="Transparent" Padding="0" BorderThickness="0">
+          <ListBox.ItemContainerTheme>
+            <ControlTheme TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+              <Setter Property="Padding" Value="0" />
+              <Setter Property="MinHeight" Value="30" />
+              <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            </ControlTheme>
+          </ListBox.ItemContainerTheme>
+          <ListBox.ItemTemplate>
+            <DataTemplate>
+              <Border DoubleTapped="OnRowDoubleTapped" Background="Transparent" Padding="2,4">
+                <Border.ContextMenu>
+                  <ContextMenu>
+                    <MenuItem Header="打开" Click="OnMenuOpenClick" />
+                    <MenuItem Header="在新标签打开" Click="OnMenuOpenInNewTabClick" />
+                    <MenuItem Header="复制" Click="OnMenuCopyClick" />
+                    <MenuItem Header="剪切" Click="OnMenuCutClick" />
+                    <MenuItem Header="重命名" Click="OnMenuRenameClick" />
+                    <MenuItem Header="删除" Click="OnMenuDeleteClick" />
+                  </ContextMenu>
+                </Border.ContextMenu>
+                <Grid ColumnDefinitions="30,3*,130,140,110">
+                  <CheckBox Grid.Column="0" IsChecked="{Binding IsSelected, Mode=TwoWay}" Click="OnRowCheckChanged" />
+                  <TextBlock Grid.Column="1" Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" />
+                  <TextBlock Grid.Column="2" Text="{Binding TypeText}" Opacity="0.8" />
+                  <TextBlock Grid.Column="3" Text="{Binding ModifiedText}" Opacity="0.8" />
+                  <TextBlock Grid.Column="4" Text="{Binding SizeText}" Opacity="0.8" />
+                </Grid>
+              </Border>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+
+        <!-- 图标视图（大图标 / 中图标） -->
+        <ScrollViewer Grid.Row="1" IsVisible="{Binding IsIconsLayout}">
+          <ItemsControl ItemsSource="{Binding VisibleRows}" Margin="0,0,12,0">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <WrapPanel />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <Border Width="{Binding $parent[ItemsControl].DataContext.TileWidth}" DoubleTapped="OnRowDoubleTapped"
+                        Background="Transparent" Margin="4" Padding="6" HorizontalAlignment="Left">
+                  <Border.ContextMenu>
+                    <ContextMenu>
+                      <MenuItem Header="打开" Click="OnMenuOpenClick" />
+                      <MenuItem Header="在新标签打开" Click="OnMenuOpenInNewTabClick" />
+                      <MenuItem Header="复制" Click="OnMenuCopyClick" />
+                      <MenuItem Header="剪切" Click="OnMenuCutClick" />
+                      <MenuItem Header="重命名" Click="OnMenuRenameClick" />
+                      <MenuItem Header="删除" Click="OnMenuDeleteClick" />
+                    </ContextMenu>
+                  </Border.ContextMenu>
+                  <StackPanel Spacing="4">
+                    <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}" Click="OnRowCheckChanged" HorizontalAlignment="Left" />
+                    <TextBlock Text="{Binding DisplayName}" TextWrapping="Wrap" />
+                    <TextBlock Text="{Binding SizeText}" FontSize="11" Opacity="0.7" />
+                  </StackPanel>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
         </ScrollViewer>
       </Grid>
 

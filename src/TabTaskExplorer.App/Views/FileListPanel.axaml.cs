@@ -1,4 +1,5 @@
-﻿using Avalonia;
+﻿using System.Collections.Generic;
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
@@ -27,7 +28,7 @@ public partial class FileListPanel : UserControl
     {
         get
         {
-            if (this.GetVisualRoot() is Window ownerWindow)
+            if (TopLevel.GetTopLevel(this) is Window ownerWindow)
             {
                 return ownerWindow.DataContext as MainWindowViewModel;
             }
@@ -89,7 +90,7 @@ public partial class FileListPanel : UserControl
 
     private async void OnNewFolderClick(object? sender, RoutedEventArgs e)
     {
-        Window? owner = this.GetVisualRoot() as Window;
+        Window? owner = TopLevel.GetTopLevel(this) as Window;
         FileTabViewModel? viewModel = this.ViewModel;
         if (owner == null || viewModel == null)
         {
@@ -104,7 +105,7 @@ public partial class FileListPanel : UserControl
 
     private async void OnRenameClick(object? sender, RoutedEventArgs e)
     {
-        Window? owner = this.GetVisualRoot() as Window;
+        Window? owner = TopLevel.GetTopLevel(this) as Window;
         FileTabViewModel? viewModel = this.ViewModel;
         if (owner == null || viewModel == null)
         {
@@ -124,7 +125,7 @@ public partial class FileListPanel : UserControl
 
     private async void OnBatchRenameClick(object? sender, RoutedEventArgs e)
     {
-        Window? owner = this.GetVisualRoot() as Window;
+        Window? owner = TopLevel.GetTopLevel(this) as Window;
         FileTabViewModel? viewModel = this.ViewModel;
         if (owner == null || viewModel == null)
         {
@@ -234,9 +235,27 @@ public partial class FileListPanel : UserControl
         }
     }
 
+    private void OnMenuCopyClick(object? sender, RoutedEventArgs e)
+    {
+        MainWindowViewModel? mainViewModel = this.MainViewModel;
+        if (mainViewModel != null && sender is MenuItem menuItem && menuItem.DataContext is FileRow row)
+        {
+            mainViewModel.CopyPathsToClipboard(new List<string> { row.FullPath });
+        }
+    }
+
+    private void OnMenuCutClick(object? sender, RoutedEventArgs e)
+    {
+        MainWindowViewModel? mainViewModel = this.MainViewModel;
+        if (mainViewModel != null && sender is MenuItem menuItem && menuItem.DataContext is FileRow row)
+        {
+            mainViewModel.CutPathsToClipboard(new List<string> { row.FullPath });
+        }
+    }
+
     private async void OnMenuRenameClick(object? sender, RoutedEventArgs e)
     {
-        Window? owner = this.GetVisualRoot() as Window;
+        Window? owner = TopLevel.GetTopLevel(this) as Window;
         FileTabViewModel? viewModel = this.ViewModel;
         if (owner == null || viewModel == null)
         {

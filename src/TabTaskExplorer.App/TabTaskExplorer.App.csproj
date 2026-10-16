@@ -5,6 +5,8 @@
     <OutputType>WinExe</OutputType>
     <RootNamespace>TabTaskExplorer.App</RootNamespace>
     <AssemblyName>TabTaskExplorer</AssemblyName>
+    <!-- Avalonia 12 默认开启编译期绑定，模板内缺少 x:DataType 时改用反射绑定，与既有代码保持一致 -->
+    <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
   </PropertyGroup>
 
   <ItemGroup>
@@ -15,9 +17,10 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Avalonia" Version="11.3.22" />
-    <PackageReference Include="Avalonia.Desktop" Version="11.3.22" />
-    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.22" />
+    <PackageReference Include="Avalonia" Version="12.1.4" />
+    <PackageReference Include="Avalonia.Desktop" Version="12.1.4" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.4" />
+    <PackageReference Include="FluentAvaloniaUI" Version="3.1.0" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.13" />
   </ItemGroup>
 

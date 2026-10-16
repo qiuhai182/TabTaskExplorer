@@ -1,9 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
+using System.Threading.Tasks;
+using Avalonia.Threading;
 using TabTaskExplorer.App.Services;
 using TabTaskExplorer.Kernel.Abstractions;
 using TabTaskExplorer.Kernel.Models;
@@ -23,6 +24,7 @@ public enum FileViewMode
 /// <summary>
 /// 文件标签页：一个标签对应一个独立的目录浏览上下文（当前路径、历史、排序、搜索、视图模式）。
 /// 路径为空字符串时表示"此电脑"根视图，展示全部磁盘分区。
+/// 目录枚举在后台线程执行，避免大文件夹冻结界面。
 /// </summary>
 public class FileTabViewModel : INotifyPropertyChanged
 {
@@ -31,7 +33,7 @@ public class FileTabViewModel : INotifyPropertyChanged
 
     private readonly List<string> backStack = new List<string>();
     private readonly List<string> forwardStack = new List<string>();
-    private readonly List<FileRow> allRows = new List<FileRow>();
+    private List<FileRow> allRows = new List<FileRow>();
 
     private string currentPath = string.Empty;
     private string title = "此电脑";
@@ -40,14 +42,30 @@ public class FileTabViewModel : INotifyPropertyChanged
     private bool sortAscending = true;
     private bool canGoBack;
     private bool canGoForward;
-    private string summaryText = string.Empty;
+    private string summaryText = "正在加载……";
     private FileViewMode viewMode = FileViewMode.Details;
     private bool showInfoPane;
+    private IReadOnlyList<FileRow> visibleRows = new List<FileRow>();
+
+    // 后台加载的状态：分代令牌用于丢弃过期的加载结果
+    private int loadGeneration;
+    private string fetchPath = string.Empty;
+    private int fetchGeneration = -1;
+    private List<FileRow> fetchedRows = new List<FileRow>();
+    private int fetchedGeneration = -1;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
-    /// <summary>界面绑定的条目列表（已经过排序与搜索过滤）。</summary>
-    public ObservableCollection<FileRow> VisibleRows { get; } = new ObservableCollection<FileRow>();
+    /// <summary>界面绑定的条目列表（已经过排序与搜索过滤）。整表替换而非逐项增删，配合虚拟化保证大目录流畅。</summary>
+    public IReadOnlyList<FileRow> VisibleRows
+    {
+        get { return this.visibleRows; }
+        private set
+        {
+            this.visibleRows = value;
+            this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(VisibleRows)));
+        }
+    }
 
     /// <summary>当前目录完整路径，空字符串表示此电脑根视图。</summary>
     public string CurrentPath
@@ -257,7 +275,7 @@ public class FileTabViewModel : INotifyPropertyChanged
             this.sortField = field;
             this.sortAscending = true;
         }
-        this.SortRows();
+        this.allRows.Sort(new Comparison<FileRow>(this.CompareRows));
         this.ApplyFilter();
     }
 
@@ -472,7 +490,7 @@ public class FileTabViewModel : INotifyPropertyChanged
         }
     }
 
-    /// <summary>加载目录或磁盘列表的核心流程。</summary>
+    /// <summary>同步更新历史与标题，随后把目录枚举派发到后台线程。</summary>
     private void LoadCore(string path, bool recordHistory)
     {
         if (recordHistory && path != this.currentPath)
@@ -483,13 +501,29 @@ public class FileTabViewModel : INotifyPropertyChanged
 
         this.currentPath = path;
         this.title = GetTitleFor(path);
+        this.CanGoBack = this.backStack.Count > 0;
+        this.CanGoForward = this.forwardStack.Count > 0;
+        this.SummaryText = "正在加载……";
+        this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CurrentPath)));
+        this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Title)));
 
-        this.allRows.Clear();
+        this.fetchPath = path;
+        this.fetchGeneration = ++this.loadGeneration;
+        Task.Run(new Action(this.FetchInBackground));
+    }
+
+    /// <summary>后台线程：枚举目录并排序，完成后回界面线程应用。</summary>
+    private void FetchInBackground()
+    {
+        int generation = this.fetchGeneration;
+        string path = this.fetchPath;
+
+        List<FileRow> rows = new List<FileRow>();
         if (string.IsNullOrEmpty(path))
         {
             foreach (DriveInfo drive in DriveInfo.GetDrives())
             {
-                this.allRows.Add(FileRow.ForDrive(drive));
+                rows.Add(FileRow.ForDrive(drive));
             }
         }
         else
@@ -500,30 +534,40 @@ public class FileTabViewModel : INotifyPropertyChanged
                 options.ShowHiddenFiles = this.appSettings.ShowHiddenFiles;
                 foreach (FileEntry entry in this.fileSystemProvider.ListDirectory(path, options))
                 {
-                    this.allRows.Add(FileRow.FromEntry(entry, this.appSettings.ShowFileExtensions));
+                    rows.Add(FileRow.FromEntry(entry, this.appSettings.ShowFileExtensions));
                 }
             }
-            catch (Exception error)
+            catch
             {
-                this.SummaryText = "无法打开该目录：" + error.Message;
+                // 读取失败时展示空列表，界面线程上给出提示
             }
         }
 
-        this.SortRows();
-        this.ApplyFilter();
-        this.CanGoBack = this.backStack.Count > 0;
-        this.CanGoForward = this.forwardStack.Count > 0;
-        this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CurrentPath)));
-        this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Title)));
+        rows.Sort(new Comparison<FileRow>(this.CompareRows));
+
+        this.fetchedRows = rows;
+        this.fetchedGeneration = generation;
+        Dispatcher.UIThread.Post(new Action(this.ApplyFetchedRows));
     }
 
-    /// <summary>对全部条目排序：文件夹始终在前。</summary>
-    private void SortRows()
+    /// <summary>在界面线程上应用后台加载结果；过期分代直接丢弃。</summary>
+    private void ApplyFetchedRows()
     {
-        this.allRows.Sort(new Comparison<FileRow>(this.CompareRows));
+        if (this.fetchedGeneration != this.loadGeneration)
+        {
+            return;
+        }
+
+        this.allRows = new List<FileRow>(this.fetchedRows);
+        this.ApplyFilter();
+
+        if (this.allRows.Count == 0 && !string.IsNullOrEmpty(this.currentPath))
+        {
+            this.SummaryText = "目录为空，或无法读取该目录";
+        }
     }
 
-    /// <summary>排序比较器。</summary>
+    /// <summary>排序比较器：文件夹始终在前。</summary>
     private int CompareRows(FileRow x, FileRow y)
     {
         int directoryCompare = y.IsDirectory.CompareTo(x.IsDirectory);
@@ -557,20 +601,19 @@ public class FileTabViewModel : INotifyPropertyChanged
         return result;
     }
 
-    /// <summary>按搜索关键字重建可见列表。</summary>
+    /// <summary>按搜索关键字重建可见列表（整表替换，一次绑定更新）。</summary>
     private void ApplyFilter()
     {
-        this.VisibleRows.Clear();
-        int visibleCount = 0;
+        List<FileRow> visible = new List<FileRow>();
         foreach (FileRow row in this.allRows)
         {
             if (this.MatchesSearch(row))
             {
-                this.VisibleRows.Add(row);
-                visibleCount++;
+                visible.Add(row);
             }
         }
-        this.SummaryText = visibleCount + " 个项目";
+        this.VisibleRows = visible;
+        this.SummaryText = visible.Count + " 个项目";
     }
 
     /// <summary>判断条目是否命中搜索关键字。</summary>

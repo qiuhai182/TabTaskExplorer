@@ -214,6 +214,34 @@ public class MainWindowViewModel : INotifyPropertyChanged
         this.SetClipboard(true);
     }
 
+    /// <summary>把指定路径列表放入剪贴板（复制模式，供右键菜单使用）。</summary>
+    public void CopyPathsToClipboard(IReadOnlyList<string> paths)
+    {
+        this.SetClipboardPaths(paths, false);
+    }
+
+    /// <summary>把指定路径列表放入剪贴板（剪切模式，供右键菜单使用）。</summary>
+    public void CutPathsToClipboard(IReadOnlyList<string> paths)
+    {
+        this.SetClipboardPaths(paths, true);
+    }
+
+    /// <summary>写入内部剪贴板状态。</summary>
+    private void SetClipboardPaths(IReadOnlyList<string> paths, bool isCut)
+    {
+        if (paths.Count == 0)
+        {
+            return;
+        }
+        this.clipboardPaths = new List<string>(paths);
+        this.clipboardIsCut = isCut;
+        FileTabViewModel? tab = this.SelectedFileTab;
+        if (tab != null)
+        {
+            tab.ShowMessage((isCut ? "已剪切 " : "已复制 ") + paths.Count + " 项，按 Ctrl+V 粘贴到目标文件夹");
+        }
+    }
+
     /// <summary>把剪贴板中的条目复制或移动到当前目录。</summary>
     public void PasteFromClipboard()
     {

@@ -7,7 +7,8 @@ namespace TabTaskExplorer.App.Views;
 /// <summary>输入对话框：获取一行用户输入。</summary>
 public partial class InputDialog : Window
 {
-    private InputDialog()
+    /// <summary>请通过 Show 方法使用本对话框。</summary>
+    public InputDialog()
     {
         this.InitializeComponent();
     }

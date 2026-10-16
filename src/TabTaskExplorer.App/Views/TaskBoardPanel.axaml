@@ -6,7 +6,7 @@
 
     <!-- 新建任务 -->
     <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
-      <TextBox x:Name="NewTaskBox" Width="320" Watermark="输入任务标题，回车或点击添加" KeyDown="OnNewTaskKeyDown" />
+      <TextBox x:Name="NewTaskBox" Width="320" PlaceholderText="输入任务标题，回车或点击添加" KeyDown="OnNewTaskKeyDown" />
       <Button Content="添加任务" Click="OnAddClick" />
     </StackPanel>
 
