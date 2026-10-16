@@ -1,41 +1,82 @@
 ﻿# TabTaskExplorer
 
-跨平台的 Windows 风格「资源管理器 + 任务管理器」二合一桌面应用。
+跨平台的 Windows 风格 **资源管理器 + 任务管理器** 二合一桌面应用。
 
-## 项目定位
+资源管理器对标 TabX Explorer（多标签 + 快捷访问 + 批量改名），任务侧提供任务看板与进程监控，全部容纳在同一个标签容器中。
 
-TabTaskExplorer 将原本分散在系统两处的两类工具合并到同一个窗口内：
+## 功能列表
 
-- **资源管理器**：以 Windows 资源管理器的交互习惯为基准，提供多标签页（Tab）浏览、路径导航、文件列表与常用文件操作。
-- **任务管理器**：对标 [tabxexplorer]，实时呈现进程、CPU、内存、磁盘、网络等系统资源数据，支持进程的查看与管理。
+### 资源管理器
+- 多标签浏览：自由新建 / 关闭 / 切换，可恢复上次会话的标签
+- 地址栏导航，后退 / 前进 / 上一级 / 刷新，"此电脑"磁盘总览
+- 详细信息 / 大图标 / 中图标视图切换，点击列头排序
+- 勾选式多选：重命名、删除（Windows 移入回收站）、复制 / 剪切 / 粘贴
+- 批量改名：查找替换、前后缀、序号、扩展名修改，实时预览
+- 当前目录搜索过滤、信息窗格、右键菜单、双击空白返回上级
+- 快捷访问固定、书签栏、此电脑常用位置
+- 显示隐藏文件 / 文件扩展名（设置内切换）
 
-两者共用同一套标签页容器与统一的视觉风格，做到「一个窗口,既看文件、也看进程」。
+### 任务管理
+- 任务看板：待办 / 进行中 / 已完成三列流转，本地持久化
+- 进程监控：进程列表与 CPU / 内存摘要
 
-## 项目目标
-
-- **跨平台**：同一份代码构建可在 Windows / macOS / Linux 上运行。
-- **Windows 风格**：界面观感、交互逻辑向 Windows 原生体验对齐，降低迁移成本。
-- **二合一**：资源管理器与任务管理器深度整合，而非简单并排。
+### 设置中心
+- 全部快捷键自定义，一键恢复默认
+- 开机启动（Windows / Linux / macOS）、接管文件夹打开方式（Windows）
+- 工具栏 / 书签栏显隐、恢复上次会话标签
 
 ## 技术栈
 
-**待定（To Be Decided）**
-
-当前仓库仅完成初始化，尚未锁定技术栈与项目骨架。
-
-## 当前状态
-
-| 项目 | 状态 |
+| 层 | 技术 |
 | --- | --- |
-| Git 仓库初始化 | 已完成（主分支 `main`） |
-| 开源协议 | MIT |
-| 目录结构 / 项目骨架 | 待定 |
-| 技术栈选型 | 待定 |
+| UI | Avalonia 12 + FluentAvalonia（WinUI 3 观感，默认深色） |
+| 内核 | .NET 10 类库，平台无关抽象（文件系统 / 进程 / 系统指标 / 任务存储） |
+| 平台适配 | Windows（Win32 / 性能计数器）· Linux（/proc）· macOS（sysctl） |
+| 持久化 | JSON（设置 / 任务 / 书签 / 会话） |
+| 测试 | xUnit |
 
-## 开源协议
+## 构建与运行
 
-本项目采用 [MIT License](LICENSE)。
+安装 [.NET 10 SDK](https://dotnet.microsoft.com/download) 后：
+
+```bash
+git clone https://github.com/<your-username>/TabTaskExplorer.git
+cd TabTaskExplorer
+dotnet run --project src/TabTaskExplorer.App
+```
+
+运行单元测试：
+
+```bash
+dotnet test TabTaskExplorer.sln
+```
+
+## 架构
+
+内核提供跨平台一致的标准接口，应用层只依赖抽象接口，平台差异收敛在适配工程——同一份代码在三个平台上编译行为一致。
+
+```text
+src/
+  TabTaskExplorer.Kernel             # 内核：领域模型 + 抽象接口（零平台依赖）
+  TabTaskExplorer.Platform.Windows   # Windows 实现（回收站 / 性能计数器 / Win32）
+  TabTaskExplorer.Platform.Linux     # Linux 实现（/proc）
+  TabTaskExplorer.Platform.MacOS     # macOS 实现（sysctl）
+  TabTaskExplorer.App                # Avalonia UI 与应用层
+  TabTaskExplorer.Tests              # 单元测试
+```
+
+## 路线图
+
+- [ ] 文件类型彩色图标与图片缩略图
+- [ ] 自绘标题栏（标签页融入标题栏）
+- [ ] 鼠标拖拽移动 / 复制文件
+- [ ] 网络位置与云盘集成
+- [ ] 打包发布（自包含单文件 / 安装器）
 
 ## 参与贡献
 
-项目处于起步阶段，贡献指南与开发规范将在技术栈确定后补充。
+欢迎 Issue 与 PR。提交代码前请先运行 `dotnet test` 确认全部通过。
+
+## 开源许可
+
+本项目基于 [MIT License](LICENSE) 开源。

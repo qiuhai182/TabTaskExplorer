@@ -1,0 +1,22 @@
+# 统一换行符：仓库内存 LF，检出时按平台自动处理
+* text=auto
+
+# 源码与文本文件统一 LF
+*.cs text
+*.axaml text
+*.csproj text
+*.props text
+*.sln text eol=crlf
+*.md text
+*.json text
+*.editorconfig text
+*.gitignore text
+*.gitattributes text
+
+# 二进制文件不做换行转换
+*.png binary
+*.ico binary
+*.jpg binary
+*.dll binary
+*.exe binary
+*.pdb binary
