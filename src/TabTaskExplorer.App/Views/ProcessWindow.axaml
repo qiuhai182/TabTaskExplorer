@@ -1,4 +1,4 @@
-<Window xmlns="https://github.com/avaloniaui"
+﻿<Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="TabTaskExplorer.App.Views.ProcessWindow"
         Title="进程监控" Width="900" Height="560" WindowStartupLocation="CenterOwner">

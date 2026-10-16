@@ -1,4 +1,4 @@
-using TabTaskExplorer.Kernel.Abstractions;
+﻿using TabTaskExplorer.Kernel.Abstractions;
 using TabTaskExplorer.Kernel.Models;
 
 namespace TabTaskExplorer.Kernel.Services;

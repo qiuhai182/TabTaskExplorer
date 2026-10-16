@@ -1,4 +1,4 @@
-namespace TabTaskExplorer.Kernel.Models;
+﻿namespace TabTaskExplorer.Kernel.Models;
 
 /// <summary>
 /// 系统资源快照：一次采样得到的处理器、内存、系统盘用量。

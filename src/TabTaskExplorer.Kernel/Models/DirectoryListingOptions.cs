@@ -1,4 +1,4 @@
-namespace TabTaskExplorer.Kernel.Models;
+﻿namespace TabTaskExplorer.Kernel.Models;
 
 /// <summary>
 /// 目录列举选项：控制返回哪些条目。

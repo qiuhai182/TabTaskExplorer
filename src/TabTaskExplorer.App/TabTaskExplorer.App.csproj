@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <!-- 应用层工程：界面只引用内核；平台工程仅在组合根处被使用 -->
   <PropertyGroup>

@@ -1,4 +1,4 @@
-namespace TabTaskExplorer.Kernel.Models;
+﻿namespace TabTaskExplorer.Kernel.Models;
 
 /// <summary>
 /// 任务优先级，取值思路参考 Taskwarrior 的优先级设计。

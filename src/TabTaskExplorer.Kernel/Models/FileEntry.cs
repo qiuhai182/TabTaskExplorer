@@ -1,4 +1,4 @@
-namespace TabTaskExplorer.Kernel.Models;
+﻿namespace TabTaskExplorer.Kernel.Models;
 
 /// <summary>
 /// 文件条目：目录中一个文件或文件夹的基本信息。

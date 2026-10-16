@@ -1,4 +1,4 @@
-namespace TabTaskExplorer.Kernel.Services;
+﻿namespace TabTaskExplorer.Kernel.Services;
 
 /// <summary>
 /// 批量改名选项：查找替换、前后缀、序号与扩展名。
