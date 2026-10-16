@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <!-- 内核工程：领域模型与抽象接口，禁止引用任何 UI 库或平台专用库 -->
   <PropertyGroup>

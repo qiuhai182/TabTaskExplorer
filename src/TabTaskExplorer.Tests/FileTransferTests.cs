@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using TabTaskExplorer.Kernel.Services;
 using Xunit;

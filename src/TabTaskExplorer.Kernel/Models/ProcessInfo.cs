@@ -1,4 +1,4 @@
-﻿namespace TabTaskExplorer.Kernel.Models;
+namespace TabTaskExplorer.Kernel.Models;
 
 /// <summary>
 /// 进程信息：进程监控面板展示一行数据所需的全部字段。

@@ -1,4 +1,4 @@
-﻿using TabTaskExplorer.Kernel.Models;
+using TabTaskExplorer.Kernel.Models;
 using TabTaskExplorer.Kernel.Services;
 using Xunit;
 

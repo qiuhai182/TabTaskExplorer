@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Runtime.Versioning;
 using TabTaskExplorer.Kernel.Abstractions;
 using TabTaskExplorer.Kernel.Models;

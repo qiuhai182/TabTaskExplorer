@@ -1,7 +1,7 @@
-# ͳһ���з����ֿ��ڴ� LF�����ʱ��ƽ̨�Զ�����
+# 统一换行符：仓库内存 LF，检出时按平台自动处理
 * text=auto
 
-# Դ�����ı��ļ�ͳһ LF
+# 源码与文本文件统一 LF
 *.cs text
 *.axaml text
 *.csproj text
@@ -13,7 +13,7 @@
 *.gitignore text
 *.gitattributes text
 
-# �������ļ���������ת��
+# 二进制文件不做换行转换
 *.png binary
 *.ico binary
 *.jpg binary
