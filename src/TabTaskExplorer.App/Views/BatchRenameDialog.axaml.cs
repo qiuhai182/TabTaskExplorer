@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+ï»¿using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using Avalonia.Controls;
@@ -9,13 +9,13 @@ using TabTaskExplorer.Kernel.Services;
 
 namespace TabTaskExplorer.App.Views;
 
-/// <summary>ÅúÁ¿¸ÄÃû¶Ô»°¿ò£º²éÕÒÌæ»»¡¢Ç°ºó×º¡¢ĞòºÅÓëÀ©Õ¹Ãû£¬´øÊµÊ±Ô¤ÀÀ¡£</summary>
+/// <summary>æ‰¹é‡æ”¹åå¯¹è¯æ¡†ï¼šæŸ¥æ‰¾æ›¿æ¢ã€å‰åç¼€ã€åºå·ä¸æ‰©å±•åï¼Œå¸¦å®æ—¶é¢„è§ˆã€‚</summary>
 public partial class BatchRenameDialog : Window
 {
-    private readonly List<FileRow> targetRows;
+    private readonly List<FileRow> targetRows = new List<FileRow>();
     private readonly ObservableCollection<RenamePreviewRow> previewItems = new ObservableCollection<RenamePreviewRow>();
 
-    /// <summary>Éú³ÉµÄ¸ÄÃû¼Æ»®£ºentry[0] Îª¾ÉÂ·¾¶£¬entry[1] ÎªĞÂÃû³Æ¡£</summary>
+    /// <summary>ç”Ÿæˆçš„æ”¹åè®¡åˆ’ï¼šentry[0] ä¸ºæ—§è·¯å¾„ï¼Œentry[1] ä¸ºæ–°åç§°ã€‚</summary>
     public List<string[]> RenamePlan { get; private set; } = new List<string[]>();
 
     public BatchRenameDialog()
@@ -23,7 +23,7 @@ public partial class BatchRenameDialog : Window
         this.InitializeComponent();
     }
 
-    /// <summary>ÒÔ¹´Ñ¡µÄÌõÄ¿³õÊ¼»¯¶Ô»°¿ò¡£</summary>
+    /// <summary>ä»¥å‹¾é€‰çš„æ¡ç›®åˆå§‹åŒ–å¯¹è¯æ¡†ã€‚</summary>
     public BatchRenameDialog(List<FileRow> targetRows) : this()
     {
         this.targetRows = targetRows;
@@ -31,7 +31,7 @@ public partial class BatchRenameDialog : Window
         this.RebuildPreview();
     }
 
-    /// <summary>ÊÕ¼¯½çÃæÉÏµÄ¸ÄÃûÑ¡Ïî¡£</summary>
+    /// <summary>æ”¶é›†ç•Œé¢ä¸Šçš„æ”¹åé€‰é¡¹ã€‚</summary>
     private BatchRenameOptions CollectOptions()
     {
         BatchRenameOptions options = new BatchRenameOptions();
@@ -47,7 +47,7 @@ public partial class BatchRenameDialog : Window
         return options;
     }
 
-    /// <summary>°´µ±Ç°Ñ¡ÏîÖØ½¨¸ÄÃû¼Æ»®ÓëÔ¤ÀÀÁĞ±í¡£</summary>
+    /// <summary>æŒ‰å½“å‰é€‰é¡¹é‡å»ºæ”¹åè®¡åˆ’ä¸é¢„è§ˆåˆ—è¡¨ã€‚</summary>
     private void RebuildPreview()
     {
         this.previewItems.Clear();
@@ -94,12 +94,12 @@ public partial class BatchRenameDialog : Window
     }
 }
 
-/// <summary>ÅúÁ¿¸ÄÃûÔ¤ÀÀÖĞµÄÒ»ĞĞ¡£</summary>
+/// <summary>æ‰¹é‡æ”¹åé¢„è§ˆä¸­çš„ä¸€è¡Œã€‚</summary>
 public class RenamePreviewRow
 {
-    /// <summary>¾ÉÃû³Æ¡£</summary>
+    /// <summary>æ—§åç§°ã€‚</summary>
     public string OldText { get; set; } = string.Empty;
 
-    /// <summary>ĞÂÃû³Æ¡£</summary>
+    /// <summary>æ–°åç§°ã€‚</summary>
     public string NewText { get; set; } = string.Empty;
 }

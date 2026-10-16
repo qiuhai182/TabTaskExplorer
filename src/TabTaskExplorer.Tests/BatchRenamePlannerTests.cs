@@ -1,10 +1,10 @@
-using TabTaskExplorer.Kernel.Models;
+ï»¿using TabTaskExplorer.Kernel.Models;
 using TabTaskExplorer.Kernel.Services;
 using Xunit;
 
 namespace TabTaskExplorer.Tests;
 
-/// <summary>ÅúÁ¿¸ÄÃûÃû³Æ¼ÆËã²âÊÔ¡£</summary>
+/// <summary>æ‰¹é‡æ”¹ååç§°è®¡ç®—æµ‹è¯•ã€‚</summary>
 public class BatchRenamePlannerTests
 {
     [Fact]
@@ -12,11 +12,11 @@ public class BatchRenamePlannerTests
     {
         BatchRenameOptions options = new BatchRenameOptions();
         options.FindText = "report";
-        options.ReplaceText = "±¨±í";
+        options.ReplaceText = "æŠ¥è¡¨";
 
         string result = BatchRenamePlanner.BuildNewName("report(1).txt", options, 1);
 
-        Assert.Equal("±¨±í(1).txt", result);
+        Assert.Equal("æŠ¥è¡¨(1).txt", result);
     }
 
     [Fact]
@@ -48,10 +48,10 @@ public class BatchRenamePlannerTests
     public void KeepsExtensionWhenNotSet()
     {
         BatchRenameOptions options = new BatchRenameOptions();
-        options.PrefixText = "ĞÂ_";
+        options.PrefixText = "æ–°_";
 
-        string result = BatchRenamePlanner.BuildNewName("ÎÄµµ.docx", options, 1);
+        string result = BatchRenamePlanner.BuildNewName("æ–‡æ¡£.docx", options, 1);
 
-        Assert.Equal("ĞÂ_ÎÄµµ.docx", result);
+        Assert.Equal("æ–°_æ–‡æ¡£.docx", result);
     }
 }

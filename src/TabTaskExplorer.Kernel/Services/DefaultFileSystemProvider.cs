@@ -73,4 +73,54 @@ public class DefaultFileSystemProvider : IFileSystemProvider
             File.Delete(path);
         }
     }
+
+    public virtual void Copy(string sourcePath, string targetDirectory)
+    {
+        string targetPath = Path.Combine(targetDirectory, Path.GetFileName(sourcePath));
+        if (File.Exists(sourcePath))
+        {
+            File.Copy(sourcePath, targetPath, true);
+        }
+        else if (Directory.Exists(sourcePath))
+        {
+            CopyDirectory(new DirectoryInfo(sourcePath), targetPath);
+        }
+    }
+
+    public virtual void Move(string sourcePath, string targetDirectory)
+    {
+        string targetPath = Path.Combine(targetDirectory, Path.GetFileName(sourcePath));
+        if (File.Exists(sourcePath))
+        {
+            File.Move(sourcePath, targetPath, true);
+            return;
+        }
+        if (Directory.Exists(sourcePath))
+        {
+            try
+            {
+                Directory.Move(sourcePath, targetPath);
+            }
+            catch (IOException)
+            {
+                // 跨卷移动不被直接支持时，回退为先复制后删除
+                CopyDirectory(new DirectoryInfo(sourcePath), targetPath);
+                Directory.Delete(sourcePath, true);
+            }
+        }
+    }
+
+    /// <summary>递归复制整个目录树。</summary>
+    private static void CopyDirectory(DirectoryInfo source, string targetPath)
+    {
+        Directory.CreateDirectory(targetPath);
+        foreach (FileInfo file in source.GetFiles())
+        {
+            file.CopyTo(Path.Combine(targetPath, file.Name), true);
+        }
+        foreach (DirectoryInfo subDirectory in source.GetDirectories())
+        {
+            CopyDirectory(subDirectory, Path.Combine(targetPath, subDirectory.Name));
+        }
+    }
 }

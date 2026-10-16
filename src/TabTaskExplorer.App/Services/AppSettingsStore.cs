@@ -31,6 +31,12 @@ public class AppSettings
     /// <summary>上次关闭时打开的标签页路径列表。</summary>
     public List<string> OpenTabPaths { get; set; } = new List<string>();
 
+    /// <summary>接管文件夹默认打开方式（Windows 注册表实现）。</summary>
+    public bool DefaultFileManager { get; set; } = false;
+
+    /// <summary>快捷键配置。</summary>
+    public List<HotkeySetting> Hotkeys { get; set; } = HotkeySetting.CreateDefaults();
+
     /// <summary>固定到快捷访问的路径列表。</summary>
     public List<string> PinnedPaths { get; set; } = new List<string>();
 }

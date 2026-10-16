@@ -1,44 +1,44 @@
-namespace TabTaskExplorer.Kernel.Services;
+ï»¿namespace TabTaskExplorer.Kernel.Services;
 
 /// <summary>
-/// ÅúÁ¿¸ÄÃûÑ¡Ïî£º²éÕÒÌæ»»¡¢Ç°ºó×º¡¢ĞòºÅÓëÀ©Õ¹Ãû¡£
+/// æ‰¹é‡æ”¹åé€‰é¡¹ï¼šæŸ¥æ‰¾æ›¿æ¢ã€å‰åç¼€ã€åºå·ä¸æ‰©å±•åã€‚
 /// </summary>
 public class BatchRenameOptions
 {
-    /// <summary>Òª²éÕÒµÄÎÄ×Ö£¨×÷ÓÃÓÚÖ÷ÎÄ¼şÃû£¬²»º¬À©Õ¹Ãû£©¡£</summary>
+    /// <summary>è¦æŸ¥æ‰¾çš„æ–‡å­—ï¼ˆä½œç”¨äºä¸»æ–‡ä»¶åï¼Œä¸å«æ‰©å±•åï¼‰ã€‚</summary>
     public string FindText { get; set; } = string.Empty;
 
-    /// <summary>Ìæ»»ºóµÄÎÄ×Ö¡£</summary>
+    /// <summary>æ›¿æ¢åçš„æ–‡å­—ã€‚</summary>
     public string ReplaceText { get; set; } = string.Empty;
 
-    /// <summary>Ìí¼ÓÔÚÃû³Æ¿ªÍ·µÄÇ°×º¡£</summary>
+    /// <summary>æ·»åŠ åœ¨åç§°å¼€å¤´çš„å‰ç¼€ã€‚</summary>
     public string PrefixText { get; set; } = string.Empty;
 
-    /// <summary>Ìí¼ÓÔÚÃû³ÆÄ©Î²£¨À©Õ¹ÃûÖ®Ç°£©µÄºó×º¡£</summary>
+    /// <summary>æ·»åŠ åœ¨åç§°æœ«å°¾ï¼ˆæ‰©å±•åä¹‹å‰ï¼‰çš„åç¼€ã€‚</summary>
     public string SuffixText { get; set; } = string.Empty;
 
-    /// <summary>ÊÇ·ñÔÚÃû³ÆÄ©Î²×·¼ÓĞòºÅ£¬ÀıÈç Ãû³Æ(1)¡¢Ãû³Æ(2)¡£</summary>
+    /// <summary>æ˜¯å¦åœ¨åç§°æœ«å°¾è¿½åŠ åºå·ï¼Œä¾‹å¦‚ åç§°(1)ã€åç§°(2)ã€‚</summary>
     public bool UseSequence { get; set; }
 
-    /// <summary>ĞòºÅÆğÊ¼Öµ¡£</summary>
+    /// <summary>åºå·èµ·å§‹å€¼ã€‚</summary>
     public int SequenceStart { get; set; } = 1;
 
-    /// <summary>ĞÂÀ©Õ¹Ãû£¬ÀıÈç .jpg »ò jpg£»Îª¿Õ±íÊ¾±£³ÖÔ­À©Õ¹Ãû¡£</summary>
+    /// <summary>æ–°æ‰©å±•åï¼Œä¾‹å¦‚ .jpg æˆ– jpgï¼›ä¸ºç©ºè¡¨ç¤ºä¿æŒåŸæ‰©å±•åã€‚</summary>
     public string NewExtension { get; set; } = string.Empty;
 }
 
 /// <summary>
-/// ÅúÁ¿¸ÄÃûÃû³Æ¼ÆËãÆ÷£º´¿×Ö·û´®Âß¼­£¬±ãÓÚµ¥Ôª²âÊÔ¡£
+/// æ‰¹é‡æ”¹ååç§°è®¡ç®—å™¨ï¼šçº¯å­—ç¬¦ä¸²é€»è¾‘ï¼Œä¾¿äºå•å…ƒæµ‹è¯•ã€‚
 /// </summary>
 public static class BatchRenamePlanner
 {
     /// <summary>
-    /// °´Ñ¡Ïî¼ÆËãĞÂÎÄ¼şÃû¡£
+    /// æŒ‰é€‰é¡¹è®¡ç®—æ–°æ–‡ä»¶åã€‚
     /// </summary>
-    /// <param name="originalName">Ô­Ê¼ÎÄ¼şÃû£¨º¬À©Õ¹Ãû£©¡£</param>
-    /// <param name="options">¸ÄÃûÑ¡Ïî¡£</param>
-    /// <param name="sequenceNumber">µ±Ç°ĞòºÅ¡£</param>
-    /// <returns>ĞÂÎÄ¼şÃû£¨²»º¬Â·¾¶£©¡£</returns>
+    /// <param name="originalName">åŸå§‹æ–‡ä»¶åï¼ˆå«æ‰©å±•åï¼‰ã€‚</param>
+    /// <param name="options">æ”¹åé€‰é¡¹ã€‚</param>
+    /// <param name="sequenceNumber">å½“å‰åºå·ã€‚</param>
+    /// <returns>æ–°æ–‡ä»¶åï¼ˆä¸å«è·¯å¾„ï¼‰ã€‚</returns>
     public static string BuildNewName(string originalName, BatchRenameOptions options, int sequenceNumber)
     {
         string extension = Path.GetExtension(originalName);

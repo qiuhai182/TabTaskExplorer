@@ -11,6 +11,16 @@ using TabTaskExplorer.Kernel.Models;
 namespace TabTaskExplorer.App.ViewModels;
 
 /// <summary>
+/// 文件视图模式：详细信息、大图标、中图标。
+/// </summary>
+public enum FileViewMode
+{
+    Details = 0,
+    LargeIcons = 1,
+    MediumIcons = 2,
+}
+
+/// <summary>
 /// 文件标签页：一个标签对应一个独立的目录浏览上下文（当前路径、历史、排序、搜索、视图模式）。
 /// 路径为空字符串时表示"此电脑"根视图，展示全部磁盘分区。
 /// </summary>
@@ -431,6 +441,20 @@ public class FileTabViewModel : INotifyPropertyChanged
             }
         }
         return checkedRows;
+    }
+
+    /// <summary>获取全部勾选条目的完整路径（供复制剪切粘贴使用）。</summary>
+    public List<string> GetCheckedPaths()
+    {
+        List<string> paths = new List<string>();
+        foreach (FileRow row in this.allRows)
+        {
+            if (row.IsSelected)
+            {
+                paths.Add(row.FullPath);
+            }
+        }
+        return paths;
     }
 
     /// <summary>直接设置底部提示文字。</summary>

@@ -27,6 +27,19 @@ public partial class SettingsWindow : Window
         this.AboutPage.IsVisible = index == 3;
     }
 
+    /// <summary>把快捷键配置恢复为默认值。</summary>
+    private void OnResetHotkeysClick(object? sender, RoutedEventArgs e)
+    {
+        if (this.DataContext is AppSettings settings)
+        {
+            settings.Hotkeys.Clear();
+            foreach (HotkeySetting setting in HotkeySetting.CreateDefaults())
+            {
+                settings.Hotkeys.Add(setting);
+            }
+        }
+    }
+
     private void OnOkClick(object? sender, RoutedEventArgs e)
     {
         this.Close(true);

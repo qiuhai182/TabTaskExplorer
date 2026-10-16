@@ -3,11 +3,12 @@ using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using TabTaskExplorer.App.Services;
 using TabTaskExplorer.App.ViewModels;
 
 namespace TabTaskExplorer.App.Views;
 
-/// <summary>主窗口：书签栏 + 侧边栏 + 动态标签页容器。</summary>
+/// <summary>主窗口：书签栏 + 侧边栏 + 混合标签页容器（文件浏览 / 任务看板）。</summary>
 public partial class MainWindow : Window
 {
     public MainWindow()
@@ -28,7 +29,7 @@ public partial class MainWindow : Window
         this.ViewModel?.SaveOpenTabs();
     }
 
-    /// <summary>全局快捷键：Ctrl+T、Ctrl+W、Ctrl+Tab、F5、F2、Delete。</summary>
+    /// <summary>按键分发：全部快捷键来自设置中的配置。</summary>
     private void OnWindowKeyDown(object? sender, KeyEventArgs e)
     {
         MainWindowViewModel? viewModel = this.ViewModel;
@@ -37,43 +38,104 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (e.Key == Key.T && e.KeyModifiers == KeyModifiers.Control)
+        // 标签管理类快捷键在任何输入框内都生效
+        if (this.Matches("NewTab", e))
         {
             viewModel.AddTab(string.Empty);
             e.Handled = true;
+            return;
         }
-        else if (e.Key == Key.W && e.KeyModifiers == KeyModifiers.Control)
+        if (this.Matches("CloseTab", e))
         {
             this.CloseCurrentTab();
             e.Handled = true;
+            return;
         }
-        else if (e.Key == Key.Tab && (e.KeyModifiers & KeyModifiers.Control) == KeyModifiers.Control)
+        if (this.Matches("PreviousTab", e))
         {
-            if ((e.KeyModifiers & KeyModifiers.Shift) == KeyModifiers.Shift)
-            {
-                viewModel.CycleTab(-1);
-            }
-            else
-            {
-                viewModel.CycleTab(1);
-            }
+            viewModel.CycleTab(-1);
             e.Handled = true;
+            return;
         }
-        else if (e.Key == Key.F5)
+        if (this.Matches("NextTab", e))
         {
-            viewModel.SelectedTab?.Refresh();
+            viewModel.CycleTab(1);
             e.Handled = true;
+            return;
         }
-        else if (e.Key == Key.F2)
+
+        // 文件操作类快捷键在输入框内不生效，避免误触
+        bool inTextBox = e.Source is TextBox;
+        if (inTextBox)
+        {
+            return;
+        }
+
+        if (this.Matches("Refresh", e))
+        {
+            viewModel.SelectedFileTab?.Refresh();
+            e.Handled = true;
+            return;
+        }
+        if (this.Matches("Rename", e))
         {
             _ = this.RenameCheckedAsync();
             e.Handled = true;
+            return;
         }
-        else if (e.Key == Key.Delete)
+        if (this.Matches("Delete", e))
         {
-            viewModel.SelectedTab?.DeleteChecked();
+            viewModel.SelectedFileTab?.DeleteChecked();
+            e.Handled = true;
+            return;
+        }
+        if (this.Matches("Copy", e))
+        {
+            viewModel.CopyCheckedToClipboard();
+            e.Handled = true;
+            return;
+        }
+        if (this.Matches("Cut", e))
+        {
+            viewModel.CutCheckedToClipboard();
+            e.Handled = true;
+            return;
+        }
+        if (this.Matches("Paste", e))
+        {
+            viewModel.PasteFromClipboard();
             e.Handled = true;
         }
+    }
+
+    /// <summary>判断当前按键是否命中指定动作的快捷键配置。</summary>
+    private bool Matches(string actionName, KeyEventArgs e)
+    {
+        MainWindowViewModel? viewModel = this.ViewModel;
+        if (viewModel == null)
+        {
+            return false;
+        }
+        foreach (HotkeySetting setting in viewModel.Settings.Hotkeys)
+        {
+            if (setting.ActionName != actionName)
+            {
+                continue;
+            }
+            if (!Enum.TryParse(setting.KeyText, out Key key))
+            {
+                return false;
+            }
+            if (e.Key != key)
+            {
+                return false;
+            }
+            bool ctrlPressed = (e.KeyModifiers & KeyModifiers.Control) != 0;
+            bool altPressed = (e.KeyModifiers & KeyModifiers.Alt) != 0;
+            bool shiftPressed = (e.KeyModifiers & KeyModifiers.Shift) != 0;
+            return ctrlPressed == setting.Ctrl && altPressed == setting.Alt && shiftPressed == setting.Shift;
+        }
+        return false;
     }
 
     private void OnNewTabClick(object? sender, RoutedEventArgs e)
@@ -81,9 +143,14 @@ public partial class MainWindow : Window
         this.ViewModel?.AddTab(string.Empty);
     }
 
+    private void OnTaskBoardClick(object? sender, RoutedEventArgs e)
+    {
+        this.ViewModel?.OpenTaskBoardTab();
+    }
+
     private void OnCloseTabClick(object? sender, RoutedEventArgs e)
     {
-        if (sender is Button button && button.DataContext is FileTabViewModel tab)
+        if (sender is Button button && button.DataContext is object tab)
         {
             this.CloseCurrentTab(tab);
         }
@@ -96,7 +163,7 @@ public partial class MainWindow : Window
         {
             return;
         }
-        if (sender is Grid headerGrid && headerGrid.DataContext is FileTabViewModel tab)
+        if (sender is Grid headerGrid && headerGrid.DataContext is object tab)
         {
             this.CloseCurrentTab(tab);
         }
@@ -105,13 +172,13 @@ public partial class MainWindow : Window
     private void OnSidebarItemClick(object? sender, RoutedEventArgs e)
     {
         MainWindowViewModel? viewModel = this.ViewModel;
-        if (viewModel == null || viewModel.SelectedTab == null)
+        if (viewModel == null || viewModel.SelectedFileTab == null)
         {
             return;
         }
         if (sender is Button button && button.DataContext is QuickAccessItem item)
         {
-            viewModel.SelectedTab.OpenPath(item.Path);
+            viewModel.SelectedFileTab.OpenPath(item.Path);
         }
     }
 
@@ -132,7 +199,8 @@ public partial class MainWindow : Window
         }
         SettingsWindow window = new SettingsWindow(viewModel.Settings);
         await window.ShowDialog(this);
-        Services.AutoStartManager.Apply(viewModel.Settings.AutoStart);
+        AutoStartManager.Apply(viewModel.Settings.AutoStart);
+        DefaultFileManagerManager.Apply(viewModel.Settings.DefaultFileManager);
         viewModel.SaveSettingsAndApply();
     }
 
@@ -158,7 +226,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private void CloseCurrentTab(FileTabViewModel tab)
+    private void CloseCurrentTab(object tab)
     {
         MainWindowViewModel? viewModel = this.ViewModel;
         if (viewModel == null)
@@ -172,10 +240,10 @@ public partial class MainWindow : Window
         }
     }
 
-    /// <summary>对唯一勾选的条目执行重命名流程。</summary>
+    /// <summary>对当前文件标签中唯一勾选的条目执行重命名流程。</summary>
     private async Task RenameCheckedAsync()
     {
-        FileTabViewModel? tab = this.ViewModel?.SelectedTab;
+        FileTabViewModel? tab = this.ViewModel?.SelectedFileTab;
         if (tab == null)
         {
             return;

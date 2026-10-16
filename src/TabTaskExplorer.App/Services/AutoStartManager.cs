@@ -1,46 +1,127 @@
-using System.Runtime.Versioning;
+ï»¿using System.Runtime.Versioning;
 using Microsoft.Win32;
 
 namespace TabTaskExplorer.App.Services;
 
 /// <summary>
-/// ¿ª»úÆô¶¯¹ÜÀí£ºWindows Í¨¹ıµ±Ç°ÓÃ»§×¢²á±í Run ¼üÊµÏÖ£¬ÆäËûÆ½Ì¨Áô´ıºóĞø°æ±¾¡£
+/// å¼€æœºå¯åŠ¨ç®¡ç†ï¼šWindows æ³¨å†Œè¡¨ Run é”®ã€Linux XDG autostartã€macOS LaunchAgentã€‚
 /// </summary>
 public static class AutoStartManager
 {
     private const string RunKeyPath = "Software\\Microsoft\\Windows\\CurrentVersion\\Run";
     private const string AppName = "TabTaskExplorer";
 
-    /// <summary>Ó¦ÓÃ¿ª»úÆô¶¯ÉèÖÃ£¨½ö Windows ÉúĞ§£¬ÆäËûÆ½Ì¨¾²Ä¬Ìø¹ı£©¡£</summary>
+    /// <summary>åº”ç”¨å¼€æœºå¯åŠ¨è®¾ç½®ï¼ŒæŒ‰å½“å‰æ“ä½œç³»ç»Ÿé€‰æ‹©å®ç°ã€‚</summary>
     public static void Apply(bool enabled)
     {
         if (OperatingSystem.IsWindows())
         {
-            SetEnabled(enabled);
+            ApplyWindows(enabled);
+        }
+        else if (OperatingSystem.IsLinux())
+        {
+            ApplyLinux(enabled);
+        }
+        else if (OperatingSystem.IsMacOS())
+        {
+            ApplyMac(enabled);
         }
     }
 
     [SupportedOSPlatform("windows")]
-    private static void SetEnabled(bool enabled)
+    private static void ApplyWindows(bool enabled)
     {
-        if (enabled)
+        try
         {
-            string? executablePath = Environment.ProcessPath;
-            if (string.IsNullOrEmpty(executablePath))
+            if (enabled)
             {
-                return;
+                string? executablePath = Environment.ProcessPath;
+                if (string.IsNullOrEmpty(executablePath))
+                {
+                    return;
+                }
+                using (RegistryKey key = Registry.CurrentUser.CreateSubKey(RunKeyPath))
+                {
+                    key.SetValue(AppName, "\"" + executablePath + "\"");
+                }
             }
-            using (RegistryKey key = Registry.CurrentUser.CreateSubKey(RunKeyPath))
+            else
             {
-                key.SetValue(AppName, "\"" + executablePath + "\"");
+                using (RegistryKey? key = Registry.CurrentUser.OpenSubKey(RunKeyPath, true))
+                {
+                    key?.DeleteValue(AppName, false);
+                }
             }
         }
-        else
+        catch
         {
-            using (RegistryKey? key = Registry.CurrentUser.OpenSubKey(RunKeyPath, true))
+            // æ³¨å†Œè¡¨ä¸å¯å†™æ—¶é™é»˜è·³è¿‡
+        }
+    }
+
+    private static void ApplyLinux(bool enabled)
+    {
+        try
+        {
+            string autostartDirectory = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                ".config", "autostart");
+            string desktopFilePath = Path.Combine(autostartDirectory, "tabtaskexplorer.desktop");
+            if (enabled)
             {
-                key?.DeleteValue(AppName, false);
+                string? executablePath = Environment.ProcessPath;
+                if (string.IsNullOrEmpty(executablePath))
+                {
+                    return;
+                }
+                Directory.CreateDirectory(autostartDirectory);
+                string content = "[Desktop Entry]\nType=Application\nName=TabTaskExplorer\nExec=" + executablePath + "\nX-GNOME-Autostart-enabled=true\n";
+                File.WriteAllText(desktopFilePath, content);
             }
+            else if (File.Exists(desktopFilePath))
+            {
+                File.Delete(desktopFilePath);
+            }
+        }
+        catch
+        {
+            // ç›®å½•ä¸å¯å†™æ—¶é™é»˜è·³è¿‡
+        }
+    }
+
+    private static void ApplyMac(bool enabled)
+    {
+        try
+        {
+            string agentsDirectory = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                "Library", "LaunchAgents");
+            string plistFilePath = Path.Combine(agentsDirectory, "com.tabtaskexplorer.plist");
+            if (enabled)
+            {
+                string? executablePath = Environment.ProcessPath;
+                if (string.IsNullOrEmpty(executablePath))
+                {
+                    return;
+                }
+                Directory.CreateDirectory(agentsDirectory);
+                string content = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+                    + "<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n"
+                    + "<plist version=\"1.0\">\n<dict>\n"
+                    + "<key>Label</key><string>com.tabtaskexplorer</string>\n"
+                    + "<key>ProgramArguments</key>\n<array>\n<string>" + executablePath + "</string>\n</array>\n"
+                    + "<key>RunAtLoad</key><true/>\n"
+                    + "</dict>\n</plist>\n";
+                File.WriteAllText(plistFilePath, content);
+            }
+            else if (File.Exists(plistFilePath))
+            {
+                File.Delete(plistFilePath);
+            }
+        }
+        catch
+        {
+            // ç›®å½•ä¸å¯å†™æ—¶é™é»˜è·³è¿‡
         }
     }
 }

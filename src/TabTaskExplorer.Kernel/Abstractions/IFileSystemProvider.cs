@@ -40,4 +40,18 @@ public interface IFileSystemProvider
     /// </summary>
     /// <param name="path">要删除的完整路径。</param>
     void Delete(string path);
+
+    /// <summary>
+    /// 复制文件或文件夹到目标目录（保留原名称，目标同名时覆盖）。
+    /// </summary>
+    /// <param name="sourcePath">源文件或文件夹的完整路径。</param>
+    /// <param name="targetDirectory">目标目录的完整路径。</param>
+    void Copy(string sourcePath, string targetDirectory);
+
+    /// <summary>
+    /// 移动文件或文件夹到目标目录（跨卷时自动回退为先复制后删除）。
+    /// </summary>
+    /// <param name="sourcePath">源文件或文件夹的完整路径。</param>
+    /// <param name="targetDirectory">目标目录的完整路径。</param>
+    void Move(string sourcePath, string targetDirectory);
 }

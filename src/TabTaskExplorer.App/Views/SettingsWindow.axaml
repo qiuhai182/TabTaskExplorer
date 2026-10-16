@@ -1,7 +1,8 @@
 ﻿<Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:svc="using:TabTaskExplorer.App.Services"
         x:Class="TabTaskExplorer.App.Views.SettingsWindow"
-        Title="TabTaskExplorer 设置" Width="680" Height="500"
+        Title="TabTaskExplorer 设置" Width="700" Height="560"
         WindowStartupLocation="CenterOwner">
   <Grid RowDefinitions="*,Auto">
     <Grid Grid.Row="0" ColumnDefinitions="150,*">
@@ -15,8 +16,8 @@
         <Panel>
           <StackPanel x:Name="BasicPage" Spacing="12">
             <TextBlock Text="基本设置" FontWeight="Medium" />
-            <CheckBox Content="开机启动（写入 Windows 注册表 Run 键）" IsChecked="{Binding AutoStart, Mode=TwoWay}" />
-            <CheckBox Content="默认为系统资源管理器（待实现：涉及系统注册表修改，待安全评估）" IsEnabled="False" />
+            <CheckBox Content="开机启动（Windows 注册表 / Linux 自启动 / macOS LaunchAgent）" IsChecked="{Binding AutoStart, Mode=TwoWay}" />
+            <CheckBox Content="默认用本程序打开文件夹（Windows，仅当前用户，可随时关闭恢复）" IsChecked="{Binding DefaultFileManager, Mode=TwoWay}" />
             <TextBlock Text="启动设置" FontWeight="Medium" Margin="0,8,0,0" />
             <CheckBox Content="启动时打开上次关闭的标签" IsChecked="{Binding RestoreLastTabs, Mode=TwoWay}" />
             <TextBlock Text="页面设置" FontWeight="Medium" Margin="0,8,0,0" />
@@ -27,9 +28,23 @@
             <TextBlock Text="鼠标操作" FontWeight="Medium" />
             <CheckBox Content="双击标签关闭当前标签" IsChecked="{Binding DoubleClickTabClose, Mode=TwoWay}" />
             <CheckBox Content="双击文件空白区域可返回上层目录（已默认启用）" IsEnabled="False" IsChecked="True" />
-            <TextBlock Text="快捷键" FontWeight="Medium" Margin="0,8,0,0" />
-            <TextBlock TextWrapping="Wrap" Opacity="0.8"
-                       Text="新建标签 Ctrl+T；关闭当前标签 Ctrl+W；切换到下一个标签 Ctrl+Tab；切换到上一个标签 Ctrl+Shift+Tab；刷新 F5；重命名 F2；删除勾选项 Delete。（快捷键自定义将在后续版本提供）" />
+            <TextBlock Text="快捷键自定义" FontWeight="Medium" Margin="0,8,0,0" />
+            <Button Content="恢复默认快捷键" Click="OnResetHotkeysClick" HorizontalAlignment="Left" Margin="0,0,0,4" />
+            <ItemsControl ItemsSource="{Binding Hotkeys}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <Grid ColumnDefinitions="150,Auto,Auto,Auto,Auto" Margin="0,2">
+                    <TextBlock Grid.Column="0" Text="{Binding DisplayName}" VerticalAlignment="Center" />
+                    <CheckBox Grid.Column="1" Content="Ctrl" IsChecked="{Binding Ctrl, Mode=TwoWay}" Margin="0,0,10,0" />
+                    <CheckBox Grid.Column="2" Content="Alt" IsChecked="{Binding Alt, Mode=TwoWay}" Margin="0,0,10,0" />
+                    <CheckBox Grid.Column="3" Content="Shift" IsChecked="{Binding Shift, Mode=TwoWay}" Margin="0,0,10,0" />
+                    <ComboBox Grid.Column="4" Width="110" ItemsSource="{x:Static svc:HotkeySetting.KeyOptions}" SelectedItem="{Binding KeyText, Mode=TwoWay}" />
+                  </Grid>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <TextBlock TextWrapping="Wrap" Opacity="0.7" Margin="0,8,0,0"
+                       Text="说明：文件操作类快捷键（刷新、重命名、删除、复制、剪切、粘贴）在输入框内不会触发，避免误操作。改动点确定后立即生效。" />
           </StackPanel>
           <StackPanel x:Name="FilePage" Spacing="12" IsVisible="False">
             <CheckBox Content="显示隐藏的文件/文件夹" IsChecked="{Binding ShowHiddenFiles, Mode=TwoWay}" />

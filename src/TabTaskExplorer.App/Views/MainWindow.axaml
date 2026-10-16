@@ -1,6 +1,7 @@
 ﻿<Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:views="using:TabTaskExplorer.App.Views"
+        xmlns:vm="using:TabTaskExplorer.App.ViewModels"
         x:Class="TabTaskExplorer.App.Views.MainWindow"
         Title="TabTaskExplorer"
         Width="1200" Height="760"
@@ -35,6 +36,7 @@
         <ScrollViewer>
           <StackPanel Margin="8">
             <Button Content="设置" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Background="Transparent" Click="OnSettingsClick" />
+            <Button Content="任务看板" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Background="Transparent" Click="OnTaskBoardClick" />
             <Button Content="进程监控" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Background="Transparent" Click="OnProcessMonitorClick" />
             <TextBlock Text="快捷访问" Margin="4,14,0,4" FontWeight="Medium" Opacity="0.8" />
             <ItemsControl ItemsSource="{Binding QuickAccessItems}">
@@ -59,7 +61,7 @@
         </ScrollViewer>
       </Border>
 
-      <!-- 标签页区域 -->
+      <!-- 标签页区域：文件浏览与任务看板共用一个容器 -->
       <Grid Grid.Column="1" ColumnDefinitions="*,36">
         <TabControl Grid.Column="0" ItemsSource="{Binding Tabs}" SelectedItem="{Binding SelectedTab, Mode=TwoWay}" Margin="0,4,0,0">
           <TabControl.ItemTemplate>
@@ -70,13 +72,16 @@
               </Grid>
             </DataTemplate>
           </TabControl.ItemTemplate>
-          <TabControl.ContentTemplate>
-            <DataTemplate>
+          <TabControl.DataTemplates>
+            <DataTemplate DataType="vm:FileTabViewModel">
               <views:FileListPanel />
             </DataTemplate>
-          </TabControl.ContentTemplate>
+            <DataTemplate DataType="vm:TaskBoardViewModel">
+              <views:TaskBoardPanel />
+            </DataTemplate>
+          </TabControl.DataTemplates>
         </TabControl>
-        <Button Grid.Column="1" Content="+" Width="28" Height="28" VerticalAlignment="Top" Margin="4,6,4,0" Click="OnNewTabClick" ToolTip.Tip="新建标签 (Ctrl+T)" />
+        <Button Grid.Column="1" Content="+" Width="28" Height="28" VerticalAlignment="Top" Margin="4,6,4,0" Click="OnNewTabClick" ToolTip.Tip="新建文件标签 (Ctrl+T)" />
       </Grid>
     </Grid>
 
