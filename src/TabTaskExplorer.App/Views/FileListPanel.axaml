@@ -1,0 +1,116 @@
+﻿<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="TabTaskExplorer.App.Views.FileListPanel">
+
+  <Grid RowDefinitions="Auto,Auto,*,Auto">
+
+    <!-- 工具栏：导航与文件操作（可在设置中隐藏） -->
+    <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="4" Margin="8,8,8,4"
+                IsVisible="{Binding DataContext.ShowToolbar, RelativeSource={RelativeSource AncestorType=Window}}">
+      <Button Content="←" Click="OnBackClick" ToolTip.Tip="后退" />
+      <Button Content="→" Click="OnForwardClick" ToolTip.Tip="前进" />
+      <Button Content="↑" Click="OnUpClick" ToolTip.Tip="上一级" />
+      <Button Content="刷新" Click="OnRefreshClick" ToolTip.Tip="刷新 (F5)" />
+      <Button Content="新建文件夹" Click="OnNewFolderClick" />
+      <Button Content="重命名" Click="OnRenameClick" ToolTip.Tip="重命名 (F2)" />
+      <Button Content="删除" Click="OnDeleteClick" ToolTip.Tip="删除勾选项 (Delete)" />
+      <Button Content="批量改名" Click="OnBatchRenameClick" />
+      <Button Content="视图" Click="OnViewModeClick" ToolTip.Tip="切换视图：详细信息 / 大图标 / 中图标" />
+      <Button Content="信息窗格" Click="OnInfoPaneClick" />
+      <Button Content="固定" Click="OnPinClick" ToolTip.Tip="固定当前文件夹到快捷访问" />
+    </StackPanel>
+
+    <!-- 地址栏与搜索 -->
+    <Grid Grid.Row="1" ColumnDefinitions="*,240" Margin="8,0,8,4">
+      <TextBox Grid.Column="0" x:Name="AddressBox" Watermark="输入路径后按回车跳转" KeyDown="OnAddressKeyDown" />
+      <TextBox Grid.Column="1" x:Name="SearchBox" Watermark="搜索当前目录" Margin="8,0,0,0" TextChanged="OnSearchTextChanged" />
+    </Grid>
+
+    <!-- 列表区与信息窗格 -->
+    <Grid Grid.Row="2" ColumnDefinitions="*,Auto" Margin="8,0,8,0">
+
+      <!-- 列表：双击空白处返回上一级 -->
+      <Grid Grid.Column="0" RowDefinitions="Auto,*" DoubleTapped="OnListBackgroundDoubleTapped">
+        <Grid Grid.Row="0" ColumnDefinitions="30,3*,130,140,110" Margin="0,0,0,4">
+          <TextBlock Grid.Column="0" />
+          <Button Grid.Column="1" Content="名称" Tag="Name" Click="OnSortClick" HorizontalAlignment="Left" Background="Transparent" />
+          <Button Grid.Column="2" Content="类型" Tag="Type" Click="OnSortClick" HorizontalAlignment="Left" Background="Transparent" />
+          <Button Grid.Column="3" Content="修改日期" Tag="Modified" Click="OnSortClick" HorizontalAlignment="Left" Background="Transparent" />
+          <Button Grid.Column="4" Content="大小" Tag="Size" Click="OnSortClick" HorizontalAlignment="Left" Background="Transparent" />
+        </Grid>
+        <ScrollViewer Grid.Row="1">
+          <StackPanel>
+            <!-- 详细信息视图 -->
+            <ItemsControl ItemsSource="{Binding VisibleRows}" IsVisible="{Binding IsDetailsLayout}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <Border DoubleTapped="OnRowDoubleTapped" Background="Transparent" Padding="0,2">
+                    <Border.ContextMenu>
+                      <ContextMenu>
+                        <MenuItem Header="打开" Click="OnMenuOpenClick" />
+                        <MenuItem Header="在新标签打开" Click="OnMenuOpenInNewTabClick" />
+                        <MenuItem Header="重命名" Click="OnMenuRenameClick" />
+                        <MenuItem Header="删除" Click="OnMenuDeleteClick" />
+                      </ContextMenu>
+                    </Border.ContextMenu>
+                    <Grid ColumnDefinitions="30,3*,130,140,110">
+                      <CheckBox Grid.Column="0" IsChecked="{Binding IsSelected, Mode=TwoWay}" Checked="OnRowCheckChanged" Unchecked="OnRowCheckChanged" />
+                      <TextBlock Grid.Column="1" Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" />
+                      <TextBlock Grid.Column="2" Text="{Binding TypeText}" Opacity="0.8" />
+                      <TextBlock Grid.Column="3" Text="{Binding ModifiedText}" Opacity="0.8" />
+                      <TextBlock Grid.Column="4" Text="{Binding SizeText}" Opacity="0.8" />
+                    </Grid>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <!-- 图标视图（大图标 / 中图标） -->
+            <ItemsControl ItemsSource="{Binding VisibleRows}" IsVisible="{Binding IsIconsLayout}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <WrapPanel />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <Border Width="{Binding $parent[ItemsControl].DataContext.TileWidth}" DoubleTapped="OnRowDoubleTapped"
+                          Background="Transparent" Margin="4" Padding="6" HorizontalAlignment="Left">
+                    <Border.ContextMenu>
+                      <ContextMenu>
+                        <MenuItem Header="打开" Click="OnMenuOpenClick" />
+                        <MenuItem Header="在新标签打开" Click="OnMenuOpenInNewTabClick" />
+                        <MenuItem Header="重命名" Click="OnMenuRenameClick" />
+                        <MenuItem Header="删除" Click="OnMenuDeleteClick" />
+                      </ContextMenu>
+                    </Border.ContextMenu>
+                    <StackPanel Spacing="4">
+                      <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}" Checked="OnRowCheckChanged" Unchecked="OnRowCheckChanged" HorizontalAlignment="Left" />
+                      <TextBlock Text="{Binding DisplayName}" TextWrapping="Wrap" />
+                      <TextBlock Text="{Binding SizeText}" FontSize="11" Opacity="0.7" />
+                    </StackPanel>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+        </ScrollViewer>
+      </Grid>
+
+      <!-- 信息窗格 -->
+      <Border Grid.Column="1" Width="220" Margin="8,0,0,0" Padding="10"
+              IsVisible="{Binding ShowInfoPane}">
+        <StackPanel Spacing="6">
+          <TextBlock Text="详细信息" FontWeight="Medium" />
+          <TextBlock x:Name="InfoNameText" TextWrapping="Wrap" FontWeight="Medium" />
+          <TextBlock x:Name="InfoTypeText" Opacity="0.8" />
+          <TextBlock x:Name="InfoSizeText" Opacity="0.8" />
+          <TextBlock x:Name="InfoModifiedText" Opacity="0.8" />
+          <TextBlock x:Name="InfoPathText" TextWrapping="Wrap" Opacity="0.6" FontSize="12" />
+        </StackPanel>
+      </Border>
+    </Grid>
+
+    <!-- 摘要栏 -->
+    <TextBlock Grid.Row="3" Margin="10,4" Text="{Binding SummaryText}" FontSize="12" Opacity="0.7" />
+  </Grid>
+</UserControl>

@@ -1,0 +1,30 @@
+﻿<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="TabTaskExplorer.App.Views.ProcessWindow"
+        Title="进程监控" Width="900" Height="560" WindowStartupLocation="CenterOwner">
+  <Grid RowDefinitions="Auto,Auto,*,Auto" Margin="12">
+    <Button Grid.Row="0" Content="刷新" HorizontalAlignment="Left" Click="OnRefreshClick" />
+    <TextBlock Grid.Row="1" Margin="0,8,0,8" Text="{Binding SummaryText}" />
+    <Grid Grid.Row="2" RowDefinitions="Auto,*">
+      <Grid Grid.Row="0" ColumnDefinitions="3*,110,3*" Margin="0,0,0,4">
+        <TextBlock Grid.Column="0" Text="名称" FontWeight="Medium" />
+        <TextBlock Grid.Column="1" Text="内存" FontWeight="Medium" />
+        <TextBlock Grid.Column="2" Text="窗口标题" FontWeight="Medium" />
+      </Grid>
+      <ScrollViewer Grid.Row="1">
+        <ItemsControl ItemsSource="{Binding Rows}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate>
+              <Grid ColumnDefinitions="3*,110,3*" Margin="0,2">
+                <TextBlock Grid.Column="0" Text="{Binding Name}" />
+                <TextBlock Grid.Column="1" Text="{Binding MemoryText}" />
+                <TextBlock Grid.Column="2" Text="{Binding WindowTitle}" TextTrimming="CharacterEllipsis" />
+              </Grid>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </ScrollViewer>
+    </Grid>
+    <Button Grid.Row="3" Content="关闭" HorizontalAlignment="Right" Click="OnCloseClick" />
+  </Grid>
+</Window>

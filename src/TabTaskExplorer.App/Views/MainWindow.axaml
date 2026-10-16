@@ -1,0 +1,86 @@
+﻿<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:views="using:TabTaskExplorer.App.Views"
+        x:Class="TabTaskExplorer.App.Views.MainWindow"
+        Title="TabTaskExplorer"
+        Width="1200" Height="760"
+        WindowStartupLocation="CenterScreen"
+        KeyDown="OnWindowKeyDown">
+
+  <Grid RowDefinitions="Auto,*,Auto">
+
+    <!-- 书签栏：显示快捷访问，可在设置中隐藏 -->
+    <Border Grid.Row="0" Padding="8,3" IsVisible="{Binding ShowBookmarkBar}">
+      <StackPanel Orientation="Horizontal" Spacing="4">
+        <TextBlock Text="书签：" VerticalAlignment="Center" Opacity="0.7" FontSize="12" />
+        <ItemsControl ItemsSource="{Binding QuickAccessItems}">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <StackPanel Orientation="Horizontal" Spacing="4" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate>
+              <Button Content="{Binding Name}" FontSize="12" Background="Transparent" Click="OnSidebarItemClick" />
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </StackPanel>
+    </Border>
+
+    <Grid Grid.Row="1" ColumnDefinitions="220,*">
+
+      <!-- 侧边栏 -->
+      <Border Grid.Column="0" BorderBrush="#40808080" BorderThickness="0,0,1,0">
+        <ScrollViewer>
+          <StackPanel Margin="8">
+            <Button Content="设置" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Background="Transparent" Click="OnSettingsClick" />
+            <Button Content="进程监控" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Background="Transparent" Click="OnProcessMonitorClick" />
+            <TextBlock Text="快捷访问" Margin="4,14,0,4" FontWeight="Medium" Opacity="0.8" />
+            <ItemsControl ItemsSource="{Binding QuickAccessItems}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <Grid ColumnDefinitions="*,Auto">
+                    <Button Grid.Column="0" Content="{Binding Name}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Background="Transparent" Click="OnSidebarItemClick" />
+                    <Button Grid.Column="1" Content="×" Width="20" Background="Transparent" ToolTip.Tip="取消固定" Click="OnUnpinClick" />
+                  </Grid>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <TextBlock Text="此电脑" Margin="4,14,0,4" FontWeight="Medium" Opacity="0.8" />
+            <ItemsControl ItemsSource="{Binding ThisPcItems}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <Button Content="{Binding Name}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Background="Transparent" Click="OnSidebarItemClick" />
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+        </ScrollViewer>
+      </Border>
+
+      <!-- 标签页区域 -->
+      <Grid Grid.Column="1" ColumnDefinitions="*,36">
+        <TabControl Grid.Column="0" ItemsSource="{Binding Tabs}" SelectedItem="{Binding SelectedTab, Mode=TwoWay}" Margin="0,4,0,0">
+          <TabControl.ItemTemplate>
+            <DataTemplate>
+              <Grid ColumnDefinitions="*,Auto" Margin="0,0,4,0" DoubleTapped="OnTabHeaderDoubleTapped">
+                <TextBlock Grid.Column="0" Text="{Binding Title}" VerticalAlignment="Center" Margin="8,0,0,0" />
+                <Button Grid.Column="1" Content="×" Width="20" Height="20" Padding="0" Background="Transparent" Click="OnCloseTabClick" />
+              </Grid>
+            </DataTemplate>
+          </TabControl.ItemTemplate>
+          <TabControl.ContentTemplate>
+            <DataTemplate>
+              <views:FileListPanel />
+            </DataTemplate>
+          </TabControl.ContentTemplate>
+        </TabControl>
+        <Button Grid.Column="1" Content="+" Width="28" Height="28" VerticalAlignment="Top" Margin="4,6,4,0" Click="OnNewTabClick" ToolTip.Tip="新建标签 (Ctrl+T)" />
+      </Grid>
+    </Grid>
+
+    <!-- 状态栏 -->
+    <TextBlock Grid.Row="2" Margin="12,6" Text="就绪" FontSize="12" Opacity="0.7" />
+  </Grid>
+</Window>

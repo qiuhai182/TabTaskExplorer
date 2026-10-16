@@ -1,0 +1,12 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- macOS 平台适配工程：只实现内核接口，禁止被内核或应用层业务代码引用 -->
+  <PropertyGroup>
+    <RootNamespace>TabTaskExplorer.Platform.MacOS</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\TabTaskExplorer.Kernel\TabTaskExplorer.Kernel.csproj" />
+  </ItemGroup>
+
+</Project>

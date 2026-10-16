@@ -1,0 +1,50 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="TabTaskExplorer.App.Views.BatchRenameDialog"
+        Title="批量改名" Width="620" Height="600" CanResize="False"
+        WindowStartupLocation="CenterOwner">
+  <Grid RowDefinitions="Auto,Auto,*,Auto" Margin="16">
+
+    <StackPanel Grid.Row="0" Spacing="8">
+      <Grid ColumnDefinitions="90,*">
+        <TextBlock Grid.Column="0" Text="查找文字：" VerticalAlignment="Center" />
+        <TextBox Grid.Column="1" x:Name="FindBox" TextChanged="OnOptionChanged" />
+      </Grid>
+      <Grid ColumnDefinitions="90,*">
+        <TextBlock Grid.Column="0" Text="替换为：" VerticalAlignment="Center" />
+        <TextBox Grid.Column="1" x:Name="ReplaceBox" TextChanged="OnOptionChanged" />
+      </Grid>
+      <Grid ColumnDefinitions="90,*,70,*">
+        <TextBlock Grid.Column="0" Text="前缀：" VerticalAlignment="Center" />
+        <TextBox Grid.Column="1" x:Name="PrefixBox" TextChanged="OnOptionChanged" Margin="0,0,8,0" />
+        <TextBlock Grid.Column="2" Text="后缀：" VerticalAlignment="Center" />
+        <TextBox Grid.Column="3" x:Name="SuffixBox" TextChanged="OnOptionChanged" />
+      </Grid>
+      <StackPanel Orientation="Horizontal" Spacing="8">
+        <CheckBox x:Name="SequenceCheck" Content="添加序号" Checked="OnOptionChanged" Unchecked="OnOptionChanged" VerticalAlignment="Center" />
+        <TextBlock Text="起始序号：" VerticalAlignment="Center" />
+        <TextBox x:Name="SequenceStartBox" Width="60" Text="1" TextChanged="OnOptionChanged" />
+        <TextBlock Text="新扩展名（如 .jpg）：" VerticalAlignment="Center" Margin="12,0,0,0" />
+        <TextBox x:Name="ExtensionBox" Width="110" TextChanged="OnOptionChanged" />
+      </StackPanel>
+    </StackPanel>
+
+    <TextBlock Grid.Row="1" Text="预览（旧名称 → 新名称）：" Margin="0,12,0,4" FontWeight="Medium" />
+    <ListBox Grid.Row="2" x:Name="PreviewList">
+      <ListBox.ItemTemplate>
+        <DataTemplate>
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <TextBlock Text="{Binding OldText}" Opacity="0.7" />
+            <TextBlock Text="→" />
+            <TextBlock Text="{Binding NewText}" FontWeight="Medium" />
+          </StackPanel>
+        </DataTemplate>
+      </ListBox.ItemTemplate>
+    </ListBox>
+
+    <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8" Margin="0,12,0,0">
+      <Button Content="执行改名" Click="OnApplyClick" />
+      <Button Content="取消" Click="OnCancelClick" />
+    </StackPanel>
+  </Grid>
+</Window>

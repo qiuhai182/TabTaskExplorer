@@ -1,0 +1,16 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Windows 平台适配工程：只实现内核接口，禁止被内核或应用层业务代码引用 -->
+  <PropertyGroup>
+    <RootNamespace>TabTaskExplorer.Platform.Windows</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\TabTaskExplorer.Kernel\TabTaskExplorer.Kernel.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.Diagnostics.PerformanceCounter" Version="10.0.13" />
+  </ItemGroup>
+
+</Project>

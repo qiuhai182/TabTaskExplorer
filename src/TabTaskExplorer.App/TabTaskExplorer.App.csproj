@@ -1,0 +1,24 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 应用层工程：界面只引用内核；平台工程仅在组合根处被使用 -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <RootNamespace>TabTaskExplorer.App</RootNamespace>
+    <AssemblyName>TabTaskExplorer</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\TabTaskExplorer.Kernel\TabTaskExplorer.Kernel.csproj" />
+    <ProjectReference Include="..\TabTaskExplorer.Platform.Windows\TabTaskExplorer.Platform.Windows.csproj" />
+    <ProjectReference Include="..\TabTaskExplorer.Platform.Linux\TabTaskExplorer.Platform.Linux.csproj" />
+    <ProjectReference Include="..\TabTaskExplorer.Platform.MacOS\TabTaskExplorer.Platform.MacOS.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="11.3.22" />
+    <PackageReference Include="Avalonia.Desktop" Version="11.3.22" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.22" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.13" />
+  </ItemGroup>
+
+</Project>

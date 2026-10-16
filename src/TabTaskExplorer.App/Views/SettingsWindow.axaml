@@ -1,0 +1,51 @@
+﻿<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="TabTaskExplorer.App.Views.SettingsWindow"
+        Title="TabTaskExplorer 设置" Width="680" Height="500"
+        WindowStartupLocation="CenterOwner">
+  <Grid RowDefinitions="*,Auto">
+    <Grid Grid.Row="0" ColumnDefinitions="150,*">
+      <ListBox Grid.Column="0" x:Name="SectionList" Margin="8" SelectionChanged="OnSectionChanged">
+        <ListBoxItem Content="基本设置" IsSelected="True" />
+        <ListBoxItem Content="快捷操作" />
+        <ListBoxItem Content="文件/文件夹" />
+        <ListBoxItem Content="关于" />
+      </ListBox>
+      <ScrollViewer Grid.Column="1" Margin="16">
+        <Panel>
+          <StackPanel x:Name="BasicPage" Spacing="12">
+            <TextBlock Text="基本设置" FontWeight="Medium" />
+            <CheckBox Content="开机启动（写入 Windows 注册表 Run 键）" IsChecked="{Binding AutoStart, Mode=TwoWay}" />
+            <CheckBox Content="默认为系统资源管理器（待实现：涉及系统注册表修改，待安全评估）" IsEnabled="False" />
+            <TextBlock Text="启动设置" FontWeight="Medium" Margin="0,8,0,0" />
+            <CheckBox Content="启动时打开上次关闭的标签" IsChecked="{Binding RestoreLastTabs, Mode=TwoWay}" />
+            <TextBlock Text="页面设置" FontWeight="Medium" Margin="0,8,0,0" />
+            <CheckBox Content="显示工具栏" IsChecked="{Binding ShowToolbar, Mode=TwoWay}" />
+            <CheckBox Content="显示书签栏" IsChecked="{Binding ShowBookmarkBar, Mode=TwoWay}" />
+          </StackPanel>
+          <StackPanel x:Name="MousePage" Spacing="12" IsVisible="False">
+            <TextBlock Text="鼠标操作" FontWeight="Medium" />
+            <CheckBox Content="双击标签关闭当前标签" IsChecked="{Binding DoubleClickTabClose, Mode=TwoWay}" />
+            <CheckBox Content="双击文件空白区域可返回上层目录（已默认启用）" IsEnabled="False" IsChecked="True" />
+            <TextBlock Text="快捷键" FontWeight="Medium" Margin="0,8,0,0" />
+            <TextBlock TextWrapping="Wrap" Opacity="0.8"
+                       Text="新建标签 Ctrl+T；关闭当前标签 Ctrl+W；切换到下一个标签 Ctrl+Tab；切换到上一个标签 Ctrl+Shift+Tab；刷新 F5；重命名 F2；删除勾选项 Delete。（快捷键自定义将在后续版本提供）" />
+          </StackPanel>
+          <StackPanel x:Name="FilePage" Spacing="12" IsVisible="False">
+            <CheckBox Content="显示隐藏的文件/文件夹" IsChecked="{Binding ShowHiddenFiles, Mode=TwoWay}" />
+            <CheckBox Content="显示文件扩展名" IsChecked="{Binding ShowFileExtensions, Mode=TwoWay}" />
+          </StackPanel>
+          <StackPanel x:Name="AboutPage" Spacing="12" IsVisible="False">
+            <TextBlock Text="TabTaskExplorer v0.1" FontWeight="Medium" />
+            <TextBlock TextWrapping="Wrap" Opacity="0.8"
+                       Text="跨平台的 Windows 风格资源管理器 + 任务管理器二合一开源项目。当前为骨架版本，功能持续完善中。" />
+          </StackPanel>
+        </Panel>
+      </ScrollViewer>
+    </Grid>
+    <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8" Margin="16,0,16,16">
+      <Button Content="确定" Click="OnOkClick" />
+      <Button Content="取消" Click="OnCancelClick" />
+    </StackPanel>
+  </Grid>
+</Window>
