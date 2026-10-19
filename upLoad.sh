@@ -1,7 +1,14 @@
 #!/bin/bash
+# TabTaskExplorer 快捷上传：提交全部变更并推送到 Gitee（origin main）
+# 用法：在仓库根目录执行  bash upLoad.sh
 
-git pull gitee main
-python convert_to_utf8.py --strip-bom
-git add --all -- ':!nul'
-git commit -m "快捷上传最新可执行文件、代码"
-git push gitee main
+git add --all
+
+# 没有暂存变更时直接结束，避免产生空提交
+if git diff --cached --quiet; then
+    echo "没有需要提交的变更"
+else
+    git commit -m "快捷上传最新代码"
+fi
+
+git push origin main
