@@ -3,9 +3,11 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
+using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using TabTaskExplorer.App.Services;
 using TabTaskExplorer.Kernel.Abstractions;
+using TabTaskExplorer.Kernel.Models;
 
 namespace TabTaskExplorer.App.ViewModels;
 
@@ -46,8 +48,21 @@ public class MainWindowViewModel : INotifyPropertyChanged
     /// <summary>侧边栏：快捷访问（用户固定）。</summary>
     public ObservableCollection<QuickAccessItem> QuickAccessItems { get; } = new ObservableCollection<QuickAccessItem>();
 
-    /// <summary>侧边栏：此电脑（磁盘与常用文件夹）。</summary>
+    /// <summary>侧边栏：此电脑（磁盘与用户文件夹）。</summary>
     public ObservableCollection<QuickAccessItem> ThisPcItems { get; } = new ObservableCollection<QuickAccessItem>();
+
+    private bool hasNoBookmarks = true;
+
+    /// <summary>书签栏是否为空（为空时显示引导提示文案）。</summary>
+    public bool HasNoBookmarks
+    {
+        get { return this.hasNoBookmarks; }
+        private set
+        {
+            this.hasNoBookmarks = value;
+            this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(HasNoBookmarks)));
+        }
+    }
 
     /// <summary>当前选中的标签页。</summary>
     public object? SelectedTab
@@ -95,6 +110,7 @@ public class MainWindowViewModel : INotifyPropertyChanged
         this.FillThisPcItems();
         this.FillQuickAccessItems();
         this.SyncViewSettings();
+        this.ApplySavedTheme();
 
         // 恢复上次关闭的标签页（需在设置中开启）
         if (this.Settings.RestoreLastTabs && this.Settings.OpenTabPaths.Count > 0)
@@ -135,6 +151,23 @@ public class MainWindowViewModel : INotifyPropertyChanged
         TaskBoardViewModel newBoard = new TaskBoardViewModel(this.services.GetRequiredService<ITaskStore>());
         this.Tabs.Add(newBoard);
         this.SelectedTab = newBoard;
+    }
+
+    /// <summary>打开连接管理标签页（已存在时直接选中）。</summary>
+    public void OpenConnectionsTab()
+    {
+        foreach (object tab in this.Tabs)
+        {
+            if (tab is ConnectionManagerViewModel connections)
+            {
+                this.SelectedTab = connections;
+                return;
+            }
+        }
+        ConnectionManagerViewModel newManager = new ConnectionManagerViewModel(
+            this.services.GetRequiredService<Kernel.Services.ConnectionManager>());
+        this.Tabs.Add(newManager);
+        this.SelectedTab = newManager;
     }
 
     /// <summary>关闭标签页并选中相邻标签。</summary>
@@ -352,6 +385,167 @@ public class MainWindowViewModel : INotifyPropertyChanged
         return new ProcessPanelViewModel(processProvider, metricsProvider);
     }
 
+    /// <summary>启动浏览器调试镜像服务：页面与程序界面实时同构，便于调试。</summary>
+    public void StartDebugWebHost(DebugWebHost host)
+    {
+        host.Start(
+            delegate { return this.DispatchDebugSnapshotAsync(); },
+            delegate(int index) { this.SelectDebugTabOnUiThread(index); },
+            delegate(string theme) { this.SetThemeOnUiThread(theme); });
+    }
+
+    /// <summary>按保存的设置应用主题（程序启动时调用）。</summary>
+    public void ApplySavedTheme()
+    {
+        this.ApplyThemeValue(this.Settings.Theme);
+    }
+
+    /// <summary>切换深浅色主题并持久化（供标题栏按钮调用）。</summary>
+    public void ToggleTheme()
+    {
+        this.SetThemeOnUiThread(this.Settings.Theme == "Light" ? "Dark" : "Light");
+    }
+
+    /// <summary>浏览器镜像设置主题：跨线程安全。</summary>
+    public void SetThemeOnUiThread(string theme)
+    {
+        if (Avalonia.Threading.Dispatcher.UIThread.CheckAccess())
+        {
+            this.ApplyThemeValue(theme);
+            return;
+        }
+        Avalonia.Threading.Dispatcher.UIThread.Post(delegate { this.ApplyThemeValue(theme); });
+    }
+
+    /// <summary>应用主题值并持久化（必须在 UI 线程）。</summary>
+    private void ApplyThemeValue(string theme)
+    {
+        this.Settings.Theme = theme == "Light" ? "Light" : "Dark";
+        Avalonia.Application.Current!.RequestedThemeVariant = this.Settings.Theme == "Light"
+            ? Avalonia.Styling.ThemeVariant.Light
+            : Avalonia.Styling.ThemeVariant.Dark;
+        this.settingsStore.Save(this.Settings);
+    }
+
+    /// <summary>构建界面状态快照（必须在 UI 线程调用）。</summary>
+    public DebugUiState BuildDebugState()
+    {
+        DebugUiState state = new DebugUiState();
+        state.GeneratedTime = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+        state.Theme = this.Settings.Theme;
+        int index = 0;
+        foreach (object tab in this.Tabs)
+        {
+            DebugTabState tabState = new DebugTabState();
+            tabState.Index = index;
+            tabState.Selected = object.ReferenceEquals(tab, this.SelectedTab);
+            FileTabViewModel? fileTab = tab as FileTabViewModel;
+            TaskBoardViewModel? board = tab as TaskBoardViewModel;
+            ConnectionManagerViewModel? connections = tab as ConnectionManagerViewModel;
+            if (fileTab != null)
+            {
+                tabState.TabType = "file";
+                tabState.Title = fileTab.Title;
+                tabState.CurrentPath = fileTab.CurrentPath;
+                foreach (FileRow row in fileTab.VisibleRows)
+                {
+                    DebugFileRow mirror = new DebugFileRow();
+                    mirror.Name = row.DisplayName;
+                    mirror.Type = row.TypeText;
+                    mirror.Size = row.SizeText;
+                    mirror.Modified = row.ModifiedText;
+                    tabState.Rows.Add(mirror);
+                }
+            }
+            else if (board != null)
+            {
+                tabState.TabType = "board";
+                tabState.Title = board.Title;
+                foreach (TaskItem item in board.TodoItems)
+                {
+                    tabState.Todo.Add(item.Title);
+                }
+                foreach (TaskItem item in board.InProgressItems)
+                {
+                    tabState.InProgress.Add(item.Title);
+                }
+                foreach (TaskItem item in board.DoneItems)
+                {
+                    tabState.Done.Add(item.Title);
+                }
+            }
+            else if (connections != null)
+            {
+                tabState.TabType = "connections";
+                tabState.Title = connections.Title;
+                foreach (RemoteConnectionProfile profile in connections.Connections)
+                {
+                    tabState.Connections.Add(new string[] { profile.Name, profile.Summary });
+                }
+                tabState.SelectedConnection = connections.SelectedConnection != null ? connections.SelectedConnection.Name : string.Empty;
+            }
+            else
+            {
+                tabState.TabType = "unknown";
+                tabState.Title = "标签页";
+            }
+            state.Tabs.Add(tabState);
+            index++;
+        }
+
+        // 侧边栏导航镜像（与桌面导航栏同构，含选中高亮）
+        QuickAccessItem? navMatch = this.MatchNavByPath(this.SelectedFileTab?.CurrentPath);
+        foreach (QuickAccessItem item in this.QuickAccessItems)
+        {
+            state.NavPinned.Add(new DebugNavItem
+            {
+                Name = item.Name,
+                Path = item.Path,
+                Selected = object.ReferenceEquals(item, navMatch),
+            });
+        }
+        foreach (QuickAccessItem item in this.ThisPcItems)
+        {
+            state.NavPc.Add(new DebugNavItem
+            {
+                Name = item.Name,
+                Path = item.Path,
+                Selected = object.ReferenceEquals(item, navMatch),
+            });
+        }
+        return state;
+    }
+
+    /// <summary>浏览器镜像请求快照：已在 UI 线程则直接构建，否则调度到 UI 线程。</summary>
+    private Task<DebugUiState> DispatchDebugSnapshotAsync()
+    {
+        if (Avalonia.Threading.Dispatcher.UIThread.CheckAccess())
+        {
+            return Task.FromResult(this.BuildDebugState());
+        }
+        return Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(new Func<DebugUiState>(this.BuildDebugState)).GetTask();
+    }
+
+    /// <summary>浏览器镜像切换标签：调度到 UI 线程执行。</summary>
+    private void SelectDebugTabOnUiThread(int index)
+    {
+        if (Avalonia.Threading.Dispatcher.UIThread.CheckAccess())
+        {
+            this.SelectDebugTab(index);
+            return;
+        }
+        Avalonia.Threading.Dispatcher.UIThread.Post(delegate { this.SelectDebugTab(index); });
+    }
+
+    /// <summary>选中指定下标的标签页（供浏览器镜像回传）。</summary>
+    public void SelectDebugTab(int index)
+    {
+        if (index >= 0 && index < this.Tabs.Count)
+        {
+            this.SelectedTab = this.Tabs[index];
+        }
+    }
+
     /// <summary>把勾选条目路径放入内部剪贴板。</summary>
     private void SetClipboard(bool isCut)
     {
@@ -424,6 +618,57 @@ public class MainWindowViewModel : INotifyPropertyChanged
             }
             this.QuickAccessItems.Add(new QuickAccessItem { Name = GetDisplayName(path), Path = path, IconGlyph = "\uE8B7" });
         }
+        this.HasNoBookmarks = this.QuickAccessItems.Count == 0;
+    }
+
+    /// <summary>按当前路径匹配侧边栏导航项：精确或前缀匹配（最长者胜，用于选中高亮联动）。</summary>
+    public QuickAccessItem? MatchNavByPath(string? path)
+    {
+        if (path == null)
+        {
+            return null;
+        }
+        QuickAccessItem? best = null;
+        int bestLength = -1;
+        foreach (QuickAccessItem item in this.ThisPcItems)
+        {
+            if (MatchesNavPath(item.Path, path) && item.Path.Length > bestLength)
+            {
+                best = item;
+                bestLength = item.Path.Length;
+            }
+        }
+        foreach (QuickAccessItem item in this.QuickAccessItems)
+        {
+            if (MatchesNavPath(item.Path, path) && item.Path.Length > bestLength)
+            {
+                best = item;
+                bestLength = item.Path.Length;
+            }
+        }
+        return best;
+    }
+
+    /// <summary>判断导航项路径是否命中当前路径。</summary>
+    private static bool MatchesNavPath(string navPath, string currentPath)
+    {
+        if (navPath == string.Empty)
+        {
+            return currentPath == string.Empty;
+        }
+        if (string.Equals(currentPath, navPath, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+        if (currentPath.StartsWith(navPath, StringComparison.OrdinalIgnoreCase))
+        {
+            if (navPath.EndsWith("\\", StringComparison.Ordinal))
+            {
+                return true;
+            }
+            return currentPath.Length > navPath.Length && currentPath[navPath.Length] == '\\';
+        }
+        return false;
     }
 
     /// <summary>取路径的末级名称用于显示。</summary>

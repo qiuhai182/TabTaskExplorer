@@ -21,6 +21,24 @@ public static class CompositionRoot
         // 任务存储：内核自带的跨平台 JSON 实现
         services.AddSingleton<ITaskStore, JsonTaskStore>();
 
+        // 连接管理：内核自带的跨平台 JSON 存储与 TCP 连通性测试
+        services.AddSingleton<IConnectionStore, JsonConnectionStore>();
+        services.AddSingleton<IConnectivityTester, TcpConnectivityTester>();
+
+        // 凭据加密：Windows 使用 DPAPI 当前用户作用域；其他平台此能力留空，降级为明文保存
+        if (OperatingSystem.IsWindows())
+        {
+            services.AddSingleton<ISecretProtector, WindowsSecretProtector>();
+        }
+        else
+        {
+            services.AddSingleton<ISecretProtector, PlaintextSecretProtector>();
+        }
+        services.AddSingleton<ConnectionManager>();
+
+        // 浏览器调试镜像服务：仅绑定本机回环地址，页面与程序界面实时同构
+        services.AddSingleton<Services.DebugWebHost>();
+
         // 平台专用实现：文件系统、进程枚举与系统资源采样
         if (OperatingSystem.IsWindows())
         {

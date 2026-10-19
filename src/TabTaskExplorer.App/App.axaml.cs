@@ -3,13 +3,14 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using Microsoft.Extensions.DependencyInjection;
 using TabTaskExplorer.App.Services;
 using TabTaskExplorer.App.ViewModels;
 using TabTaskExplorer.App.Views;
 
 namespace TabTaskExplorer.App;
 
-/// <summary>Avalonia 应用类：装配服务、创建主窗口，托盘图标在 App.axaml 中声明式注册。</summary>
+/// <summary>Avalonia ?????????????????????????????? App.axaml ??????????</summary>
 public class App : Application
 {
     private TrayIcon? trayIcon;
@@ -23,11 +24,19 @@ public class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            // 组合根：整个应用唯一按操作系统分支的位置，业务代码不出现任何平台类型
+            // ?????????????Ψ??????????????λ??????????????κ???????
             IServiceProvider services = CompositionRoot.BuildServices();
 
             desktop.MainWindow = new MainWindow();
             desktop.MainWindow.DataContext = new MainWindowViewModel(services);
+
+            // ???????????????????????????????? http://127.0.0.1:15919 ??
+            MainWindowViewModel mainViewModel = (MainWindowViewModel)desktop.MainWindow.DataContext;
+            mainViewModel.StartDebugWebHost(services.GetRequiredService<Services.DebugWebHost>());
+
+            // ???δ???????????????????? /api/diagnostics ?????
+            Avalonia.Threading.Dispatcher.UIThread.UnhandledException += this.OnUiUnhandledException;
+            AppDomain.CurrentDomain.UnhandledException += this.OnDomainUnhandledException;
 
             this.CreateTrayIcon();
         }
@@ -35,7 +44,23 @@ public class App : Application
         base.OnFrameworkInitializationCompleted();
     }
 
-    /// <summary>创建托盘常驻图标与右键菜单：显示主窗口、开机自启、退出。</summary>
+    /// <summary>UI ???δ???????????????????????????????????С?</summary>
+    private void OnUiUnhandledException(object? sender, Avalonia.Threading.DispatcherUnhandledExceptionEventArgs e)
+    {
+        Services.DebugWebHost.RecordDiagnostic("UI???", e.Exception);
+        e.Handled = true;
+    }
+
+    /// <summary>AppDomain δ????????????????????</summary>
+    private void OnDomainUnhandledException(object? sender, UnhandledExceptionEventArgs e)
+    {
+        if (e.ExceptionObject is Exception error)
+        {
+            Services.DebugWebHost.RecordDiagnostic("AppDomain", error);
+        }
+    }
+
+    /// <summary>????????????????????????????????????????????????</summary>
     private void CreateTrayIcon()
     {
         WindowIcon? trayWindowIcon = null;
@@ -51,20 +76,20 @@ public class App : Application
         }
         catch
         {
-            // 图标资源缺失时使用系统默认图标
+            // ????????????????????
         }
 
         NativeMenu menu = new NativeMenu();
 
-        NativeMenuItem showItem = new NativeMenuItem("显示主窗口");
+        NativeMenuItem showItem = new NativeMenuItem("?????????");
         showItem.Click += this.OnTrayShowClick;
         menu.Add(showItem);
 
-        NativeMenuItem autoStartItem = new NativeMenuItem("开机自启：关");
+        NativeMenuItem autoStartItem = new NativeMenuItem("????????????");
         autoStartItem.Click += this.OnTrayAutoStartClick;
         menu.Add(autoStartItem);
 
-        NativeMenuItem exitItem = new NativeMenuItem("退出");
+        NativeMenuItem exitItem = new NativeMenuItem("???");
         exitItem.Click += this.OnTrayExitClick;
         menu.Add(exitItem);
 
@@ -79,9 +104,12 @@ public class App : Application
             this.trayIcon.Icon = trayWindowIcon;
         }
         this.trayIcon.Clicked += this.OnTrayIconClicked;
+
+        // 关键：必须挂到 Application 的 TrayIcons 附加属性，图标才会向系统注册显示
+        TrayIcon.SetIcons(Application.Current!, new TrayIcons { this.trayIcon });
     }
 
-    /// <summary>当前主窗口视图模型。</summary>
+    /// <summary>????????????????</summary>
     private MainWindowViewModel? MainViewModel
     {
         get
@@ -94,7 +122,7 @@ public class App : Application
         }
     }
 
-    /// <summary>当前主窗口。</summary>
+    /// <summary>??????????</summary>
     private MainWindow? CurrentMainWindow
     {
         get
@@ -107,7 +135,7 @@ public class App : Application
         }
     }
 
-    /// <summary>同步托盘菜单中开机自启的开关文字。</summary>
+    /// <summary>??????????п?????????????????</summary>
     public void SyncTrayAutoStartState()
     {
         MainWindowViewModel? viewModel = this.MainViewModel;
@@ -118,26 +146,26 @@ public class App : Application
         }
         foreach (NativeMenuItem item in this.trayIcon.Menu.Items)
         {
-            if (item.Header != null && item.Header.ToString()!.StartsWith("开机自启", StringComparison.Ordinal))
+            if (item.Header != null && item.Header.ToString()!.StartsWith("????????", StringComparison.Ordinal))
             {
-                item.Header = autoStart ? "开机自启：开" : "开机自启：关";
+                item.Header = autoStart ? "????????????" : "????????????";
             }
         }
     }
 
-    /// <summary>托盘图标左键单击：唤起主窗口。</summary>
+    /// <summary>???????????????????????????</summary>
     public void OnTrayIconClicked(object? sender, EventArgs e)
     {
         this.ShowMainWindow();
     }
 
-    /// <summary>托盘菜单：显示主窗口。</summary>
+    /// <summary>??????????????????</summary>
     public void OnTrayShowClick(object? sender, EventArgs e)
     {
         this.ShowMainWindow();
     }
 
-    /// <summary>托盘菜单：切换开机自启。</summary>
+    /// <summary>?????????л???????????</summary>
     public void OnTrayAutoStartClick(object? sender, EventArgs e)
     {
         MainWindowViewModel? viewModel = this.MainViewModel;
@@ -151,13 +179,13 @@ public class App : Application
         this.SyncTrayAutoStartState();
     }
 
-    /// <summary>托盘菜单：真正退出并保存会话。</summary>
+    /// <summary>????????????????????????</summary>
     public void OnTrayExitClick(object? sender, EventArgs e)
     {
         this.CurrentMainWindow?.ForceClose();
     }
 
-    /// <summary>显示并激活主窗口。</summary>
+    /// <summary>????????????????</summary>
     private void ShowMainWindow()
     {
         MainWindow? window = this.CurrentMainWindow;

@@ -4,21 +4,129 @@
              x:Class="TabTaskExplorer.App.App"
              RequestedThemeVariant="Dark">
 
+  <Application.Resources>
+    <ResourceDictionary>
+
+      <!-- ======== 主题字典：Dark 默认（TabX 官方深色配色），Light 可切换 ======== -->
+      <ResourceDictionary.ThemeDictionaries>
+
+        <ResourceDictionary x:Key="Dark">
+          <SolidColorBrush x:Key="ChromeBrush" Color="#212121"/>
+          <SolidColorBrush x:Key="ContentBrush" Color="#191919"/>
+          <SolidColorBrush x:Key="SeparatorBrush" Color="#323232"/>
+          <SolidColorBrush x:Key="SubtleBorderBrush" Color="#323232"/>
+          <SolidColorBrush x:Key="TextPrimaryBrush" Color="#E8E8E8"/>
+          <SolidColorBrush x:Key="TextMutedBrush" Color="#8A8A8A"/>
+          <SolidColorBrush x:Key="AccentGlyphBrush" Color="#4CC2FF"/>
+          <SolidColorBrush x:Key="RowHoverBrush" Color="#2E2E2E"/>
+          <SolidColorBrush x:Key="RowSelectedBrush" Color="#37373D"/>
+          <SolidColorBrush x:Key="TabHoverBrush" Color="#2E2E2E"/>
+          <SolidColorBrush x:Key="TabActiveBrush" Color="#191919"/>
+
+          <CroppedBitmap x:Key="BtnMinN" Source="avares://TabTaskExplorer/Assets/TabX-Dark/btn_min.png" SourceRect="0,0,40,34"/>
+          <CroppedBitmap x:Key="BtnMinH" Source="avares://TabTaskExplorer/Assets/TabX-Dark/btn_min.png" SourceRect="40,0,40,34"/>
+          <CroppedBitmap x:Key="BtnMinP" Source="avares://TabTaskExplorer/Assets/TabX-Dark/btn_min.png" SourceRect="80,0,40,34"/>
+          <CroppedBitmap x:Key="BtnMaxN" Source="avares://TabTaskExplorer/Assets/TabX-Dark/btn_max.png" SourceRect="0,0,40,34"/>
+          <CroppedBitmap x:Key="BtnMaxH" Source="avares://TabTaskExplorer/Assets/TabX-Dark/btn_max.png" SourceRect="40,0,40,34"/>
+          <CroppedBitmap x:Key="BtnMaxP" Source="avares://TabTaskExplorer/Assets/TabX-Dark/btn_max.png" SourceRect="80,0,40,34"/>
+          <CroppedBitmap x:Key="BtnRestoreN" Source="avares://TabTaskExplorer/Assets/TabX-Dark/btn_restore.png" SourceRect="0,0,40,34"/>
+          <CroppedBitmap x:Key="BtnRestoreH" Source="avares://TabTaskExplorer/Assets/TabX-Dark/btn_restore.png" SourceRect="40,0,40,34"/>
+          <CroppedBitmap x:Key="BtnRestoreP" Source="avares://TabTaskExplorer/Assets/TabX-Dark/btn_restore.png" SourceRect="80,0,40,34"/>
+          <CroppedBitmap x:Key="BtnCloseN" Source="avares://TabTaskExplorer/Assets/TabX-Dark/btn_close.png" SourceRect="0,0,40,34"/>
+          <CroppedBitmap x:Key="BtnCloseH" Source="avares://TabTaskExplorer/Assets/TabX-Dark/btn_close.png" SourceRect="40,0,40,34"/>
+          <CroppedBitmap x:Key="BtnCloseP" Source="avares://TabTaskExplorer/Assets/TabX-Dark/btn_close.png" SourceRect="80,0,40,34"/>
+          <CroppedBitmap x:Key="BtnSettingN" Source="avares://TabTaskExplorer/Assets/TabX-Dark/btn_setting.png" SourceRect="0,0,40,34"/>
+          <CroppedBitmap x:Key="BtnSettingH" Source="avares://TabTaskExplorer/Assets/TabX-Dark/btn_setting.png" SourceRect="40,0,40,34"/>
+          <CroppedBitmap x:Key="BtnSettingP" Source="avares://TabTaskExplorer/Assets/TabX-Dark/btn_setting.png" SourceRect="80,0,40,34"/>
+          <CroppedBitmap x:Key="BtnRecoveryN" Source="avares://TabTaskExplorer/Assets/TabX-Dark/btn_recovery.png" SourceRect="0,0,40,34"/>
+          <CroppedBitmap x:Key="BtnRecoveryH" Source="avares://TabTaskExplorer/Assets/TabX-Dark/btn_recovery.png" SourceRect="40,0,40,34"/>
+          <CroppedBitmap x:Key="BtnRecoveryP" Source="avares://TabTaskExplorer/Assets/TabX-Dark/btn_recovery.png" SourceRect="80,0,40,34"/>
+          <CroppedBitmap x:Key="BtnDefaultN" Source="avares://TabTaskExplorer/Assets/TabX-Dark/btn_default.png" SourceRect="0,0,40,34"/>
+          <CroppedBitmap x:Key="BtnDefaultH" Source="avares://TabTaskExplorer/Assets/TabX-Dark/btn_default.png" SourceRect="40,0,40,34"/>
+          <CroppedBitmap x:Key="BtnDefaultP" Source="avares://TabTaskExplorer/Assets/TabX-Dark/btn_default.png" SourceRect="80,0,40,34"/>
+          <CroppedBitmap x:Key="BtnToolboxN" Source="avares://TabTaskExplorer/Assets/TabX-Dark/btn_toolbox.png" SourceRect="0,0,16,16"/>
+          <CroppedBitmap x:Key="BtnToolboxH" Source="avares://TabTaskExplorer/Assets/TabX-Dark/btn_toolbox.png" SourceRect="16,0,16,16"/>
+          <CroppedBitmap x:Key="BtnToolboxP" Source="avares://TabTaskExplorer/Assets/TabX-Dark/btn_toolbox.png" SourceRect="32,0,16,16"/>
+          <CroppedBitmap x:Key="BtnTabAddN" Source="avares://TabTaskExplorer/Assets/TabX-Dark/btn_tab_add.png" SourceRect="0,0,24,24"/>
+          <CroppedBitmap x:Key="BtnTabAddH" Source="avares://TabTaskExplorer/Assets/TabX-Dark/btn_tab_add.png" SourceRect="24,0,24,24"/>
+          <CroppedBitmap x:Key="TabCloseN" Source="avares://TabTaskExplorer/Assets/TabX-Dark/btn_tab_close.png" SourceRect="0,0,16,16"/>
+          <CroppedBitmap x:Key="TabCloseH" Source="avares://TabTaskExplorer/Assets/TabX-Dark/btn_tab_close.png" SourceRect="16,0,16,16"/>
+          <CroppedBitmap x:Key="TabCloseP" Source="avares://TabTaskExplorer/Assets/TabX-Dark/btn_tab_close.png" SourceRect="32,0,16,16"/>
+          <CroppedBitmap x:Key="BtnThemeN" Source="avares://TabTaskExplorer/Assets/TabX-Dark/btn_Switch_Theme.png" SourceRect="0,0,40,34"/>
+          <CroppedBitmap x:Key="BtnThemeH" Source="avares://TabTaskExplorer/Assets/TabX-Dark/btn_Switch_Theme.png" SourceRect="40,0,40,34"/>
+          <CroppedBitmap x:Key="BtnThemeP" Source="avares://TabTaskExplorer/Assets/TabX-Dark/btn_Switch_Theme.png" SourceRect="80,0,40,34"/>
+          <CroppedBitmap x:Key="LogoIcon" Source="avares://TabTaskExplorer/Assets/TabX-Dark/logo.png"/>
+          <CroppedBitmap x:Key="BookmarkLogoIcon" Source="avares://TabTaskExplorer/Assets/TabX-Dark/bookmark_logo.png" SourceRect="0,0,20,20"/>
+        </ResourceDictionary>
+
+        <ResourceDictionary x:Key="Light">
+          <SolidColorBrush x:Key="ChromeBrush" Color="#F1F1F1"/>
+          <SolidColorBrush x:Key="ContentBrush" Color="#FFFFFF"/>
+          <SolidColorBrush x:Key="SeparatorBrush" Color="#D9D9D9"/>
+          <SolidColorBrush x:Key="SubtleBorderBrush" Color="#E9E9E9"/>
+          <SolidColorBrush x:Key="TextPrimaryBrush" Color="#1C1C1C"/>
+          <SolidColorBrush x:Key="TextMutedBrush" Color="#808080"/>
+          <SolidColorBrush x:Key="AccentGlyphBrush" Color="#4A8FD0"/>
+          <SolidColorBrush x:Key="RowHoverBrush" Color="#F5F7FA"/>
+          <SolidColorBrush x:Key="RowSelectedBrush" Color="#DCE9F5"/>
+          <SolidColorBrush x:Key="TabHoverBrush" Color="#E4E4E4"/>
+          <SolidColorBrush x:Key="TabActiveBrush" Color="#FFFFFF"/>
+
+          <CroppedBitmap x:Key="BtnMinN" Source="avares://TabTaskExplorer/Assets/TabX/btn_min.png" SourceRect="0,0,40,34"/>
+          <CroppedBitmap x:Key="BtnMinH" Source="avares://TabTaskExplorer/Assets/TabX/btn_min.png" SourceRect="40,0,40,34"/>
+          <CroppedBitmap x:Key="BtnMinP" Source="avares://TabTaskExplorer/Assets/TabX/btn_min.png" SourceRect="80,0,40,34"/>
+          <CroppedBitmap x:Key="BtnMaxN" Source="avares://TabTaskExplorer/Assets/TabX/btn_max.png" SourceRect="0,0,40,34"/>
+          <CroppedBitmap x:Key="BtnMaxH" Source="avares://TabTaskExplorer/Assets/TabX/btn_max.png" SourceRect="40,0,40,34"/>
+          <CroppedBitmap x:Key="BtnMaxP" Source="avares://TabTaskExplorer/Assets/TabX/btn_max.png" SourceRect="80,0,40,34"/>
+          <CroppedBitmap x:Key="BtnRestoreN" Source="avares://TabTaskExplorer/Assets/TabX/btn_restore.png" SourceRect="0,0,40,34"/>
+          <CroppedBitmap x:Key="BtnRestoreH" Source="avares://TabTaskExplorer/Assets/TabX/btn_restore.png" SourceRect="40,0,40,34"/>
+          <CroppedBitmap x:Key="BtnRestoreP" Source="avares://TabTaskExplorer/Assets/TabX/btn_restore.png" SourceRect="80,0,40,34"/>
+          <CroppedBitmap x:Key="BtnCloseN" Source="avares://TabTaskExplorer/Assets/TabX/btn_close.png" SourceRect="0,0,40,34"/>
+          <CroppedBitmap x:Key="BtnCloseH" Source="avares://TabTaskExplorer/Assets/TabX/btn_close.png" SourceRect="40,0,40,34"/>
+          <CroppedBitmap x:Key="BtnCloseP" Source="avares://TabTaskExplorer/Assets/TabX/btn_close.png" SourceRect="80,0,40,34"/>
+          <CroppedBitmap x:Key="BtnSettingN" Source="avares://TabTaskExplorer/Assets/TabX/btn_setting.png" SourceRect="0,0,40,34"/>
+          <CroppedBitmap x:Key="BtnSettingH" Source="avares://TabTaskExplorer/Assets/TabX/btn_setting.png" SourceRect="40,0,40,34"/>
+          <CroppedBitmap x:Key="BtnSettingP" Source="avares://TabTaskExplorer/Assets/TabX/btn_setting.png" SourceRect="80,0,40,34"/>
+          <CroppedBitmap x:Key="BtnRecoveryN" Source="avares://TabTaskExplorer/Assets/TabX/btn_recovery.png" SourceRect="0,0,40,34"/>
+          <CroppedBitmap x:Key="BtnRecoveryH" Source="avares://TabTaskExplorer/Assets/TabX/btn_recovery.png" SourceRect="40,0,40,34"/>
+          <CroppedBitmap x:Key="BtnRecoveryP" Source="avares://TabTaskExplorer/Assets/TabX/btn_recovery.png" SourceRect="80,0,40,34"/>
+          <CroppedBitmap x:Key="BtnDefaultN" Source="avares://TabTaskExplorer/Assets/TabX/btn_default.png" SourceRect="0,0,40,34"/>
+          <CroppedBitmap x:Key="BtnDefaultH" Source="avares://TabTaskExplorer/Assets/TabX/btn_default.png" SourceRect="40,0,40,34"/>
+          <CroppedBitmap x:Key="BtnDefaultP" Source="avares://TabTaskExplorer/Assets/TabX/btn_default.png" SourceRect="80,0,40,34"/>
+          <CroppedBitmap x:Key="BtnToolboxN" Source="avares://TabTaskExplorer/Assets/TabX/btn_toolbox.png" SourceRect="0,0,16,16"/>
+          <CroppedBitmap x:Key="BtnToolboxH" Source="avares://TabTaskExplorer/Assets/TabX/btn_toolbox.png" SourceRect="16,0,16,16"/>
+          <CroppedBitmap x:Key="BtnToolboxP" Source="avares://TabTaskExplorer/Assets/TabX/btn_toolbox.png" SourceRect="32,0,16,16"/>
+          <CroppedBitmap x:Key="BtnTabAddN" Source="avares://TabTaskExplorer/Assets/TabX/btn_tab_add.png" SourceRect="0,0,24,24"/>
+          <CroppedBitmap x:Key="BtnTabAddH" Source="avares://TabTaskExplorer/Assets/TabX/btn_tab_add.png" SourceRect="24,0,24,24"/>
+          <CroppedBitmap x:Key="TabCloseN" Source="avares://TabTaskExplorer/Assets/TabX/btn_tab_close.png" SourceRect="0,0,16,16"/>
+          <CroppedBitmap x:Key="TabCloseH" Source="avares://TabTaskExplorer/Assets/TabX/btn_tab_close.png" SourceRect="16,0,16,16"/>
+          <CroppedBitmap x:Key="TabCloseP" Source="avares://TabTaskExplorer/Assets/TabX/btn_tab_close.png" SourceRect="32,0,16,16"/>
+          <CroppedBitmap x:Key="BtnThemeN" Source="avares://TabTaskExplorer/Assets/TabX/btn_Switch_Theme.png" SourceRect="0,0,40,34"/>
+          <CroppedBitmap x:Key="BtnThemeH" Source="avares://TabTaskExplorer/Assets/TabX/btn_Switch_Theme.png" SourceRect="40,0,40,34"/>
+          <CroppedBitmap x:Key="BtnThemeP" Source="avares://TabTaskExplorer/Assets/TabX/btn_Switch_Theme.png" SourceRect="80,0,40,34"/>
+          <CroppedBitmap x:Key="LogoIcon" Source="avares://TabTaskExplorer/Assets/TabX/logo.png"/>
+          <CroppedBitmap x:Key="BookmarkLogoIcon" Source="avares://TabTaskExplorer/Assets/TabX/bookmark_logo.png" SourceRect="0,0,20,20"/>
+        </ResourceDictionary>
+
+      </ResourceDictionary.ThemeDictionaries>
+    </ResourceDictionary>
+  </Application.Resources>
+
   <Application.Styles>
     <styling:FluentAvaloniaTheme />
 
-    <!-- ======== TabX Explorer 风格：悬停浅亮、选中深亮 ======== -->
+    <!-- ======== TabX 风格交互：悬停 / 选中随主题字典切换 ======== -->
     <Style Selector="Border.row:pointerover">
-      <Setter Property="Background" Value="#2A2D2E"/>
+      <Setter Property="Background" Value="{DynamicResource RowHoverBrush}"/>
     </Style>
     <Style Selector="Border.row.checked">
-      <Setter Property="Background" Value="#37373D"/>
+      <Setter Property="Background" Value="{DynamicResource RowSelectedBrush}"/>
     </Style>
     <Style Selector="Border.tile:pointerover">
-      <Setter Property="Background" Value="#2A2D2E"/>
+      <Setter Property="Background" Value="{DynamicResource RowHoverBrush}"/>
     </Style>
     <Style Selector="Border.tile.checked">
-      <Setter Property="Background" Value="#37373D"/>
+      <Setter Property="Background" Value="{DynamicResource RowSelectedBrush}"/>
     </Style>
 
     <Style Selector="ListBoxItem">
@@ -27,17 +135,18 @@
       <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
     </Style>
     <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-      <Setter Property="Background" Value="#2A2D2E"/>
+      <Setter Property="Background" Value="{DynamicResource RowHoverBrush}"/>
     </Style>
     <Style Selector="ListBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter">
-      <Setter Property="Background" Value="#37373D"/>
+      <Setter Property="Background" Value="{DynamicResource RowSelectedBrush}"/>
     </Style>
 
+    <!-- 标签条：悬停变灰，选中融入内容区（TabX 行为） -->
     <Style Selector="ListBoxItem.tabhover">
-      <Setter Property="Background" Value="#2A2D2E"/>
+      <Setter Property="Background" Value="{DynamicResource TabHoverBrush}"/>
     </Style>
     <Style Selector="ListBoxItem.tabactive">
-      <Setter Property="Background" Value="#37373D"/>
+      <Setter Property="Background" Value="{DynamicResource TabActiveBrush}"/>
     </Style>
 
     <Style Selector="Button.nav">
@@ -48,10 +157,10 @@
       <Setter Property="Background" Value="Transparent"/>
     </Style>
     <Style Selector="Button.nav:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-      <Setter Property="Background" Value="#2A2D2E"/>
+      <Setter Property="Background" Value="{DynamicResource RowHoverBrush}"/>
     </Style>
     <Style Selector="Button.nav:pressed /template/ ContentPresenter#PART_ContentPresenter">
-      <Setter Property="Background" Value="#37373D"/>
+      <Setter Property="Background" Value="{DynamicResource RowSelectedBrush}"/>
     </Style>
 
     <!-- 托盘图标在 App.axaml.cs 中以代码注册（关闭主窗口后常驻守护） -->

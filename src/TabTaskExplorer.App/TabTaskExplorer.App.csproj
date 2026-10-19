@@ -13,6 +13,8 @@
   <ItemGroup>
     <AvaloniaResource Include="Assets\app.ico" />
     <EmbeddedResource Include="Assets\app.ico" />
+    <AvaloniaResource Include="Assets\TabX\*.png" />
+    <AvaloniaResource Include="Assets\TabX-Dark\*.png" />
   </ItemGroup>
 
   <ItemGroup>
