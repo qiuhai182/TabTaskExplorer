@@ -60,6 +60,15 @@ dotnet run --project src/TabTaskExplorer.App
 dotnet test TabTaskExplorer.sln
 ```
 
+### 打包（Windows）
+
+仓库根目录提供一键构建脚本，产物输出到 `output\`：
+
+```bat
+build.bat        :: 框架依赖单文件 output\TabTaskExplorer.exe（需安装 .NET 10 运行时）
+build.bat full   :: 自包含单文件（无需运行时，体积较大）
+```
+
 ## 架构
 
 内核提供跨平台一致的标准接口，应用层只依赖抽象接口，平台与协议差异收敛在适配工程——同一份代码在三个平台上编译行为一致。
@@ -93,7 +102,8 @@ src/
 - [ ] 鼠标拖拽移动 / 复制文件
 
 ### 发布
-- [ ] 打包发布（自包含单文件 / 安装器）
+- [x] build.bat 一键构建脚本（Windows，输出到 output）
+- [ ] 安装器与多平台发布包
 
 ## 参与贡献
 
