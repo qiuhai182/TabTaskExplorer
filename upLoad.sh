@@ -1,6 +1,10 @@
-﻿#!/bin/bash
+#!/bin/bash
 # TabTaskExplorer 快捷上传：提交全部变更并推送到 Gitee（origin main）
 # 用法：在仓库根目录执行  bash upLoad.sh
+
+git pull
+
+python convert_to_utf8.py --strip-bom
 
 git add --all
 
