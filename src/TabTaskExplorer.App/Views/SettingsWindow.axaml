@@ -17,6 +17,7 @@
           <StackPanel x:Name="BasicPage" Spacing="12">
             <TextBlock Text="基本设置" FontWeight="Medium" />
             <CheckBox Content="开机启动（Windows 注册表 / Linux 自启动 / macOS LaunchAgent）" IsChecked="{Binding AutoStart, Mode=TwoWay}" />
+            <CheckBox Content="关闭时最小化到托盘常驻" IsChecked="{Binding CloseToTray, Mode=TwoWay}" />
             <CheckBox Content="默认用本程序打开文件夹（Windows，仅当前用户，可随时关闭恢复）" IsChecked="{Binding DefaultFileManager, Mode=TwoWay}" />
             <TextBlock Text="启动设置" FontWeight="Medium" Margin="0,8,0,0" />
             <CheckBox Content="启动时打开上次关闭的标签" IsChecked="{Binding RestoreLastTabs, Mode=TwoWay}" />

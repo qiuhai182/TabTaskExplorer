@@ -51,7 +51,7 @@
           </ListBox.ItemContainerTheme>
           <ListBox.ItemTemplate>
             <DataTemplate>
-              <Border DoubleTapped="OnRowDoubleTapped" Background="Transparent" Padding="2,4">
+              <Border Classes="row" DoubleTapped="OnRowDoubleTapped" Background="Transparent" Padding="2,4">
                 <Border.ContextMenu>
                   <ContextMenu>
                     <MenuItem Header="打开" Click="OnMenuOpenClick" />
@@ -84,7 +84,7 @@
             </ItemsControl.ItemsPanel>
             <ItemsControl.ItemTemplate>
               <DataTemplate>
-                <Border Width="{Binding $parent[ItemsControl].DataContext.TileWidth}" DoubleTapped="OnRowDoubleTapped"
+                <Border Classes="tile" Width="{Binding $parent[ItemsControl].DataContext.TileWidth}" DoubleTapped="OnRowDoubleTapped"
                         Background="Transparent" Margin="4" Padding="6" HorizontalAlignment="Left">
                   <Border.ContextMenu>
                     <ContextMenu>

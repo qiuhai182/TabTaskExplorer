@@ -7,7 +7,12 @@
     <AssemblyName>TabTaskExplorer</AssemblyName>
     <!-- Avalonia 12 默认开启编译期绑定，模板内缺少 x:DataType 时改用反射绑定，与既有代码保持一致 -->
     <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
   </PropertyGroup>
+
+  <ItemGroup>
+    <AvaloniaResource Include="Assets\app.ico" />
+  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\TabTaskExplorer.Kernel\TabTaskExplorer.Kernel.csproj" />

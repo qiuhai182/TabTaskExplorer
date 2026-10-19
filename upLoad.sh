@@ -1,4 +1,4 @@
-#!/bin/bash
+﻿#!/bin/bash
 # TabTaskExplorer 快捷上传：提交全部变更并推送到 Gitee（origin main）
 # 用法：在仓库根目录执行  bash upLoad.sh
 

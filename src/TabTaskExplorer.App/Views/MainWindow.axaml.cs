@@ -1,4 +1,7 @@
-﻿using System.ComponentModel;
+﻿using System;
+using System.Collections.Generic;
+using System.Collections.Specialized;
+using System.ComponentModel;
 using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -8,13 +11,17 @@ using TabTaskExplorer.App.ViewModels;
 
 namespace TabTaskExplorer.App.Views;
 
-/// <summary>主窗口：书签栏 + 侧边栏 + 混合标签页容器（文件浏览 / 任务看板）。</summary>
+/// <summary>主窗口：书签栏 + 侧边栏 + 混合标签页容器（文件浏览 / 任务看板），支持最小化到托盘常驻。</summary>
 public partial class MainWindow : Window
 {
+    private readonly List<TabItem> tabHooked = new List<TabItem>();
+    private bool forceClose;
+
     public MainWindow()
     {
         this.InitializeComponent();
         this.Closing += this.OnWindowClosing;
+        this.DataContextChanged += this.OnDataContextChanged;
     }
 
     /// <summary>主窗口视图模型。</summary>
@@ -23,13 +30,103 @@ public partial class MainWindow : Window
         get { return this.DataContext as MainWindowViewModel; }
     }
 
-    /// <summary>窗口关闭时保存当前打开的标签页，供下次启动恢复。</summary>
+    /// <summary>窗口关闭时：默认最小化到托盘常驻；托盘菜单选择退出时才真正关闭并保存会话。</summary>
     private void OnWindowClosing(object? sender, CancelEventArgs e)
     {
-        this.ViewModel?.SaveOpenTabs();
+        MainWindowViewModel? viewModel = this.ViewModel;
+        if (viewModel != null && viewModel.Settings.CloseToTray && !this.forceClose)
+        {
+            e.Cancel = true;
+            this.Hide();
+            return;
+        }
+        viewModel?.SaveOpenTabs();
     }
 
-    /// <summary>按键分发：全部快捷键来自设置中的配置。</summary>
+    /// <summary>托盘菜单"退出"调用：跳过托盘常驻，真正关闭窗口。</summary>
+    public void ForceClose()
+    {
+        this.forceClose = true;
+        this.Close();
+    }
+
+    /// <summary>DataContext 就绪后订阅视图模型变化，驱动标签页高亮。</summary>
+    private void OnDataContextChanged(object? sender, EventArgs e)
+    {
+        MainWindowViewModel? viewModel = this.ViewModel;
+        if (viewModel == null)
+        {
+            return;
+        }
+        viewModel.PropertyChanged -= this.OnViewModelPropertyChanged;
+        viewModel.PropertyChanged += this.OnViewModelPropertyChanged;
+        viewModel.Tabs.CollectionChanged -= this.OnTabsCollectionChanged;
+        viewModel.Tabs.CollectionChanged += this.OnTabsCollectionChanged;
+        this.UpdateTabItemHighlights();
+    }
+
+    private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(MainWindowViewModel.SelectedTab))
+        {
+            this.UpdateTabItemHighlights();
+        }
+    }
+
+    private void OnTabsCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        this.UpdateTabItemHighlights();
+    }
+
+    /// <summary>刷新标签页激活高亮，并为已实现容器挂接悬停事件。</summary>
+    private void UpdateTabItemHighlights()
+    {
+        MainWindowViewModel? viewModel = this.ViewModel;
+        if (viewModel == null)
+        {
+            return;
+        }
+        foreach (Control container in this.MainTabs.GetRealizedContainers())
+        {
+            if (container is not TabItem tab)
+            {
+                continue;
+            }
+            if (!this.tabHooked.Contains(tab))
+            {
+                tab.PointerEntered += this.OnTabPointerEntered;
+                tab.PointerExited += this.OnTabPointerExited;
+                this.tabHooked.Add(tab);
+            }
+            tab.Classes.Remove("tabhover");
+            if (object.ReferenceEquals(tab.DataContext, viewModel.SelectedTab))
+            {
+                tab.Classes.Add("tabactive");
+            }
+            else
+            {
+                tab.Classes.Remove("tabactive");
+            }
+        }
+    }
+
+    private void OnTabPointerEntered(object? sender, PointerEventArgs e)
+    {
+        if (sender is TabItem tab && !tab.Classes.Contains("tabactive"))
+        {
+            tab.Classes.Add("tabhover");
+        }
+    }
+
+    private void OnTabPointerExited(object? sender, PointerEventArgs e)
+    {
+        if (sender is TabItem tab)
+        {
+            tab.Classes.Remove("tabhover");
+        }
+    }
+
+    /// <summary>全局快捷键：Ctrl+T、Ctrl+W、Ctrl+Tab、F5、F2、Delete。</summary>
     private void OnWindowKeyDown(object? sender, KeyEventArgs e)
     {
         MainWindowViewModel? viewModel = this.ViewModel;
@@ -38,104 +135,43 @@ public partial class MainWindow : Window
             return;
         }
 
-        // 标签管理类快捷键在任何输入框内都生效
-        if (this.Matches("NewTab", e))
+        if (e.Key == Key.T && e.KeyModifiers == KeyModifiers.Control)
         {
             viewModel.AddTab(string.Empty);
             e.Handled = true;
-            return;
         }
-        if (this.Matches("CloseTab", e))
+        else if (e.Key == Key.W && e.KeyModifiers == KeyModifiers.Control)
         {
             this.CloseCurrentTab();
             e.Handled = true;
-            return;
         }
-        if (this.Matches("PreviousTab", e))
+        else if (e.Key == Key.Tab && (e.KeyModifiers & KeyModifiers.Control) == KeyModifiers.Control)
         {
-            viewModel.CycleTab(-1);
+            if ((e.KeyModifiers & KeyModifiers.Shift) == KeyModifiers.Shift)
+            {
+                viewModel.CycleTab(-1);
+            }
+            else
+            {
+                viewModel.CycleTab(1);
+            }
             e.Handled = true;
-            return;
         }
-        if (this.Matches("NextTab", e))
-        {
-            viewModel.CycleTab(1);
-            e.Handled = true;
-            return;
-        }
-
-        // 文件操作类快捷键在输入框内不生效，避免误触
-        bool inTextBox = e.Source is TextBox;
-        if (inTextBox)
-        {
-            return;
-        }
-
-        if (this.Matches("Refresh", e))
+        else if (e.Key == Key.F5)
         {
             viewModel.SelectedFileTab?.Refresh();
             e.Handled = true;
-            return;
         }
-        if (this.Matches("Rename", e))
+        else if (e.Key == Key.F2)
         {
             _ = this.RenameCheckedAsync();
             e.Handled = true;
-            return;
         }
-        if (this.Matches("Delete", e))
+        else if (e.Key == Key.Delete)
         {
             viewModel.SelectedFileTab?.DeleteChecked();
             e.Handled = true;
-            return;
         }
-        if (this.Matches("Copy", e))
-        {
-            viewModel.CopyCheckedToClipboard();
-            e.Handled = true;
-            return;
-        }
-        if (this.Matches("Cut", e))
-        {
-            viewModel.CutCheckedToClipboard();
-            e.Handled = true;
-            return;
-        }
-        if (this.Matches("Paste", e))
-        {
-            viewModel.PasteFromClipboard();
-            e.Handled = true;
-        }
-    }
-
-    /// <summary>判断当前按键是否命中指定动作的快捷键配置。</summary>
-    private bool Matches(string actionName, KeyEventArgs e)
-    {
-        MainWindowViewModel? viewModel = this.ViewModel;
-        if (viewModel == null)
-        {
-            return false;
-        }
-        foreach (HotkeySetting setting in viewModel.Settings.Hotkeys)
-        {
-            if (setting.ActionName != actionName)
-            {
-                continue;
-            }
-            if (!Enum.TryParse(setting.KeyText, out Key key))
-            {
-                return false;
-            }
-            if (e.Key != key)
-            {
-                return false;
-            }
-            bool ctrlPressed = (e.KeyModifiers & KeyModifiers.Control) != 0;
-            bool altPressed = (e.KeyModifiers & KeyModifiers.Alt) != 0;
-            bool shiftPressed = (e.KeyModifiers & KeyModifiers.Shift) != 0;
-            return ctrlPressed == setting.Ctrl && altPressed == setting.Alt && shiftPressed == setting.Shift;
-        }
-        return false;
     }
 
     private void OnNewTabClick(object? sender, RoutedEventArgs e)
@@ -199,6 +235,8 @@ public partial class MainWindow : Window
         }
         SettingsWindow window = new SettingsWindow(viewModel.Settings);
         await window.ShowDialog(this);
+        App current = (App)App.Current!;
+        current.SyncTrayAutoStartState();
         AutoStartManager.Apply(viewModel.Settings.AutoStart);
         DefaultFileManagerManager.Apply(viewModel.Settings.DefaultFileManager);
         viewModel.SaveSettingsAndApply();

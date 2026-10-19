@@ -203,6 +203,30 @@ public partial class FileListPanel : UserControl
 
     private void OnRowCheckChanged(object? sender, RoutedEventArgs e)
     {
+        if (sender is CheckBox box)
+        {
+            // 勾选状态同步到行根节点的选中高亮样式
+            Border? rowBorder = null;
+            if (box.Parent is Grid grid)
+            {
+                rowBorder = grid.Parent as Border;
+            }
+            else if (box.Parent is StackPanel panel)
+            {
+                rowBorder = panel.Parent as Border;
+            }
+            if (rowBorder != null)
+            {
+                if (box.IsChecked == true)
+                {
+                    rowBorder.Classes.Add("checked");
+                }
+                else
+                {
+                    rowBorder.Classes.Remove("checked");
+                }
+            }
+        }
         this.UpdateInfoPane();
     }
 

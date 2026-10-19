@@ -5,6 +5,7 @@
         x:Class="TabTaskExplorer.App.Views.MainWindow"
         Title="TabTaskExplorer"
         Width="1200" Height="760"
+        Background="#1E1E1E"
         WindowStartupLocation="CenterScreen"
         KeyDown="OnWindowKeyDown">
 
@@ -22,7 +23,7 @@
           </ItemsControl.ItemsPanel>
           <ItemsControl.ItemTemplate>
             <DataTemplate>
-              <Button Content="{Binding Name}" FontSize="12" Background="Transparent" Click="OnSidebarItemClick" />
+              <Button Classes="nav" Content="{Binding Name}" FontSize="12" Click="OnSidebarItemClick" />
             </DataTemplate>
           </ItemsControl.ItemTemplate>
         </ItemsControl>
@@ -35,15 +36,15 @@
       <Border Grid.Column="0" BorderBrush="#40808080" BorderThickness="0,0,1,0">
         <ScrollViewer>
           <StackPanel Margin="8">
-            <Button Content="设置" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Background="Transparent" Click="OnSettingsClick" />
-            <Button Content="任务看板" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Background="Transparent" Click="OnTaskBoardClick" />
-            <Button Content="进程监控" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Background="Transparent" Click="OnProcessMonitorClick" />
+            <Button Classes="nav" Content="设置" HorizontalAlignment="Stretch" Click="OnSettingsClick" />
+            <Button Classes="nav" Content="任务看板" HorizontalAlignment="Stretch" Click="OnTaskBoardClick" />
+            <Button Classes="nav" Content="进程监控" HorizontalAlignment="Stretch" Click="OnProcessMonitorClick" />
             <TextBlock Text="快捷访问" Margin="4,14,0,4" FontWeight="Medium" Opacity="0.8" />
             <ItemsControl ItemsSource="{Binding QuickAccessItems}">
               <ItemsControl.ItemTemplate>
                 <DataTemplate>
                   <Grid ColumnDefinitions="*,Auto">
-                    <Button Grid.Column="0" Content="{Binding Name}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Background="Transparent" Click="OnSidebarItemClick" />
+                    <Button Grid.Column="0" Classes="nav" Content="{Binding Name}" HorizontalAlignment="Stretch" Click="OnSidebarItemClick" />
                     <Button Grid.Column="1" Content="×" Width="20" Background="Transparent" ToolTip.Tip="取消固定" Click="OnUnpinClick" />
                   </Grid>
                 </DataTemplate>
@@ -53,7 +54,7 @@
             <ItemsControl ItemsSource="{Binding ThisPcItems}">
               <ItemsControl.ItemTemplate>
                 <DataTemplate>
-                  <Button Content="{Binding Name}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Background="Transparent" Click="OnSidebarItemClick" />
+                  <Button Classes="nav" Content="{Binding Name}" HorizontalAlignment="Stretch" Click="OnSidebarItemClick" />
                 </DataTemplate>
               </ItemsControl.ItemTemplate>
             </ItemsControl>
@@ -63,7 +64,7 @@
 
       <!-- 标签页区域：文件浏览与任务看板共用一个容器 -->
       <Grid Grid.Column="1" ColumnDefinitions="*,36">
-        <TabControl Grid.Column="0" ItemsSource="{Binding Tabs}" SelectedItem="{Binding SelectedTab, Mode=TwoWay}" Margin="0,4,0,0">
+        <TabControl Grid.Column="0" x:Name="MainTabs" ItemsSource="{Binding Tabs}" SelectedItem="{Binding SelectedTab, Mode=TwoWay}" Margin="0,4,0,0">
           <TabControl.ItemTemplate>
             <DataTemplate>
               <Grid ColumnDefinitions="*,Auto" Margin="0,0,4,0" DoubleTapped="OnTabHeaderDoubleTapped">
