@@ -15,6 +15,14 @@ set SELF_CONTAINED=false
 
 if /i "%~1"=="full" set SELF_CONTAINED=true
 
+rem 编码守卫：源码出现 U+FFFD 替换符说明文件曾被错误转码，禁止构建以免发布乱码界面
+powershell -NoProfile -Command "$bad = Get-ChildItem 'src' -Recurse -Include *.cs,*.axaml | Where-Object { $_.FullName -notmatch '\\\\(obj|bin)\\\\' } | Where-Object { [IO.File]::ReadAllText($_.FullName, [Text.Encoding]::UTF8).Contains([string][char]0xFFFD) }; if ($bad) { $bad | ForEach-Object { Write-Host ('ENCODING-BROKEN: ' + $_.FullName) }; exit 1 }"
+if errorlevel 1 (
+    echo.
+    echo ?????????????????????????????????
+    exit /b 1
+)
+
 echo ??????? TabTaskExplorer ?? %OUTPUT% ...
 
 dotnet publish src\TabTaskExplorer.App\TabTaskExplorer.App.csproj -c %CONFIG% -r %RID% --self-contained %SELF_CONTAINED% -p:PublishSingleFile=true -p:IncludeAllContentForSelfExtract=true -p:DebugType=none -o "%OUTPUT%"

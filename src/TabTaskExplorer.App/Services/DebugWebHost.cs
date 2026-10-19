@@ -31,6 +31,7 @@ public class DebugWebHost
     private Func<Task<DebugUiState>>? snapshotProvider;
     private Action<int>? selectHandler;
     private Action<string>? themeHandler;
+    private Action<string>? openHandler;
 
     private static readonly object diagnosticLock = new object();
     private static readonly List<string> diagnostics = new List<string>();
@@ -74,7 +75,7 @@ public class DebugWebHost
     public string ListenUrl { get; private set; } = string.Empty;
 
     /// <summary>启动服务。端口被占用或其他网络错误时静默放弃（调试服务不影响主程序）。</summary>
-    public void Start(Func<Task<DebugUiState>> snapshotProvider, Action<int> selectHandler, Action<string> themeHandler, int port = DefaultPort)
+    public void Start(Func<Task<DebugUiState>> snapshotProvider, Action<int> selectHandler, Action<string> themeHandler, Action<string> openHandler, int port = DefaultPort)
     {
         if (this.running)
         {
@@ -83,6 +84,7 @@ public class DebugWebHost
         this.snapshotProvider = snapshotProvider;
         this.selectHandler = selectHandler;
         this.themeHandler = themeHandler;
+        this.openHandler = openHandler;
 
         try
         {
@@ -205,6 +207,15 @@ public class DebugWebHost
                     string json = JsonSerializer.Serialize(GetDiagnostics(), jsonOptions);
                     WriteResponse(stream, "application/json; charset=utf-8", Encoding.UTF8.GetBytes(json));
                 }
+                else if (path == "/api/open" && method == "POST")
+                {
+                    string target = GetQueryValue(query, "p");
+                    if (this.openHandler != null && target.Length > 0)
+                    {
+                        this.openHandler(Uri.UnescapeDataString(target));
+                    }
+                    WriteResponse(stream, "text/plain; charset=utf-8", Encoding.UTF8.GetBytes("ok"));
+                }
                 else
                 {
                     WriteResponse(stream, "text/plain; charset=utf-8", Encoding.UTF8.GetBytes("not found"), 404);
@@ -322,7 +333,7 @@ public class DebugWebHost
   body.dark .tbtn:hover { background:#2E2E2E; }
   .crumb { padding:5px 10px; border-bottom:1px solid #E9E9E9; display:flex; gap:2px; align-items:center; flex-wrap:wrap; }
   body.dark .crumb { border-bottom-color:#323232; }
-  .seg { padding:2px 8px; border-radius:4px; cursor:default; }
+  .seg { padding:2px 8px; border-radius:4px; cursor:pointer; }
   .seg:hover { background:#F5F7FA; }
   body.dark .seg:hover { background:#2E2E2E; }
   .layout { display:flex; min-height:420px; }
@@ -403,18 +414,26 @@ function renderNav(id, items) {
   if (!items.length) { html = '<div class=""hint"" style=""margin:0 6px;"">空</div>'; }
   document.getElementById(id).innerHTML = html;
 }
+let crumbPaths = [];
 function renderCrumb(path) {
-  let html = '<span class=""seg"">此电脑</span>';
+  crumbPaths = [''];
+  let html = '<span class=""seg"" onclick=""openPathAt(0)"">此电脑</span>';
   if (path) {
     let acc = '';
     for (const part of path.replace(/\\+$/, '').split('\\')) {
       if (!part) { continue; }
-      if (part.endsWith(':')) { acc = part + '\\'; html += '<span>›</span><span class=""seg"">' + esc(part) + '</span>'; continue; }
+      if (part.endsWith(':')) { acc = part + '\\'; crumbPaths.push(acc); html += '<span>›</span><span class=""seg"" onclick=""openPathAt(' + (crumbPaths.length - 1) + ')"">' + esc(part) + '</span>'; continue; }
       acc = acc.replace(/\\+$/, '') + '\\' + part;
-      html += '<span>›</span><span class=""seg"">' + esc(part) + '</span>';
+      crumbPaths.push(acc);
+      html += '<span>›</span><span class=""seg"" onclick=""openPathAt(' + (crumbPaths.length - 1) + ')"">' + esc(part) + '</span>';
     }
   }
   document.getElementById('crumb').innerHTML = html;
+}
+async function openPathAt(i) {
+  const p = crumbPaths[i] || '';
+  try { await fetch('/api/open?p=' + encodeURIComponent(p), { method: 'POST' }); } catch (e) {}
+  setTimeout(refresh, 200);
 }
 function render() {
   if (!state) return;

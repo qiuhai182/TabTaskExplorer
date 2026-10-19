@@ -391,7 +391,30 @@ public class MainWindowViewModel : INotifyPropertyChanged
         host.Start(
             delegate { return this.DispatchDebugSnapshotAsync(); },
             delegate(int index) { this.SelectDebugTabOnUiThread(index); },
-            delegate(string theme) { this.SetThemeOnUiThread(theme); });
+            delegate(string theme) { this.SetThemeOnUiThread(theme); },
+            delegate(string path) { this.OpenPathOnUiThread(path); });
+    }
+
+    /// <summary>浏览器镜像打开路径：跨线程安全，无文件标签时自动新建。</summary>
+    public void OpenPathOnUiThread(string path)
+    {
+        if (Avalonia.Threading.Dispatcher.UIThread.CheckAccess())
+        {
+            this.OpenInFileTab(path);
+            return;
+        }
+        Avalonia.Threading.Dispatcher.UIThread.Post(delegate { this.OpenInFileTab(path); });
+    }
+
+    /// <summary>在文件标签中打开路径：当前没有文件标签时自动新建一个。</summary>
+    public void OpenInFileTab(string path)
+    {
+        if (this.SelectedFileTab == null)
+        {
+            this.AddTab(path);
+            return;
+        }
+        this.SelectedFileTab.OpenPath(path);
     }
 
     /// <summary>按保存的设置应用主题（程序启动时调用）。</summary>
