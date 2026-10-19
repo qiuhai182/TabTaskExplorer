@@ -1,4 +1,4 @@
-ï»¿using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection;
 using TabTaskExplorer.Kernel.Abstractions;
 using TabTaskExplorer.Kernel.Services;
 using TabTaskExplorer.Kernel.Storage;
@@ -9,8 +9,8 @@ using TabTaskExplorer.Platform.Windows;
 namespace TabTaskExplorer.App;
 
 /// <summary>
-/// ç»„åˆæ ¹ï¼šæ•´ä¸ªé¡¹ç›®å”¯ä¸€å…è®¸æŒ‰æ“ä½œç³»ç»Ÿåˆ†æ”¯çš„ä½ç½®ã€‚
-/// åº”ç”¨å±‚å…¶ä½™ä»£ç åªè®¤è¯†å†…æ ¸æ¥å£ï¼Œä¸æ¥è§¦ä»»ä½•å¹³å°ç±»å‹ã€‚
+/// ×éºÏ¸ù£ºÕû¸öÏîÄ¿Î¨Ò»ÔÊĞí°´²Ù×÷ÏµÍ³·ÖÖ§µÄÎ»ÖÃ¡£
+/// Ó¦ÓÃ²ãÆäÓà´úÂëÖ»ÈÏÊ¶ÄÚºË½Ó¿Ú£¬²»½Ó´¥ÈÎºÎÆ½Ì¨ÀàĞÍ¡£
 /// </summary>
 public static class CompositionRoot
 {
@@ -18,14 +18,14 @@ public static class CompositionRoot
     {
         ServiceCollection services = new ServiceCollection();
 
-        // ä»»åŠ¡å­˜å‚¨ï¼šå†…æ ¸è‡ªå¸¦çš„è·¨å¹³å° JSON å®ç°
+        // ÈÎÎñ´æ´¢£ºÄÚºË×Ô´øµÄ¿çÆ½Ì¨ JSON ÊµÏÖ
         services.AddSingleton<ITaskStore, JsonTaskStore>();
 
-        // è¿æ¥ç®¡ç†ï¼šå†…æ ¸è‡ªå¸¦çš„è·¨å¹³å° JSON å­˜å‚¨ä¸ TCP è¿é€šæ€§æµ‹è¯•
+        // Á¬½Ó¹ÜÀí£ºÄÚºË×Ô´øµÄ¿çÆ½Ì¨ JSON ´æ´¢Óë TCP Á¬Í¨ĞÔ²âÊÔ
         services.AddSingleton<IConnectionStore, JsonConnectionStore>();
         services.AddSingleton<IConnectivityTester, TcpConnectivityTester>();
 
-        // å‡­æ®åŠ å¯†ï¼šWindows ä½¿ç”¨ DPAPI å½“å‰ç”¨æˆ·ä½œç”¨åŸŸï¼›å…¶ä»–å¹³å°æ­¤èƒ½åŠ›ç•™ç©ºï¼Œé™çº§ä¸ºæ˜æ–‡ä¿å­˜
+        // Æ¾¾İ¼ÓÃÜ£ºWindows Ê¹ÓÃ DPAPI µ±Ç°ÓÃ»§×÷ÓÃÓò£»ÆäËûÆ½Ì¨´ËÄÜÁ¦Áô¿Õ£¬½µ¼¶ÎªÃ÷ÎÄ±£´æ
         if (OperatingSystem.IsWindows())
         {
             services.AddSingleton<ISecretProtector, WindowsSecretProtector>();
@@ -36,20 +36,30 @@ public static class CompositionRoot
         }
         services.AddSingleton<ConnectionManager>();
 
-        // æµè§ˆå™¨è°ƒè¯•é•œåƒæœåŠ¡ï¼šä»…ç»‘å®šæœ¬æœºå›ç¯åœ°å€ï¼Œé¡µé¢ä¸ç¨‹åºç•Œé¢å®æ—¶åŒæ„
-        services.AddSingleton<Services.DebugWebHost>();
-
-        // å¹³å°ä¸“ç”¨å®ç°ï¼šæ–‡ä»¶ç³»ç»Ÿã€è¿›ç¨‹æšä¸¾ä¸ç³»ç»Ÿèµ„æºé‡‡æ ·
+        // ÏµÍ³±êÌâÒş²Ø£ºWindows È¥³ı WS_CAPTION ÑùÊ½Î»£»ÆäËûÆ½Ì¨Áô¿Õ
         if (OperatingSystem.IsWindows())
         {
-            // Windows æ–‡ä»¶ç³»ç»Ÿå®ç°ï¼šåˆ é™¤ç§»å…¥å›æ”¶ç«™
+            services.AddSingleton<IWindowCaptionHider, WindowsCaptionHider>();
+        }
+        else
+        {
+            services.AddSingleton<IWindowCaptionHider, NullWindowCaptionHider>();
+        }
+
+        // ä¯ÀÀÆ÷µ÷ÊÔ¾µÏñ·şÎñ£º½ö°ó¶¨±¾»ú»Ø»·µØÖ·£¬Ò³ÃæÓë³ÌĞò½çÃæÊµÊ±Í¬¹¹
+        services.AddSingleton<Services.DebugWebHost>();
+
+        // Æ½Ì¨×¨ÓÃÊµÏÖ£ºÎÄ¼şÏµÍ³¡¢½ø³ÌÃ¶¾ÙÓëÏµÍ³×ÊÔ´²ÉÑù
+        if (OperatingSystem.IsWindows())
+        {
+            // Windows ÎÄ¼şÏµÍ³ÊµÏÖ£ºÉ¾³ıÒÆÈë»ØÊÕÕ¾
             services.AddSingleton<IFileSystemProvider, WindowsFileSystemProvider>();
             services.AddSingleton<IProcessProvider, WindowsProcessProvider>();
             services.AddSingleton<ISystemMetricsProvider, WindowsSystemMetricsProvider>();
         }
         else
         {
-            // å…¶ä»–å¹³å°ï¼šæ–‡ä»¶ç³»ç»Ÿä½¿ç”¨å†…æ ¸è·¨å¹³å°é»˜è®¤å®ç°
+            // ÆäËûÆ½Ì¨£ºÎÄ¼şÏµÍ³Ê¹ÓÃÄÚºË¿çÆ½Ì¨Ä¬ÈÏÊµÏÖ
             services.AddSingleton<IFileSystemProvider, DefaultFileSystemProvider>();
             if (OperatingSystem.IsLinux())
             {

@@ -9,7 +9,6 @@
         WindowStartupLocation="CenterScreen"
         ExtendClientAreaToDecorationsHint="True"
         ExtendClientAreaTitleBarHeightHint="36"
-        ExtendClientAreaChromeOptions="PreferSystemChrome"
         KeyDown="OnWindowKeyDown">
 
   <Window.Resources>

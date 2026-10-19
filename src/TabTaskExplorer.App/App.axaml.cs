@@ -30,6 +30,9 @@ public class App : Application
             desktop.MainWindow = new MainWindow();
             desktop.MainWindow.DataContext = new MainWindowViewModel(services);
 
+            // 扩展客户区下隐藏系统绘制的窗口图标与程序名（与 TabX 一致，只留自绘徽标）
+            desktop.MainWindow.Opened += this.OnMainWindowOpened;
+
             // ???????????????????????????????? http://127.0.0.1:15919 ??
             MainWindowViewModel mainViewModel = (MainWindowViewModel)desktop.MainWindow.DataContext;
             mainViewModel.StartDebugWebHost(services.GetRequiredService<Services.DebugWebHost>());
