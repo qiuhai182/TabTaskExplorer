@@ -133,8 +133,39 @@ public class MainWindowViewModel : INotifyPropertyChanged
             this.services.GetRequiredService<IFileSystemProvider>(),
             this.Settings,
             path);
+        tab.PathChanged += this.OnTabPathChanged;
         this.Tabs.Add(tab);
         this.SelectedTab = tab;
+    }
+
+    /// <summary>最近访问的路径（供地址栏"最近"下拉列表展示）。</summary>
+    public ObservableCollection<string> RecentPaths { get; } = new ObservableCollection<string>();
+
+    /// <summary>记录一条最近访问路径：去重后移到最前，最多保留 20 条。</summary>
+    private void RecordRecent(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return;
+        }
+        for (int i = 0; i < this.RecentPaths.Count; i++)
+        {
+            if (string.Equals(this.RecentPaths[i], path, StringComparison.OrdinalIgnoreCase))
+            {
+                this.RecentPaths.RemoveAt(i);
+                break;
+            }
+        }
+        this.RecentPaths.Insert(0, path);
+        while (this.RecentPaths.Count > 20)
+        {
+            this.RecentPaths.RemoveAt(this.RecentPaths.Count - 1);
+        }
+    }
+
+    private void OnTabPathChanged(object? sender, string path)
+    {
+        this.RecordRecent(path);
     }
 
     /// <summary>打开任务看板标签页（已存在时直接选中）。</summary>

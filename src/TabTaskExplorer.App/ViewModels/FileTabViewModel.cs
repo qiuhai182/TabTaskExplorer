@@ -56,6 +56,9 @@ public class FileTabViewModel : INotifyPropertyChanged
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
+    /// <summary>当前目录变化事件（供主窗口记录"最近访问"）。</summary>
+    public event EventHandler<string>? PathChanged;
+
     /// <summary>界面绑定的条目列表（已经过排序与搜索过滤）。整表替换而非逐项增删，配合虚拟化保证大目录流畅。</summary>
     public IReadOnlyList<FileRow> VisibleRows
     {
@@ -519,6 +522,7 @@ public class FileTabViewModel : INotifyPropertyChanged
         this.SummaryText = "正在加载……";
         this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CurrentPath)));
         this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Title)));
+        this.PathChanged?.Invoke(this, path);
 
         this.fetchPath = path;
         this.fetchGeneration = ++this.loadGeneration;

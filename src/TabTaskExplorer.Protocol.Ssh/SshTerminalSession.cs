@@ -1,5 +1,6 @@
 ﻿using System.Text;
 using Renci.SshNet;
+using Renci.SshNet.Common;
 using TabTaskExplorer.Kernel.Abstractions;
 
 namespace TabTaskExplorer.Protocol.Ssh;
@@ -51,7 +52,7 @@ public class SshTerminalSession : ITerminalSession
             return;
         }
         ShellStream shell = this.client.CreateShellStream(
-            "xterm-256color", (uint)columns, (uint)rows, 0, 0, 1024, Encoding.UTF8);
+            "xterm-256color", (uint)columns, (uint)rows, 0, 0, 1024);
         shell.DataReceived += this.OnShellData;
         shell.Closed += this.OnShellClosed;
         shell.ErrorOccurred += this.OnShellError;
@@ -75,7 +76,7 @@ public class SshTerminalSession : ITerminalSession
         ShellStream? shell = this.stream;
         if (shell != null)
         {
-            shell.SendWindowChangeRequest((uint)columns, (uint)rows, 0, 0);
+            shell.ChangeWindowSize((uint)columns, (uint)rows, 0, 0);
         }
     }
 

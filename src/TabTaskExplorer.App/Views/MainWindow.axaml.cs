@@ -441,13 +441,14 @@ public partial class MainWindow : Window
         }
     }
 
-    /// <summary>面包屑进入编辑模式：显示地址输入框。</summary>
+    /// <summary>面包屑进入编辑模式：显示地址输入框（点击路径区空白即触发）。</summary>
     private void OnBreadcrumbEditClick(object? sender, RoutedEventArgs e)
     {
         this.BreadcrumbPanel.IsVisible = false;
         this.AddressBox.IsVisible = true;
         this.AddressBox.Text = this.ViewModel?.SelectedFileTab?.CurrentPath ?? string.Empty;
         this.AddressBox.Focus();
+        this.AddressBox.SelectAll();
     }
 
     /// <summary>侧边栏选中变化：打开目标路径（当前不是文件标签时新建文件标签），并同步另一组列表的选中。</summary>
@@ -710,10 +711,53 @@ public partial class MainWindow : Window
                 tab.OpenPath(pathText.Trim());
             }
             // 回车后退出编辑模式，恢复面包屑显示
-            this.AddressBox.IsVisible = false;
-            this.BreadcrumbPanel.IsVisible = true;
-            this.RefreshBreadcrumbAndStatus();
+            this.ExitAddressEditMode();
             e.Handled = true;
+        }
+        else if (e.Key == Key.Escape)
+        {
+            // Esc 取消编辑，不跳转
+            this.ExitAddressEditMode();
+            e.Handled = true;
+        }
+    }
+
+    /// <summary>退出地址编辑模式，恢复面包屑显示。</summary>
+    private void ExitAddressEditMode()
+    {
+        this.AddressBox.IsVisible = false;
+        this.BreadcrumbPanel.IsVisible = true;
+        this.RefreshBreadcrumbAndStatus();
+    }
+
+    /// <summary>地址栏刷新按钮：刷新当前目录。</summary>
+    private void OnAddressRefreshClick(object? sender, RoutedEventArgs e)
+    {
+        this.ViewModel?.SelectedFileTab?.Refresh();
+    }
+
+    /// <summary>地址栏收藏按钮：把当前文件夹固定到书签。</summary>
+    private void OnPinClick(object? sender, RoutedEventArgs e)
+    {
+        this.ViewModel?.PinCurrentTab();
+    }
+
+    /// <summary>最近按钮：打开下拉列表（列表内容绑定 RecentPaths）。</summary>
+    private void OnRecentClick(object? sender, RoutedEventArgs e)
+    {
+    }
+
+    /// <summary>最近列表选中项：跳转对应路径。</summary>
+    private void OnRecentSelected(object? sender, SelectionChangedEventArgs e)
+    {
+        if (sender is ListBox list && list.SelectedItem is string path)
+        {
+            this.ViewModel?.SelectedFileTab?.OpenPath(path);
+            if (this.RecentButton.Flyout is Flyout flyout)
+            {
+                flyout.Hide();
+            }
+            list.SelectedItem = null;
         }
     }
 

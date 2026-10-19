@@ -234,23 +234,42 @@
       </Button>
     </StackPanel>
 
-    <!-- ===== 行 3：导航 + 面包屑地址栏 + 搜索 ===== -->
+    <!-- ===== 行 3：导航 + 可编辑地址栏（点击空白即编辑）+ 最近 / 刷新 / 收藏 + 搜索 ===== -->
     <Grid Grid.Row="3" ColumnDefinitions="Auto,*,240" Margin="6,2,6,4">
       <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="2">
         <Button Classes="nav tool" FontFamily="{StaticResource IconFont}" Content="&#xE72B;" Click="OnBackClick" ToolTip.Tip="后退" />
         <Button Classes="nav tool" FontFamily="{StaticResource IconFont}" Content="&#xE72A;" Click="OnForwardClick" ToolTip.Tip="前进" />
         <Button Classes="nav tool" FontFamily="{StaticResource IconFont}" Content="&#xE74A;" Click="OnUpClick" ToolTip.Tip="上一级" />
       </StackPanel>
-      <Panel Grid.Column="1" Margin="6,0,0,0">
-        <StackPanel x:Name="BreadcrumbPanel" Orientation="Horizontal" Spacing="1" VerticalAlignment="Center" MinHeight="30">
-          <!-- 面包屑分段由代码后置按当前路径生成 -->
-        </StackPanel>
-        <TextBox x:Name="AddressBox" IsVisible="False" PlaceholderText="输入路径后按回车跳转" KeyDown="OnAddressKeyDown" />
-      </Panel>
-      <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="2">
-        <Button Classes="nav tool" FontFamily="{StaticResource IconFont}" Content="&#xE70F;" Width="30" Click="OnBreadcrumbEditClick" ToolTip.Tip="编辑路径" />
-        <TextBox x:Name="SearchBox" Width="200" PlaceholderText="搜索当前目录" TextChanged="OnSearchTextChanged" />
-      </StackPanel>
+      <Border Grid.Column="1" Margin="6,0,0,0" Background="{DynamicResource ChromeBrush}" CornerRadius="3" MinHeight="30"
+              BorderBrush="{DynamicResource SubtleBorderBrush}" BorderThickness="1">
+        <Grid ColumnDefinitions="*,Auto,Auto,Auto">
+          <Panel Grid.Column="0">
+            <!-- 点击路径区空白处即进入编辑，无需专门按钮 -->
+            <Button x:Name="AddressEditArea" Classes="nav" Background="Transparent" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                    HorizontalContentAlignment="Left" Click="OnBreadcrumbEditClick" ToolTip.Tip="点击编辑路径" />
+            <StackPanel x:Name="BreadcrumbPanel" Orientation="Horizontal" Spacing="1" Margin="4,2" VerticalAlignment="Center" />
+            <TextBox x:Name="AddressBox" IsVisible="False" PlaceholderText="输入路径后按回车跳转" KeyDown="OnAddressKeyDown" />
+          </Panel>
+          <Button Grid.Column="1" x:Name="RecentButton" Classes="nav" FontFamily="{StaticResource IconFont}" Content="&#xE81C;" Width="30" Click="OnRecentClick" ToolTip.Tip="最近访问">
+            <Button.Flyout>
+              <Flyout Placement="BottomEdgeAlignedLeft">
+                <ListBox x:Name="RecentList" ItemsSource="{Binding RecentPaths}" MaxHeight="320" MinWidth="380"
+                         Background="Transparent" BorderThickness="0" SelectionChanged="OnRecentSelected">
+                  <ListBox.ItemTemplate>
+                    <DataTemplate>
+                      <TextBlock Text="{Binding}" TextTrimming="CharacterEllipsis" Margin="2,3" />
+                    </DataTemplate>
+                  </ListBox.ItemTemplate>
+                </ListBox>
+              </Flyout>
+            </Button.Flyout>
+          </Button>
+          <Button Grid.Column="2" Classes="nav" FontFamily="{StaticResource IconFont}" Content="&#xE72C;" Width="30" Click="OnAddressRefreshClick" ToolTip.Tip="刷新 (F5)" />
+          <Button Grid.Column="3" Classes="nav" FontFamily="{StaticResource IconFont}" Content="&#xE735;" Width="30" Click="OnPinClick" ToolTip.Tip="收藏当前文件夹到书签" />
+        </Grid>
+      </Border>
+      <TextBox Grid.Column="2" x:Name="SearchBox" Width="200" PlaceholderText="搜索当前目录" TextChanged="OnSearchTextChanged" />
     </Grid>
 
     <!-- ===== 行 4：左侧导航栏 + 内容区 ===== -->

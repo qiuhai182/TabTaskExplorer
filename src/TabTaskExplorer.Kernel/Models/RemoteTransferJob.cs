@@ -51,16 +51,16 @@ public class RemoteTransferJob
     public string LocalPath { get; }
 
     /// <summary>文件总字节数；无法预知时为 -1。</summary>
-    public long TotalBytes { get; internal set; } = -1;
+    public long TotalBytes { get; set; } = -1;
 
     /// <summary>已传输字节数。</summary>
-    public long TransferredBytes { get; internal set; }
+    public long TransferredBytes { get; set; }
 
     /// <summary>当前状态。</summary>
-    public RemoteTransferStatus Status { get; internal set; } = RemoteTransferStatus.Pending;
+    public RemoteTransferStatus Status { get; set; } = RemoteTransferStatus.Pending;
 
     /// <summary>失败原因；未失败时为空文本。</summary>
-    public string ErrorMessage { get; internal set; } = string.Empty;
+    public string ErrorMessage { get; set; } = string.Empty;
 
     /// <summary>任务摘要：方向箭头 + 文件名。</summary>
     public string Summary

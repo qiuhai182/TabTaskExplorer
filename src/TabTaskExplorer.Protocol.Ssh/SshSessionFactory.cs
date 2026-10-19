@@ -95,6 +95,16 @@ public class SshSessionFactory : IRemoteSessionFactory
     /// <summary>根据连接配置与凭据构造 SSH 客户端（保活间隔参考 Xshell 会话保活机制）。</summary>
     private static SshClient CreateClient(RemoteConnectionProfile profile, string credential)
     {
+        ConnectionInfo info = BuildConnectionInfo(profile, credential);
+
+        SshClient client = new SshClient(info);
+        client.KeepAliveInterval = TimeSpan.FromSeconds(15);
+        return client;
+    }
+
+    /// <summary>根据连接配置与凭据构造连接信息，供本工程各实现共用。</summary>
+    internal static ConnectionInfo BuildConnectionInfo(RemoteConnectionProfile profile, string credential)
+    {
         ConnectionInfo info;
         if (profile.AuthType == RemoteAuthType.PrivateKey && !string.IsNullOrEmpty(profile.PrivateKeyPath))
         {
@@ -108,11 +118,8 @@ public class SshSessionFactory : IRemoteSessionFactory
             info = new ConnectionInfo(profile.Host, profile.GetEffectivePort(), profile.Username, passwordMethod);
         }
 
-        // 保活：每 15 秒发送一次忽略包，防止 NAT 与防火墙切断空闲连接
         info.RetryAttempts = 3;
         info.Timeout = TimeSpan.FromSeconds(15);
-        SshClient client = new SshClient(info);
-        client.KeepAliveInterval = TimeSpan.FromSeconds(15);
-        return client;
+        return info;
     }
 }
