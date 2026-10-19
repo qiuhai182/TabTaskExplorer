@@ -11,10 +11,10 @@ using TabTaskExplorer.App.ViewModels;
 
 namespace TabTaskExplorer.App.Views;
 
-/// <summary>主窗口：书签栏 + 侧边栏 + 混合标签页容器（文件浏览 / 任务看板），支持最小化到托盘常驻。</summary>
+/// <summary>主窗口：自绘标题栏 + 标签条 + 工具栏 + 侧边栏，支持最小化到托盘常驻。</summary>
 public partial class MainWindow : Window
 {
-    private readonly List<TabItem> tabHooked = new List<TabItem>();
+    private readonly List<ListBoxItem> tabHooked = new List<ListBoxItem>();
     private bool forceClose;
 
     public MainWindow()
@@ -50,7 +50,7 @@ public partial class MainWindow : Window
         this.Close();
     }
 
-    /// <summary>DataContext 就绪后订阅视图模型变化，驱动标签页高亮。</summary>
+    /// <summary>DataContext 就绪后订阅视图模型变化，驱动标签条高亮。</summary>
     private void OnDataContextChanged(object? sender, EventArgs e)
     {
         MainWindowViewModel? viewModel = this.ViewModel;
@@ -62,68 +62,116 @@ public partial class MainWindow : Window
         viewModel.PropertyChanged += this.OnViewModelPropertyChanged;
         viewModel.Tabs.CollectionChanged -= this.OnTabsCollectionChanged;
         viewModel.Tabs.CollectionChanged += this.OnTabsCollectionChanged;
-        this.UpdateTabItemHighlights();
+        this.UpdateTabStripHighlights();
     }
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(MainWindowViewModel.SelectedTab))
         {
-            this.UpdateTabItemHighlights();
+            this.UpdateTabStripHighlights();
         }
     }
 
     private void OnTabsCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
-        this.UpdateTabItemHighlights();
+        this.UpdateTabStripHighlights();
     }
 
-    /// <summary>刷新标签页激活高亮，并为已实现容器挂接悬停事件。</summary>
-    private void UpdateTabItemHighlights()
+    /// <summary>刷新标签条激活高亮，并为已实现容器挂接悬停事件。</summary>
+    private void UpdateTabStripHighlights()
     {
         MainWindowViewModel? viewModel = this.ViewModel;
         if (viewModel == null)
         {
             return;
         }
-        foreach (Control container in this.MainTabs.GetRealizedContainers())
+        foreach (Control container in this.TabStrip.GetRealizedContainers())
         {
-            if (container is not TabItem tab)
+            if (container is not ListBoxItem item)
             {
                 continue;
             }
-            if (!this.tabHooked.Contains(tab))
+            if (!this.tabHooked.Contains(item))
             {
-                tab.PointerEntered += this.OnTabPointerEntered;
-                tab.PointerExited += this.OnTabPointerExited;
-                this.tabHooked.Add(tab);
+                item.PointerEntered += this.OnTabPointerEntered;
+                item.PointerExited += this.OnTabPointerExited;
+                this.tabHooked.Add(item);
             }
-            tab.Classes.Remove("tabhover");
-            if (object.ReferenceEquals(tab.DataContext, viewModel.SelectedTab))
+            item.Classes.Remove("tabhover");
+            if (object.ReferenceEquals(item.DataContext, viewModel.SelectedTab))
             {
-                tab.Classes.Add("tabactive");
+                item.Classes.Add("tabactive");
             }
             else
             {
-                tab.Classes.Remove("tabactive");
+                item.Classes.Remove("tabactive");
             }
         }
     }
 
     private void OnTabPointerEntered(object? sender, PointerEventArgs e)
     {
-        if (sender is TabItem tab && !tab.Classes.Contains("tabactive"))
+        if (sender is ListBoxItem item && !item.Classes.Contains("tabactive"))
         {
-            tab.Classes.Add("tabhover");
+            item.Classes.Add("tabhover");
         }
     }
 
     private void OnTabPointerExited(object? sender, PointerEventArgs e)
     {
-        if (sender is TabItem tab)
+        if (sender is ListBoxItem item)
         {
-            tab.Classes.Remove("tabhover");
+            item.Classes.Remove("tabhover");
         }
+    }
+
+    /// <summary>在标题栏空白处按下左键：拖动窗口。</summary>
+    private void OnCaptionPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+        {
+            this.BeginMoveDrag(e);
+        }
+    }
+
+    /// <summary>标题栏双击：最大化 / 还原。</summary>
+    private void OnCaptionDoubleTapped(object? sender, TappedEventArgs e)
+    {
+        if (e.Source is Button)
+        {
+            return;
+        }
+        if (this.WindowState == WindowState.Maximized)
+        {
+            this.WindowState = WindowState.Normal;
+        }
+        else
+        {
+            this.WindowState = WindowState.Maximized;
+        }
+    }
+
+    private void OnMinimizeClick(object? sender, RoutedEventArgs e)
+    {
+        this.WindowState = WindowState.Minimized;
+    }
+
+    private void OnMaximizeClick(object? sender, RoutedEventArgs e)
+    {
+        if (this.WindowState == WindowState.Maximized)
+        {
+            this.WindowState = WindowState.Normal;
+        }
+        else
+        {
+            this.WindowState = WindowState.Maximized;
+        }
+    }
+
+    private void OnCloseWindowClick(object? sender, RoutedEventArgs e)
+    {
+        this.Close();
     }
 
     /// <summary>全局快捷键：Ctrl+T、Ctrl+W、Ctrl+Tab、F5、F2、Delete。</summary>
@@ -226,6 +274,11 @@ public partial class MainWindow : Window
         }
     }
 
+    private void OnNetworkClick(object? sender, RoutedEventArgs e)
+    {
+        this.ViewModel?.SelectedFileTab?.ShowMessage("网络位置功能即将支持");
+    }
+
     private async void OnSettingsClick(object? sender, RoutedEventArgs e)
     {
         MainWindowViewModel? viewModel = this.ViewModel;
@@ -252,6 +305,127 @@ public partial class MainWindow : Window
         ProcessWindow window = new ProcessWindow();
         window.DataContext = viewModel.CreateProcessPanel();
         window.Show();
+    }
+
+    private void OnViewModeClick(object? sender, RoutedEventArgs e)
+    {
+        this.ViewModel?.SelectedFileTab?.CycleViewMode();
+    }
+
+    private void OnInfoPaneClick(object? sender, RoutedEventArgs e)
+    {
+        FileTabViewModel? tab = this.ViewModel?.SelectedFileTab;
+        if (tab != null)
+        {
+            tab.ShowInfoPane = !tab.ShowInfoPane;
+        }
+    }
+
+    private void OnSelectAllClick(object? sender, RoutedEventArgs e)
+    {
+        this.ViewModel?.SelectedFileTab?.SelectAll();
+    }
+
+    private async void OnBatchRenameClick(object? sender, RoutedEventArgs e)
+    {
+        FileTabViewModel? tab = this.ViewModel?.SelectedFileTab;
+        if (tab == null)
+        {
+            return;
+        }
+        List<FileRow> checkedRows = tab.GetCheckedRows();
+        if (checkedRows.Count == 0)
+        {
+            tab.ShowMessage("请先勾选要改名的条目");
+            return;
+        }
+        BatchRenameDialog dialog = new BatchRenameDialog(checkedRows);
+        await dialog.ShowDialog(this);
+        if (dialog.RenamePlan.Count > 0)
+        {
+            tab.ApplyBatchRenames(dialog.RenamePlan);
+        }
+    }
+
+    private void OnNewFolderClick(object? sender, RoutedEventArgs e)
+    {
+        FileTabViewModel? tab = this.ViewModel?.SelectedFileTab;
+        if (tab == null)
+        {
+            return;
+        }
+        _ = this.CreateFolderAsync(tab);
+    }
+
+    private async Task CreateFolderAsync(FileTabViewModel tab)
+    {
+        string? folderName = await InputDialog.Show(this, "新建文件夹", "请输入文件夹名称：", "新建文件夹");
+        if (!string.IsNullOrWhiteSpace(folderName))
+        {
+            tab.CreateFolder(folderName);
+        }
+    }
+
+    private void OnDeleteClick(object? sender, RoutedEventArgs e)
+    {
+        this.ViewModel?.SelectedFileTab?.DeleteChecked();
+    }
+
+    private void OnRefreshClick(object? sender, RoutedEventArgs e)
+    {
+        this.ViewModel?.SelectedFileTab?.Refresh();
+    }
+
+    private void OnCloseAllTabsClick(object? sender, RoutedEventArgs e)
+    {
+        MainWindowViewModel? viewModel = this.ViewModel;
+        if (viewModel == null)
+        {
+            return;
+        }
+        viewModel.CloseAllTabs();
+        if (viewModel.Tabs.Count == 0)
+        {
+            this.Close();
+        }
+    }
+
+    private void OnBackClick(object? sender, RoutedEventArgs e)
+    {
+        this.ViewModel?.SelectedFileTab?.GoBack();
+    }
+
+    private void OnForwardClick(object? sender, RoutedEventArgs e)
+    {
+        this.ViewModel?.SelectedFileTab?.GoForward();
+    }
+
+    private void OnUpClick(object? sender, RoutedEventArgs e)
+    {
+        this.ViewModel?.SelectedFileTab?.NavigateUp();
+    }
+
+    private void OnAddressKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            FileTabViewModel? tab = this.ViewModel?.SelectedFileTab;
+            string? pathText = this.AddressBox.Text;
+            if (tab != null && !string.IsNullOrWhiteSpace(pathText))
+            {
+                tab.OpenPath(pathText.Trim());
+            }
+            e.Handled = true;
+        }
+    }
+
+    private void OnSearchTextChanged(object? sender, TextChangedEventArgs e)
+    {
+        FileTabViewModel? tab = this.ViewModel?.SelectedFileTab;
+        if (tab != null)
+        {
+            tab.SearchText = this.SearchBox.Text ?? string.Empty;
+        }
     }
 
     /// <summary>关闭当前选中的标签页；最后一个标签关闭时同时关闭窗口。</summary>

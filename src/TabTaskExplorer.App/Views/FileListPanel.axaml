@@ -2,109 +2,92 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              x:Class="TabTaskExplorer.App.Views.FileListPanel">
 
-  <Grid RowDefinitions="Auto,Auto,*,Auto">
-
-    <!-- 工具栏：导航与文件操作（可在设置中隐藏） -->
-    <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="4" Margin="8,8,8,4"
-                IsVisible="{Binding DataContext.ShowToolbar, RelativeSource={RelativeSource AncestorType=Window}}">
-      <Button Content="←" Click="OnBackClick" ToolTip.Tip="后退" />
-      <Button Content="→" Click="OnForwardClick" ToolTip.Tip="前进" />
-      <Button Content="↑" Click="OnUpClick" ToolTip.Tip="上一级" />
-      <Button Content="刷新" Click="OnRefreshClick" ToolTip.Tip="刷新 (F5)" />
-      <Button Content="新建文件夹" Click="OnNewFolderClick" />
-      <Button Content="重命名" Click="OnRenameClick" ToolTip.Tip="重命名 (F2)" />
-      <Button Content="删除" Click="OnDeleteClick" ToolTip.Tip="删除勾选项 (Delete)" />
-      <Button Content="批量改名" Click="OnBatchRenameClick" />
-      <Button Content="视图" Click="OnViewModeClick" ToolTip.Tip="切换视图：详细信息 / 大图标 / 中图标" />
-      <Button Content="信息窗格" Click="OnInfoPaneClick" />
-      <Button Content="固定" Click="OnPinClick" ToolTip.Tip="固定当前文件夹到快捷访问" />
-    </StackPanel>
-
-    <!-- 地址栏与搜索 -->
-    <Grid Grid.Row="1" ColumnDefinitions="*,240" Margin="8,0,8,4">
-      <TextBox Grid.Column="0" x:Name="AddressBox" PlaceholderText="输入路径后按回车跳转" KeyDown="OnAddressKeyDown" />
-      <TextBox Grid.Column="1" x:Name="SearchBox" PlaceholderText="搜索当前目录" Margin="8,0,0,0" TextChanged="OnSearchTextChanged" />
-    </Grid>
+  <Grid RowDefinitions="Auto,*,Auto">
 
     <!-- 列表区与信息窗格 -->
-    <Grid Grid.Row="2" ColumnDefinitions="*,Auto" Margin="8,0,8,0">
+    <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="8,4,8,0">
 
       <!-- 列表：双击空白处返回上一级 -->
       <Grid Grid.Column="0" RowDefinitions="Auto,*" DoubleTapped="OnListBackgroundDoubleTapped">
-        <Grid Grid.Row="0" ColumnDefinitions="30,3*,130,140,110" Margin="0,0,12,4">
+        <Grid Grid.Row="0" ColumnDefinitions="30,26,3*,130,140,110" Margin="0,0,12,4">
           <TextBlock Grid.Column="0" />
-          <Button Grid.Column="1" Content="名称" Tag="Name" Click="OnSortClick" HorizontalAlignment="Left" Background="Transparent" />
-          <Button Grid.Column="2" Content="类型" Tag="Type" Click="OnSortClick" HorizontalAlignment="Left" Background="Transparent" />
-          <Button Grid.Column="3" Content="修改日期" Tag="Modified" Click="OnSortClick" HorizontalAlignment="Left" Background="Transparent" />
-          <Button Grid.Column="4" Content="大小" Tag="Size" Click="OnSortClick" HorizontalAlignment="Left" Background="Transparent" />
+          <TextBlock Grid.Column="1" />
+          <Button Grid.Column="2" Content="名称" Tag="Name" Click="OnSortClick" HorizontalAlignment="Left" Background="Transparent" />
+          <Button Grid.Column="3" Content="类型" Tag="Type" Click="OnSortClick" HorizontalAlignment="Left" Background="Transparent" />
+          <Button Grid.Column="4" Content="修改日期" Tag="Modified" Click="OnSortClick" HorizontalAlignment="Left" Background="Transparent" />
+          <Button Grid.Column="5" Content="大小" Tag="Size" Click="OnSortClick" HorizontalAlignment="Left" Background="Transparent" />
         </Grid>
-
-        <!-- 详细信息视图：ListBox 自带虚拟化，大目录也流畅 -->
-        <ListBox Grid.Row="1" ItemsSource="{Binding VisibleRows}" IsVisible="{Binding IsDetailsLayout}"
-                 SelectionMode="Single" Background="Transparent" Padding="0" BorderThickness="0">
-          <ListBox.ItemContainerTheme>
-            <ControlTheme TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
-              <Setter Property="Padding" Value="0" />
-              <Setter Property="MinHeight" Value="30" />
-              <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-            </ControlTheme>
-          </ListBox.ItemContainerTheme>
-          <ListBox.ItemTemplate>
-            <DataTemplate>
-              <Border Classes="row" DoubleTapped="OnRowDoubleTapped" Background="Transparent" Padding="2,4">
-                <Border.ContextMenu>
-                  <ContextMenu>
-                    <MenuItem Header="打开" Click="OnMenuOpenClick" />
-                    <MenuItem Header="在新标签打开" Click="OnMenuOpenInNewTabClick" />
-                    <MenuItem Header="复制" Click="OnMenuCopyClick" />
-                    <MenuItem Header="剪切" Click="OnMenuCutClick" />
-                    <MenuItem Header="重命名" Click="OnMenuRenameClick" />
-                    <MenuItem Header="删除" Click="OnMenuDeleteClick" />
-                  </ContextMenu>
-                </Border.ContextMenu>
-                <Grid ColumnDefinitions="30,3*,130,140,110">
-                  <CheckBox Grid.Column="0" IsChecked="{Binding IsSelected, Mode=TwoWay}" Click="OnRowCheckChanged" />
-                  <TextBlock Grid.Column="1" Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" />
-                  <TextBlock Grid.Column="2" Text="{Binding TypeText}" Opacity="0.8" />
-                  <TextBlock Grid.Column="3" Text="{Binding ModifiedText}" Opacity="0.8" />
-                  <TextBlock Grid.Column="4" Text="{Binding SizeText}" Opacity="0.8" />
-                </Grid>
-              </Border>
-            </DataTemplate>
-          </ListBox.ItemTemplate>
-        </ListBox>
-
-        <!-- 图标视图（大图标 / 中图标） -->
-        <ScrollViewer Grid.Row="1" IsVisible="{Binding IsIconsLayout}">
-          <ItemsControl ItemsSource="{Binding VisibleRows}" Margin="0,0,12,0">
-            <ItemsControl.ItemsPanel>
-              <ItemsPanelTemplate>
-                <WrapPanel />
-              </ItemsPanelTemplate>
-            </ItemsControl.ItemsPanel>
-            <ItemsControl.ItemTemplate>
-              <DataTemplate>
-                <Border Classes="tile" Width="{Binding $parent[ItemsControl].DataContext.TileWidth}" DoubleTapped="OnRowDoubleTapped"
-                        Background="Transparent" Margin="4" Padding="6" HorizontalAlignment="Left">
-                  <Border.ContextMenu>
-                    <ContextMenu>
-                      <MenuItem Header="打开" Click="OnMenuOpenClick" />
-                      <MenuItem Header="在新标签打开" Click="OnMenuOpenInNewTabClick" />
-                      <MenuItem Header="复制" Click="OnMenuCopyClick" />
-                      <MenuItem Header="剪切" Click="OnMenuCutClick" />
-                      <MenuItem Header="重命名" Click="OnMenuRenameClick" />
-                      <MenuItem Header="删除" Click="OnMenuDeleteClick" />
-                    </ContextMenu>
-                  </Border.ContextMenu>
-                  <StackPanel Spacing="4">
-                    <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}" Click="OnRowCheckChanged" HorizontalAlignment="Left" />
-                    <TextBlock Text="{Binding DisplayName}" TextWrapping="Wrap" />
-                    <TextBlock Text="{Binding SizeText}" FontSize="11" Opacity="0.7" />
-                  </StackPanel>
-                </Border>
-              </DataTemplate>
-            </ItemsControl.ItemTemplate>
-          </ItemsControl>
+        <ScrollViewer Grid.Row="1">
+          <StackPanel>
+            <!-- 详细信息视图：ListBox 自带虚拟化，大目录也流畅 -->
+            <ListBox x:Name="RowList" ItemsSource="{Binding VisibleRows}" IsVisible="{Binding IsDetailsLayout}"
+                     SelectionMode="Single" Background="Transparent" Padding="0" BorderThickness="0">
+              <ListBox.ItemContainerTheme>
+                <ControlTheme TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+                  <Setter Property="Padding" Value="0" />
+                  <Setter Property="MinHeight" Value="28" />
+                  <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                </ControlTheme>
+              </ListBox.ItemContainerTheme>
+              <ListBox.ItemTemplate>
+                <DataTemplate>
+                  <Border Classes="row" Classes.checked="{Binding IsSelected, Mode=TwoWay}" DoubleTapped="OnRowDoubleTapped" Background="Transparent" Padding="2,3">
+                    <Border.ContextMenu>
+                      <ContextMenu>
+                        <MenuItem Header="打开" Click="OnMenuOpenClick" />
+                        <MenuItem Header="在新标签打开" Click="OnMenuOpenInNewTabClick" />
+                        <MenuItem Header="复制" Click="OnMenuCopyClick" />
+                        <MenuItem Header="剪切" Click="OnMenuCutClick" />
+                        <MenuItem Header="重命名" Click="OnMenuRenameClick" />
+                        <MenuItem Header="删除" Click="OnMenuDeleteClick" />
+                      </ContextMenu>
+                    </Border.ContextMenu>
+                    <Grid ColumnDefinitions="30,26,3*,130,140,110">
+                      <CheckBox Grid.Column="0" IsChecked="{Binding IsSelected, Mode=TwoWay}" Click="OnRowCheckChanged" />
+                      <TextBlock Grid.Column="1" FontFamily="Segoe MDL2 Assets, Segoe Fluent Icons" Text="{Binding IconGlyph}" Foreground="{Binding IconColor}" FontSize="13" VerticalAlignment="Center" />
+                      <TextBlock Grid.Column="2" Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                      <TextBlock Grid.Column="3" Text="{Binding TypeText}" Opacity="0.8" VerticalAlignment="Center" />
+                      <TextBlock Grid.Column="4" Text="{Binding ModifiedText}" Opacity="0.8" VerticalAlignment="Center" />
+                      <TextBlock Grid.Column="5" Text="{Binding SizeText}" Opacity="0.8" VerticalAlignment="Center" />
+                    </Grid>
+                  </Border>
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+            <!-- 图标视图（大图标 / 中图标） -->
+            <ScrollViewer IsVisible="{Binding IsIconsLayout}">
+              <ItemsControl ItemsSource="{Binding VisibleRows}" Margin="0,0,12,0">
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <WrapPanel />
+                  </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <Border Classes="tile" Classes.checked="{Binding IsSelected, Mode=TwoWay}" Width="{Binding $parent[ItemsControl].DataContext.TileWidth}" DoubleTapped="OnRowDoubleTapped"
+                            Background="Transparent" Margin="4" Padding="6" HorizontalAlignment="Left">
+                      <Border.ContextMenu>
+                        <ContextMenu>
+                          <MenuItem Header="打开" Click="OnMenuOpenClick" />
+                          <MenuItem Header="在新标签打开" Click="OnMenuOpenInNewTabClick" />
+                          <MenuItem Header="复制" Click="OnMenuCopyClick" />
+                          <MenuItem Header="剪切" Click="OnMenuCutClick" />
+                          <MenuItem Header="重命名" Click="OnMenuRenameClick" />
+                          <MenuItem Header="删除" Click="OnMenuDeleteClick" />
+                        </ContextMenu>
+                      </Border.ContextMenu>
+                      <StackPanel Spacing="4">
+                        <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}" Click="OnRowCheckChanged" HorizontalAlignment="Left" />
+                        <TextBlock FontFamily="Segoe MDL2 Assets, Segoe Fluent Icons" Text="{Binding IconGlyph}" Foreground="{Binding IconColor}" FontSize="22" HorizontalAlignment="Left" />
+                        <TextBlock Text="{Binding DisplayName}" TextWrapping="Wrap" />
+                        <TextBlock Text="{Binding SizeText}" FontSize="11" Opacity="0.7" />
+                      </StackPanel>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </ScrollViewer>
+          </StackPanel>
         </ScrollViewer>
       </Grid>
 
@@ -123,6 +106,6 @@
     </Grid>
 
     <!-- 摘要栏 -->
-    <TextBlock Grid.Row="3" Margin="10,4" Text="{Binding SummaryText}" FontSize="12" Opacity="0.7" />
+    <TextBlock Grid.Row="1" Margin="10,4" Text="{Binding SummaryText}" FontSize="12" Opacity="0.7" />
   </Grid>
 </UserControl>

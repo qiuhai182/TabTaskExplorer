@@ -17,6 +17,9 @@ public class QuickAccessItem
 
     /// <summary>跳转目标路径。</summary>
     public string Path { get; set; } = string.Empty;
+
+    /// <summary>图标字符（Segoe MDL2）。</summary>
+    public string IconGlyph { get; set; } = "\uE8B7";
 }
 
 /// <summary>
@@ -172,6 +175,23 @@ public class MainWindowViewModel : INotifyPropertyChanged
             index = 0;
         }
         this.SelectedTab = this.Tabs[index];
+    }
+
+    /// <summary>关闭全部文件标签页（任务看板保留）。</summary>
+    public void CloseAllTabs()
+    {
+        List<object> snapshot = new List<object>(this.Tabs);
+        foreach (object tab in snapshot)
+        {
+            if (tab is FileTabViewModel)
+            {
+                this.CloseTab(tab);
+            }
+        }
+        if (this.Tabs.Count == 0)
+        {
+            this.SelectedTab = null;
+        }
     }
 
     /// <summary>把当前文件标签页路径固定到快捷访问。</summary>
@@ -362,33 +382,33 @@ public class MainWindowViewModel : INotifyPropertyChanged
     private void FillThisPcItems()
     {
         this.ThisPcItems.Clear();
-        this.ThisPcItems.Add(new QuickAccessItem { Name = "此电脑", Path = string.Empty });
+        this.ThisPcItems.Add(new QuickAccessItem { Name = "此电脑", Path = string.Empty, IconGlyph = "\uE7F8" });
 
         foreach (DriveInfo drive in DriveInfo.GetDrives())
         {
-            this.ThisPcItems.Add(new QuickAccessItem { Name = "本地磁盘 (" + drive.Name.TrimEnd(Path.DirectorySeparatorChar) + ")", Path = drive.Name });
+            this.ThisPcItems.Add(new QuickAccessItem { Name = "本地磁盘 (" + drive.Name.TrimEnd(Path.DirectorySeparatorChar) + ")", Path = drive.Name, IconGlyph = "\uED3B" });
         }
 
-        this.AddUserFolder("桌面", Environment.SpecialFolder.Desktop);
-        this.AddUserFolder("我的文档", Environment.SpecialFolder.MyDocuments);
-        this.AddUserFolder("图片", Environment.SpecialFolder.MyPictures);
-        this.AddUserFolder("音乐", Environment.SpecialFolder.MyMusic);
-        this.AddUserFolder("视频", Environment.SpecialFolder.MyVideos);
+        this.AddUserFolder("桌面", Environment.SpecialFolder.Desktop, "\uE7F8");
+        this.AddUserFolder("我的文档", Environment.SpecialFolder.MyDocuments, "\uE8A5");
+        this.AddUserFolder("图片", Environment.SpecialFolder.MyPictures, "\uEB9F");
+        this.AddUserFolder("音乐", Environment.SpecialFolder.MyMusic, "\uEC4F");
+        this.AddUserFolder("视频", Environment.SpecialFolder.MyVideos, "\uE714");
 
         string downloadsPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
         if (Directory.Exists(downloadsPath))
         {
-            this.ThisPcItems.Add(new QuickAccessItem { Name = "下载", Path = downloadsPath });
+            this.ThisPcItems.Add(new QuickAccessItem { Name = "下载", Path = downloadsPath, IconGlyph = "\uE896" });
         }
     }
 
     /// <summary>添加一个系统特殊文件夹。</summary>
-    private void AddUserFolder(string name, Environment.SpecialFolder folder)
+    private void AddUserFolder(string name, Environment.SpecialFolder folder, string glyph)
     {
         string path = Environment.GetFolderPath(folder);
         if (!string.IsNullOrEmpty(path))
         {
-            this.ThisPcItems.Add(new QuickAccessItem { Name = name, Path = path });
+            this.ThisPcItems.Add(new QuickAccessItem { Name = name, Path = path, IconGlyph = glyph });
         }
     }
 
@@ -402,7 +422,7 @@ public class MainWindowViewModel : INotifyPropertyChanged
             {
                 continue;
             }
-            this.QuickAccessItems.Add(new QuickAccessItem { Name = GetDisplayName(path), Path = path });
+            this.QuickAccessItems.Add(new QuickAccessItem { Name = GetDisplayName(path), Path = path, IconGlyph = "\uE8B7" });
         }
     }
 

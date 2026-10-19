@@ -1,15 +1,13 @@
 ﻿using System.Collections.Generic;
-using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
-using Avalonia.VisualTree;
 using TabTaskExplorer.App.ViewModels;
 using TabTaskExplorer.Kernel.Models;
 
 namespace TabTaskExplorer.App.Views;
 
-/// <summary>文件浏览面板：导航工具栏、地址栏、搜索框、文件列表、视图切换与信息窗格。</summary>
+/// <summary>文件浏览面板：文件列表、视图切换、信息窗格（导航工具栏与地址栏在主窗口）。</summary>
 public partial class FileListPanel : UserControl
 {
     public FileListPanel()
@@ -23,162 +21,10 @@ public partial class FileListPanel : UserControl
         get { return this.DataContext as FileTabViewModel; }
     }
 
-    /// <summary>主窗口视图模型（用于固定快捷访问、打开进程监控、新标签打开）。</summary>
+    /// <summary>主窗口视图模型（用于新标签打开、复制剪切到剪贴板）。</summary>
     private MainWindowViewModel? MainViewModel
     {
-        get
-        {
-            if (TopLevel.GetTopLevel(this) is Window ownerWindow)
-            {
-                return ownerWindow.DataContext as MainWindowViewModel;
-            }
-            return null;
-        }
-    }
-
-    private void OnBackClick(object? sender, RoutedEventArgs e)
-    {
-        this.ViewModel?.GoBack();
-    }
-
-    private void OnForwardClick(object? sender, RoutedEventArgs e)
-    {
-        this.ViewModel?.GoForward();
-    }
-
-    private void OnUpClick(object? sender, RoutedEventArgs e)
-    {
-        this.ViewModel?.NavigateUp();
-    }
-
-    private void OnRefreshClick(object? sender, RoutedEventArgs e)
-    {
-        this.ViewModel?.Refresh();
-    }
-
-    private void OnPinClick(object? sender, RoutedEventArgs e)
-    {
-        this.MainViewModel?.PinCurrentTab();
-    }
-
-    private void OnViewModeClick(object? sender, RoutedEventArgs e)
-    {
-        this.ViewModel?.CycleViewMode();
-    }
-
-    private void OnInfoPaneClick(object? sender, RoutedEventArgs e)
-    {
-        FileTabViewModel? viewModel = this.ViewModel;
-        if (viewModel != null)
-        {
-            viewModel.ShowInfoPane = !viewModel.ShowInfoPane;
-            this.UpdateInfoPane();
-        }
-    }
-
-    private void OnProcessClick(object? sender, RoutedEventArgs e)
-    {
-        MainWindowViewModel? mainViewModel = this.MainViewModel;
-        if (mainViewModel == null)
-        {
-            return;
-        }
-        ProcessWindow window = new ProcessWindow();
-        window.DataContext = mainViewModel.CreateProcessPanel();
-        window.Show();
-    }
-
-    private async void OnNewFolderClick(object? sender, RoutedEventArgs e)
-    {
-        Window? owner = TopLevel.GetTopLevel(this) as Window;
-        FileTabViewModel? viewModel = this.ViewModel;
-        if (owner == null || viewModel == null)
-        {
-            return;
-        }
-        string? folderName = await InputDialog.Show(owner, "新建文件夹", "请输入文件夹名称：", "新建文件夹");
-        if (!string.IsNullOrWhiteSpace(folderName))
-        {
-            viewModel.CreateFolder(folderName);
-        }
-    }
-
-    private async void OnRenameClick(object? sender, RoutedEventArgs e)
-    {
-        Window? owner = TopLevel.GetTopLevel(this) as Window;
-        FileTabViewModel? viewModel = this.ViewModel;
-        if (owner == null || viewModel == null)
-        {
-            return;
-        }
-        FileRow? row = viewModel.GetSingleCheckedRow();
-        if (row == null)
-        {
-            return;
-        }
-        string? newName = await InputDialog.Show(owner, "重命名", "请输入新的名称：", row.DisplayName);
-        if (!string.IsNullOrWhiteSpace(newName) && newName != row.DisplayName)
-        {
-            viewModel.RenameChecked(newName);
-        }
-    }
-
-    private async void OnBatchRenameClick(object? sender, RoutedEventArgs e)
-    {
-        Window? owner = TopLevel.GetTopLevel(this) as Window;
-        FileTabViewModel? viewModel = this.ViewModel;
-        if (owner == null || viewModel == null)
-        {
-            return;
-        }
-        List<FileRow> checkedRows = viewModel.GetCheckedRows();
-        if (checkedRows.Count == 0)
-        {
-            viewModel.ShowMessage("请先勾选要改名的条目");
-            return;
-        }
-        BatchRenameDialog dialog = new BatchRenameDialog(checkedRows);
-        await dialog.ShowDialog(owner);
-        if (dialog.RenamePlan.Count > 0)
-        {
-            viewModel.ApplyBatchRenames(dialog.RenamePlan);
-        }
-    }
-
-    private void OnDeleteClick(object? sender, RoutedEventArgs e)
-    {
-        this.ViewModel?.DeleteChecked();
-    }
-
-    private void OnSortClick(object? sender, RoutedEventArgs e)
-    {
-        if (sender is Button button && button.Tag is string sortField)
-        {
-            this.ViewModel?.SetSortField(sortField);
-        }
-    }
-
-    private void OnSearchTextChanged(object? sender, TextChangedEventArgs e)
-    {
-        FileTabViewModel? viewModel = this.ViewModel;
-        if (viewModel != null)
-        {
-            viewModel.SearchText = this.SearchBox.Text ?? string.Empty;
-        }
-    }
-
-    private void OnAddressKeyDown(object? sender, KeyEventArgs e)
-    {
-        if (e.Key == Key.Enter)
-        {
-            FileTabViewModel? viewModel = this.ViewModel;
-            string? pathText = this.AddressBox.Text;
-            if (viewModel != null && !string.IsNullOrWhiteSpace(pathText))
-            {
-                viewModel.OpenPath(pathText.Trim());
-            }
-            e.Handled = true;
-        }
+        get { return TopLevel.GetTopLevel(this)?.DataContext as MainWindowViewModel; }
     }
 
     private void OnRowDoubleTapped(object? sender, TappedEventArgs e)
@@ -203,30 +49,6 @@ public partial class FileListPanel : UserControl
 
     private void OnRowCheckChanged(object? sender, RoutedEventArgs e)
     {
-        if (sender is CheckBox box)
-        {
-            // 勾选状态同步到行根节点的选中高亮样式
-            Border? rowBorder = null;
-            if (box.Parent is Grid grid)
-            {
-                rowBorder = grid.Parent as Border;
-            }
-            else if (box.Parent is StackPanel panel)
-            {
-                rowBorder = panel.Parent as Border;
-            }
-            if (rowBorder != null)
-            {
-                if (box.IsChecked == true)
-                {
-                    rowBorder.Classes.Add("checked");
-                }
-                else
-                {
-                    rowBorder.Classes.Remove("checked");
-                }
-            }
-        }
         this.UpdateInfoPane();
     }
 
@@ -279,7 +101,7 @@ public partial class FileListPanel : UserControl
 
     private async void OnMenuRenameClick(object? sender, RoutedEventArgs e)
     {
-        Window? owner = TopLevel.GetTopLevel(this) as Window;
+        Avalonia.Controls.Window? owner = TopLevel.GetTopLevel(this) as Avalonia.Controls.Window;
         FileTabViewModel? viewModel = this.ViewModel;
         if (owner == null || viewModel == null)
         {
@@ -300,6 +122,14 @@ public partial class FileListPanel : UserControl
         if (sender is MenuItem menuItem && menuItem.DataContext is FileRow row)
         {
             this.ViewModel?.DeleteRow(row);
+        }
+    }
+
+    private void OnSortClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Button button && button.Tag is string sortField)
+        {
+            this.ViewModel?.SetSortField(sortField);
         }
     }
 

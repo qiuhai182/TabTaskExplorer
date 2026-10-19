@@ -490,6 +490,19 @@ public class FileTabViewModel : INotifyPropertyChanged
         }
     }
 
+    /// <summary>全选当前目录全部条目。</summary>
+    public void SelectAll()
+    {
+        foreach (FileRow row in this.allRows)
+        {
+            row.IsSelected = true;
+        }
+        if (this.allRows.Count > 0)
+        {
+            this.SummaryText = "已全选 " + this.allRows.Count + " 个项目";
+        }
+    }
+
     /// <summary>同步更新历史与标题，随后把目录枚举派发到后台线程。</summary>
     private void LoadCore(string path, bool recordHistory)
     {
@@ -645,8 +658,10 @@ public class FileTabViewModel : INotifyPropertyChanged
 /// <summary>
 /// 文件列表中的一行显示数据。
 /// </summary>
-public class FileRow
+public class FileRow : INotifyPropertyChanged
 {
+    /// <inheritdoc />
+    public event PropertyChangedEventHandler? PropertyChanged;
     /// <summary>显示名称（受"显示扩展名"设置影响）。</summary>
     public string DisplayName { get; set; } = string.Empty;
 
@@ -665,8 +680,24 @@ public class FileRow
     /// <summary>修改时间显示文字（本地时区）。</summary>
     public string ModifiedText { get; set; } = string.Empty;
 
+    private bool isSelected;
+
     /// <summary>是否被勾选。</summary>
-    public bool IsSelected { get; set; }
+    public bool IsSelected
+    {
+        get { return this.isSelected; }
+        set
+        {
+            this.isSelected = value;
+            this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsSelected)));
+        }
+    }
+
+    /// <summary>类型图标字符（Segoe MDL2）。</summary>
+    public string IconGlyph { get; set; } = "\uE7C3";
+
+    /// <summary>类型图标颜色（十六进制）。</summary>
+    public string IconColor { get; set; } = "#9AA0A6";
 
     /// <summary>原始长度（字节），供排序使用。</summary>
     public long LengthBytes { get; set; }
@@ -688,6 +719,8 @@ public class FileRow
         if (entry.IsDirectory)
         {
             row.TypeText = "文件夹";
+            row.IconGlyph = "\uE8B7";
+            row.IconColor = "#FFD75E";
         }
         else
         {
@@ -702,8 +735,25 @@ public class FileRow
                 row.TypeText = "文件";
             }
             row.SizeText = FormatSize(entry.LengthBytes);
+            (string glyph, string color) = GetIconForExtension(extension);
+            row.IconGlyph = glyph;
+            row.IconColor = color;
         }
         return row;
+    }
+
+    /// <summary>按扩展名映射类型图标与颜色。</summary>
+    private static (string Glyph, string Color) GetIconForExtension(string extension)
+    {
+        switch (extension.ToLowerInvariant())
+        {
+            case ".exe": case ".dll": case ".msi": return ("\uE7C8", "#4A9EFF");
+            case ".cs": case ".py": case ".js": case ".ts": case ".cpp": case ".h": case ".java": return ("\uE943", "#4EC9B0");
+            case ".md": case ".txt": case ".doc": case ".docx": return ("\uE8A5", "#569CD6");
+            case ".png": case ".jpg": case ".jpeg": case ".gif": case ".bmp": return ("\uEB9F", "#C586C0");
+            case ".zip": case ".rar": case ".7z": return ("\uE8B7", "#E8A33D");
+            default: return ("\uE7C3", "#9AA0A6");
+        }
     }
 
     /// <summary>从磁盘分区构建行数据（用于此电脑视图）。</summary>
@@ -715,6 +765,8 @@ public class FileRow
         row.IsDirectory = true;
         row.TypeText = "本地磁盘";
         row.ModifiedText = string.Empty;
+        row.IconGlyph = "\uE7F8";
+        row.IconColor = "#4CC2FF";
         return row;
     }
 

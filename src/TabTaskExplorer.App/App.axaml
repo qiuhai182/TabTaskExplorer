@@ -7,17 +7,13 @@
   <Application.Styles>
     <styling:FluentAvaloniaTheme />
 
-    <!-- ======== TabX Explorer ???????????? ======== -->
-
-    <!-- ?????????? -->
+    <!-- ======== TabX Explorer 风格：悬停浅亮、选中深亮 ======== -->
     <Style Selector="Border.row:pointerover">
       <Setter Property="Background" Value="#2A2D2E"/>
     </Style>
-    <!-- ??????????? -->
     <Style Selector="Border.row.checked">
       <Setter Property="Background" Value="#37373D"/>
     </Style>
-    <!-- ????????? -->
     <Style Selector="Border.tile:pointerover">
       <Setter Property="Background" Value="#2A2D2E"/>
     </Style>
@@ -25,7 +21,6 @@
       <Setter Property="Background" Value="#37373D"/>
     </Style>
 
-    <!-- ???????? / ???? -->
     <Style Selector="ListBoxItem">
       <Setter Property="Padding" Value="0"/>
       <Setter Property="MinHeight" Value="28"/>
@@ -38,18 +33,13 @@
       <Setter Property="Background" Value="#37373D"/>
     </Style>
 
-    <!-- ????????????? -->
-    <Style Selector="TabItem">
-      <Setter Property="Background" Value="Transparent"/>
-    </Style>
-    <Style Selector="TabItem.tabhover">
+    <Style Selector="ListBoxItem.tabhover">
       <Setter Property="Background" Value="#2A2D2E"/>
     </Style>
-    <Style Selector="TabItem.tabactive">
+    <Style Selector="ListBoxItem.tabactive">
       <Setter Property="Background" Value="#37373D"/>
     </Style>
 
-    <!-- ??? / ???????????? -->
     <Style Selector="Button.nav">
       <Setter Property="Background" Value="Transparent"/>
       <Setter Property="HorizontalContentAlignment" Value="Left"/>
@@ -63,6 +53,8 @@
     <Style Selector="Button.nav:pressed /template/ ContentPresenter#PART_ContentPresenter">
       <Setter Property="Background" Value="#37373D"/>
     </Style>
+
+    <!-- 托盘图标在 App.axaml.cs 中以代码注册（关闭主窗口后常驻守护） -->
   </Application.Styles>
 
 </Application>

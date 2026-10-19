@@ -3,19 +3,16 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
-using Avalonia.Platform;
 using TabTaskExplorer.App.Services;
 using TabTaskExplorer.App.ViewModels;
 using TabTaskExplorer.App.Views;
 
 namespace TabTaskExplorer.App;
 
-/// <summary>Avalonia 应用类：负责装配服务、创建主窗口与托盘常驻图标。</summary>
+/// <summary>Avalonia 应用类：装配服务、创建主窗口，托盘图标在 App.axaml 中声明式注册。</summary>
 public class App : Application
 {
-    private MainWindow? mainWindow;
     private TrayIcon? trayIcon;
-    private NativeMenuItem? trayAutoStartItem;
 
     public override void Initialize()
     {
@@ -29,9 +26,8 @@ public class App : Application
             // 组合根：整个应用唯一按操作系统分支的位置，业务代码不出现任何平台类型
             IServiceProvider services = CompositionRoot.BuildServices();
 
-            this.mainWindow = new MainWindow();
-            this.mainWindow.DataContext = new MainWindowViewModel(services);
-            desktop.MainWindow = this.mainWindow;
+            desktop.MainWindow = new MainWindow();
+            desktop.MainWindow.DataContext = new MainWindowViewModel(services);
 
             this.CreateTrayIcon();
         }
@@ -45,7 +41,13 @@ public class App : Application
         WindowIcon? trayWindowIcon = null;
         try
         {
-            trayWindowIcon = new WindowIcon(AssetLoader.Open(new Uri("avares://TabTaskExplorer/Assets/app.ico")));
+            using (System.IO.Stream? stream = System.Reflection.Assembly.GetExecutingAssembly().GetManifestResourceStream("TabTaskExplorer.App.Assets.app.ico"))
+            {
+                if (stream != null)
+                {
+                    trayWindowIcon = new WindowIcon(stream);
+                }
+            }
         }
         catch
         {
@@ -58,9 +60,9 @@ public class App : Application
         showItem.Click += this.OnTrayShowClick;
         menu.Add(showItem);
 
-        this.trayAutoStartItem = new NativeMenuItem("开机自启：关");
-        this.trayAutoStartItem.Click += this.OnTrayAutoStartClick;
-        menu.Add(this.trayAutoStartItem);
+        NativeMenuItem autoStartItem = new NativeMenuItem("开机自启：关");
+        autoStartItem.Click += this.OnTrayAutoStartClick;
+        menu.Add(autoStartItem);
 
         NativeMenuItem exitItem = new NativeMenuItem("退出");
         exitItem.Click += this.OnTrayExitClick;
@@ -76,39 +78,67 @@ public class App : Application
         {
             this.trayIcon.Icon = trayWindowIcon;
         }
-        this.trayIcon.Clicked += this.OnTrayShowClick;
+        this.trayIcon.Clicked += this.OnTrayIconClicked;
+    }
 
-        this.SyncTrayAutoStartState();
+    /// <summary>当前主窗口视图模型。</summary>
+    private MainWindowViewModel? MainViewModel
+    {
+        get
+        {
+            if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+            {
+                return desktop.MainWindow?.DataContext as MainWindowViewModel;
+            }
+            return null;
+        }
+    }
+
+    /// <summary>当前主窗口。</summary>
+    private MainWindow? CurrentMainWindow
+    {
+        get
+        {
+            if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+            {
+                return desktop.MainWindow as MainWindow;
+            }
+            return null;
+        }
     }
 
     /// <summary>同步托盘菜单中开机自启的开关文字。</summary>
     public void SyncTrayAutoStartState()
     {
         MainWindowViewModel? viewModel = this.MainViewModel;
-        if (viewModel != null && this.trayAutoStartItem != null)
-        {
-            this.trayAutoStartItem.Header = viewModel.Settings.AutoStart ? "开机自启：开" : "开机自启：关";
-        }
-    }
-
-    /// <summary>主窗口视图模型。</summary>
-    private MainWindowViewModel? MainViewModel
-    {
-        get { return this.mainWindow?.DataContext as MainWindowViewModel; }
-    }
-
-    private void OnTrayShowClick(object? sender, EventArgs e)
-    {
-        if (this.mainWindow == null)
+        bool autoStart = viewModel?.Settings.AutoStart ?? false;
+        if (this.trayIcon?.Menu == null)
         {
             return;
         }
-        this.mainWindow.Show();
-        this.mainWindow.WindowState = WindowState.Normal;
-        this.mainWindow.Activate();
+        foreach (NativeMenuItem item in this.trayIcon.Menu.Items)
+        {
+            if (item.Header != null && item.Header.ToString()!.StartsWith("开机自启", StringComparison.Ordinal))
+            {
+                item.Header = autoStart ? "开机自启：开" : "开机自启：关";
+            }
+        }
     }
 
-    private void OnTrayAutoStartClick(object? sender, EventArgs e)
+    /// <summary>托盘图标左键单击：唤起主窗口。</summary>
+    public void OnTrayIconClicked(object? sender, EventArgs e)
+    {
+        this.ShowMainWindow();
+    }
+
+    /// <summary>托盘菜单：显示主窗口。</summary>
+    public void OnTrayShowClick(object? sender, EventArgs e)
+    {
+        this.ShowMainWindow();
+    }
+
+    /// <summary>托盘菜单：切换开机自启。</summary>
+    public void OnTrayAutoStartClick(object? sender, EventArgs e)
     {
         MainWindowViewModel? viewModel = this.MainViewModel;
         if (viewModel == null)
@@ -121,8 +151,22 @@ public class App : Application
         this.SyncTrayAutoStartState();
     }
 
-    private void OnTrayExitClick(object? sender, EventArgs e)
+    /// <summary>托盘菜单：真正退出并保存会话。</summary>
+    public void OnTrayExitClick(object? sender, EventArgs e)
     {
-        this.mainWindow?.ForceClose();
+        this.CurrentMainWindow?.ForceClose();
+    }
+
+    /// <summary>显示并激活主窗口。</summary>
+    private void ShowMainWindow()
+    {
+        MainWindow? window = this.CurrentMainWindow;
+        if (window == null)
+        {
+            return;
+        }
+        window.Show();
+        window.WindowState = WindowState.Normal;
+        window.Activate();
     }
 }
