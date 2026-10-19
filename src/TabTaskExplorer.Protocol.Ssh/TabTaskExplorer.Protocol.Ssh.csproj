@@ -1,6 +1,6 @@
-<Project Sdk="Microsoft.NET.Sdk">
+ï»¿<Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- SSH/SFTP Ð­ÒéÊÊÅä¹¤³Ì£ºÊµÏÖÄÚºËµÄÔ¶³Ì»á»°¹¤³§³éÏó£¬Ó¦ÓÃ²ã²»Ö±½ÓÒýÓÃ±¾¹¤³ÌÀàÐÍ -->
+  <!-- SSH/SFTP åè®®é€‚é…å·¥ç¨‹ï¼šå®žçŽ°å†…æ ¸çš„è¿œç¨‹ä¼šè¯å·¥åŽ‚æŠ½è±¡ï¼Œåº”ç”¨å±‚ä¸ç›´æŽ¥å¼•ç”¨æœ¬å·¥ç¨‹ç±»åž‹ -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>

@@ -1,4 +1,4 @@
-using System.Text;
+ï»¿using System.Text;
 using Renci.SshNet;
 using TabTaskExplorer.Kernel.Abstractions;
 using TabTaskExplorer.Kernel.Models;
@@ -6,16 +6,16 @@ using TabTaskExplorer.Kernel.Models;
 namespace TabTaskExplorer.Protocol.Ssh;
 
 /// <summary>
-/// SSH / SFTP Ô¶³Ì»á»°¹¤³§£º°´Á¬½ÓÅäÖÃ½¨Á¢²¢¸´ÓÃ SSH Á¬½Ó£¬
-/// Ìá¹©Ô¶³ÌÖÕ¶Ë¡¢Ô¶³ÌÎÄ¼şÏµÍ³Óë´«Êä¶ÓÁĞÈıÖÖÄÜÁ¦¡£
-/// Í¬Ò»Á¬½ÓÅäÖÃ¸´ÓÃÍ¬Ò»Ìõ SSH Á¬½Ó£¬±ÜÃâÖØ¸´ÎÕÊÖ¡£
+/// SSH / SFTP è¿œç¨‹ä¼šè¯å·¥å‚ï¼šæŒ‰è¿æ¥é…ç½®å»ºç«‹å¹¶å¤ç”¨ SSH è¿æ¥ï¼Œ
+/// æä¾›è¿œç¨‹ç»ˆç«¯ã€è¿œç¨‹æ–‡ä»¶ç³»ç»Ÿä¸ä¼ è¾“é˜Ÿåˆ—ä¸‰ç§èƒ½åŠ›ã€‚
+/// åŒä¸€è¿æ¥é…ç½®å¤ç”¨åŒä¸€æ¡ SSH è¿æ¥ï¼Œé¿å…é‡å¤æ¡æ‰‹ã€‚
 /// </summary>
 public class SshSessionFactory : IRemoteSessionFactory
 {
     private readonly object gate = new object();
     private readonly Dictionary<string, SshClient> clients = new Dictionary<string, SshClient>();
 
-    /// <summary>½¨Á¢£¨»ò¸´ÓÃ£©Ö¸¶¨Á¬½ÓÅäÖÃµÄ SSH ¿Í»§¶Ë¡£</summary>
+    /// <summary>å»ºç«‹ï¼ˆæˆ–å¤ç”¨ï¼‰æŒ‡å®šè¿æ¥é…ç½®çš„ SSH å®¢æˆ·ç«¯ã€‚</summary>
     public SshClient GetClient(RemoteConnectionProfile profile, string credential)
     {
         lock (this.gate)
@@ -34,7 +34,7 @@ public class SshSessionFactory : IRemoteSessionFactory
                 }
                 catch
                 {
-                    // ¶Ï¿ªÊ§°Ü²»Ó°ÏìÖØĞÂÁ¬½Ó
+                    // æ–­å¼€å¤±è´¥ä¸å½±å“é‡æ–°è¿æ¥
                 }
                 existing.Dispose();
             }
@@ -44,14 +44,14 @@ public class SshSessionFactory : IRemoteSessionFactory
             if (!client.IsConnected)
             {
                 client.Dispose();
-                throw new InvalidOperationException("SSH Á¬½ÓÊ§°Ü£º·şÎñÆ÷ÎŞÏìÓ¦");
+                throw new InvalidOperationException("SSH è¿æ¥å¤±è´¥ï¼šæœåŠ¡å™¨æ— å“åº”");
             }
             this.clients[profile.Id] = client;
             return client;
         }
     }
 
-    /// <summary>¹Ø±Õ²¢ÒÆ³ıÖ¸¶¨Á¬½ÓÅäÖÃµÄ SSH ¿Í»§¶Ë¡£</summary>
+    /// <summary>å…³é—­å¹¶ç§»é™¤æŒ‡å®šè¿æ¥é…ç½®çš„ SSH å®¢æˆ·ç«¯ã€‚</summary>
     public void CloseClient(string profileId)
     {
         lock (this.gate)
@@ -66,7 +66,7 @@ public class SshSessionFactory : IRemoteSessionFactory
                 }
                 catch
                 {
-                    // ºöÂÔ¶Ï¿ªÒì³£
+                    // å¿½ç•¥æ–­å¼€å¼‚å¸¸
                 }
                 client.Dispose();
             }
@@ -92,7 +92,7 @@ public class SshSessionFactory : IRemoteSessionFactory
         return new SftpTransferService(profile, credential);
     }
 
-    /// <summary>¸ù¾İÁ¬½ÓÅäÖÃÓëÆ¾¾İ¹¹Ôì SSH ¿Í»§¶Ë£¨±£»î¼ä¸ô²Î¿¼ Xshell »á»°±£»î»úÖÆ£©¡£</summary>
+    /// <summary>æ ¹æ®è¿æ¥é…ç½®ä¸å‡­æ®æ„é€  SSH å®¢æˆ·ç«¯ï¼ˆä¿æ´»é—´éš”å‚è€ƒ Xshell ä¼šè¯ä¿æ´»æœºåˆ¶ï¼‰ã€‚</summary>
     private static SshClient CreateClient(RemoteConnectionProfile profile, string credential)
     {
         ConnectionInfo info;
@@ -108,7 +108,7 @@ public class SshSessionFactory : IRemoteSessionFactory
             info = new ConnectionInfo(profile.Host, profile.GetEffectivePort(), profile.Username, passwordMethod);
         }
 
-        // ±£»î£ºÃ¿ 15 Ãë·¢ËÍÒ»´ÎºöÂÔ°ü£¬·ÀÖ¹ NAT Óë·À»ğÇ½ÇĞ¶Ï¿ÕÏĞÁ¬½Ó
+        // ä¿æ´»ï¼šæ¯ 15 ç§’å‘é€ä¸€æ¬¡å¿½ç•¥åŒ…ï¼Œé˜²æ­¢ NAT ä¸é˜²ç«å¢™åˆ‡æ–­ç©ºé—²è¿æ¥
         info.RetryAttempts = 3;
         info.Timeout = TimeSpan.FromSeconds(15);
         SshClient client = new SshClient(info);
