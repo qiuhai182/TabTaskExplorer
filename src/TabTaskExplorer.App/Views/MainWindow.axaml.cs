@@ -560,7 +560,9 @@ public partial class MainWindow : Window
         string payload = string.Join(Environment.NewLine, texts);
         if (this.Clipboard != null)
         {
-            await this.Clipboard.SetTextAsync(payload);
+            DataTransfer transfer = new DataTransfer();
+            transfer.Add(DataTransferItem.CreateText(payload));
+            await this.Clipboard.SetDataAsync(transfer);
         }
     }
 
