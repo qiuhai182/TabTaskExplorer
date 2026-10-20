@@ -10,13 +10,13 @@
 
       <!-- 列表：双击空白处返回上一级 -->
       <Grid Grid.Column="0" RowDefinitions="Auto,*" DoubleTapped="OnListBackgroundDoubleTapped">
-        <Grid Grid.Row="0" ColumnDefinitions="30,26,3*,130,140,110" Margin="0,0,12,4" IsVisible="{Binding IsDetailsLayout}">
+        <Grid Grid.Row="0" ColumnDefinitions="30,26,3*,140,130,110" Margin="0,0,12,4" IsVisible="{Binding IsDetailsLayout}">
           <TextBlock Grid.Column="0" />
           <TextBlock Grid.Column="1" />
-          <Button Grid.Column="2" Content="名称" Tag="Name" Click="OnSortClick" HorizontalAlignment="Left" Background="Transparent" />
-          <Button Grid.Column="3" Content="类型" Tag="Type" Click="OnSortClick" HorizontalAlignment="Left" Background="Transparent" />
-          <Button Grid.Column="4" Content="修改日期" Tag="Modified" Click="OnSortClick" HorizontalAlignment="Left" Background="Transparent" />
-          <Button Grid.Column="5" Content="大小" Tag="Size" Click="OnSortClick" HorizontalAlignment="Left" Background="Transparent" />
+          <Button Grid.Column="2" Content="名称" Tag="Name" Click="OnSortClick" HorizontalAlignment="Left" Background="Transparent" Foreground="{DynamicResource TextMutedBrush}" />
+          <Button Grid.Column="3" Content="修改日期" Tag="Modified" Click="OnSortClick" HorizontalAlignment="Left" Background="Transparent" Foreground="{DynamicResource TextMutedBrush}" />
+          <Button Grid.Column="4" Content="类型" Tag="Type" Click="OnSortClick" HorizontalAlignment="Left" Background="Transparent" Foreground="{DynamicResource TextMutedBrush}" />
+          <Button Grid.Column="5" Content="大小" Tag="Size" Click="OnSortClick" HorizontalAlignment="Left" Background="Transparent" Foreground="{DynamicResource TextMutedBrush}" />
         </Grid>
         <ScrollViewer Grid.Row="1">
           <StackPanel>
@@ -44,14 +44,14 @@
                         <MenuItem Header="删除" Click="OnMenuDeleteClick" />
                       </ContextMenu>
                     </Border.ContextMenu>
-                    <Grid ColumnDefinitions="30,26,3*,130,140,110">
+                    <Grid ColumnDefinitions="30,26,3*,140,130,110">
                       <CheckBox Grid.Column="0" IsChecked="{Binding IsSelected, Mode=TwoWay}" Click="OnRowCheckChanged" />
                       <TextBlock Grid.Column="1" FontFamily="Segoe MDL2 Assets, Segoe Fluent Icons" Text="{Binding IconGlyph}" Foreground="{Binding IconColor}" FontSize="13" VerticalAlignment="Center" />
                       <TextBlock Grid.Column="2" Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
-                      <TextBlock Grid.Column="3" Text="{Binding TypeText}" Opacity="0.8" VerticalAlignment="Center"
-                                 IsVisible="{Binding DataContext.IsListLayout, RelativeSource={RelativeSource AncestorType=ListBox}, Converter={x:Static conv:BoolConverters.Not}}" />
-                      <TextBlock Grid.Column="4" Text="{Binding ModifiedText}" Opacity="0.8" VerticalAlignment="Center"
+                      <TextBlock Grid.Column="3" Text="{Binding ModifiedText}" Opacity="0.8" VerticalAlignment="Center"
                                  IsVisible="{Binding DataContext.IsDetailsLayout, RelativeSource={RelativeSource AncestorType=ListBox}}" />
+                      <TextBlock Grid.Column="4" Text="{Binding TypeText}" Opacity="0.8" VerticalAlignment="Center"
+                                 IsVisible="{Binding DataContext.IsListLayout, RelativeSource={RelativeSource AncestorType=ListBox}, Converter={x:Static conv:BoolConverters.Not}}" />
                       <TextBlock Grid.Column="5" Text="{Binding SizeText}" Opacity="0.8" VerticalAlignment="Center"
                                  IsVisible="{Binding DataContext.IsDetailsLayout, RelativeSource={RelativeSource AncestorType=ListBox}}" />
                     </Grid>

@@ -860,11 +860,10 @@ public class MainWindowViewModel : INotifyPropertyChanged
         this.ShowBookmarkBar = this.Settings.ShowBookmarkBar;
     }
 
-    /// <summary>填充此电脑分组：此电脑入口、磁盘分区与常用文件夹。</summary>
+    /// <summary>填充此电脑分组：磁盘分区与常用文件夹。</summary>
     private void FillThisPcItems()
     {
         this.ThisPcItems.Clear();
-        this.ThisPcItems.Add(new QuickAccessItem { Name = "此电脑", Path = string.Empty, IconGlyph = "\uE7F8" });
 
         foreach (DriveInfo drive in DriveInfo.GetDrives())
         {

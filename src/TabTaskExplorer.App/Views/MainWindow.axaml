@@ -202,7 +202,7 @@
     <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="2" Margin="6,2,6,2">
       <Button Classes="nav tool" ToolTip.Tip="切换视图">
         <StackPanel Orientation="Horizontal" Spacing="5">
-          <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE7B3;" FontSize="13" VerticalAlignment="Center" />
+          <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE7B3;" FontSize="13" Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
           <TextBlock Text="查看" VerticalAlignment="Center" />
         </StackPanel>
         <Button.Flyout>
@@ -222,7 +222,7 @@
       </Button>
       <Button Classes="nav tool" ToolTip.Tip="复制（含路径与名称变体）">
         <StackPanel Orientation="Horizontal" Spacing="5">
-          <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE8C8;" FontSize="13" VerticalAlignment="Center" />
+          <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE8C8;" FontSize="13" Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
           <TextBlock Text="复制" VerticalAlignment="Center" />
         </StackPanel>
         <Button.Flyout>
@@ -237,49 +237,49 @@
       </Button>
       <Button Classes="nav tool" Click="OnToolbarCutClick" ToolTip.Tip="剪切勾选项">
         <StackPanel Orientation="Horizontal" Spacing="5">
-          <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE8C6;" FontSize="13" VerticalAlignment="Center" />
+          <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE8C6;" FontSize="13" Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
           <TextBlock Text="剪切" VerticalAlignment="Center" />
         </StackPanel>
       </Button>
       <Button Classes="nav tool" Click="OnToolbarPasteClick" ToolTip.Tip="粘贴到当前目录">
         <StackPanel Orientation="Horizontal" Spacing="5">
-          <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE77F;" FontSize="13" VerticalAlignment="Center" />
+          <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE77F;" FontSize="13" Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
           <TextBlock Text="粘贴" VerticalAlignment="Center" />
         </StackPanel>
       </Button>
       <Button Classes="nav tool" Click="OnToolbarNewFolderClick" ToolTip.Tip="新建文件夹">
         <StackPanel Orientation="Horizontal" Spacing="5">
-          <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE8F4;" FontSize="13" VerticalAlignment="Center" />
+          <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE8F4;" FontSize="13" Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
           <TextBlock Text="新建文件夹" VerticalAlignment="Center" />
         </StackPanel>
       </Button>
       <Button Classes="nav tool" Click="OnToolbarBatchRenameClick" ToolTip.Tip="批量改名（先勾选条目）">
         <StackPanel Orientation="Horizontal" Spacing="5">
-          <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE8AC;" FontSize="13" VerticalAlignment="Center" />
+          <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE8AC;" FontSize="13" Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
           <TextBlock Text="批量改名" VerticalAlignment="Center" />
         </StackPanel>
       </Button>
       <Button Classes="nav tool" Click="OnToolbarDeleteClick" ToolTip.Tip="删除勾选项（Windows 移入回收站）">
         <StackPanel Orientation="Horizontal" Spacing="5">
-          <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE74D;" FontSize="13" VerticalAlignment="Center" />
+          <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE74D;" FontSize="13" Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
           <TextBlock Text="回收站" VerticalAlignment="Center" />
         </StackPanel>
       </Button>
       <Button Classes="nav tool" Click="OnToolbarHiddenClick" ToolTip.Tip="显示 / 隐藏隐藏条目">
         <StackPanel Orientation="Horizontal" Spacing="5">
-          <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE7B3;" FontSize="13" VerticalAlignment="Center" />
+          <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE7B3;" FontSize="13" Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
           <TextBlock Text="显示隐藏条目" VerticalAlignment="Center" />
         </StackPanel>
       </Button>
       <Button Classes="nav tool" Click="OnToolbarInfoPaneClick" ToolTip.Tip="显示 / 隐藏详细信息窗格">
         <StackPanel Orientation="Horizontal" Spacing="5">
-          <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE7C9;" FontSize="13" VerticalAlignment="Center" />
+          <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE7C9;" FontSize="13" Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
           <TextBlock Text="显示详细信息窗格" VerticalAlignment="Center" />
         </StackPanel>
       </Button>
       <Button Classes="nav tool" Click="OnToolbarRefreshClick" ToolTip.Tip="刷新 (F5)">
         <StackPanel Orientation="Horizontal" Spacing="5">
-          <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE72C;" FontSize="13" VerticalAlignment="Center" />
+          <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE72C;" FontSize="13" Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
           <TextBlock Text="刷新" VerticalAlignment="Center" />
         </StackPanel>
       </Button>
@@ -337,7 +337,7 @@
               <ListBox.ItemTemplate>
                 <DataTemplate>
                   <StackPanel Orientation="Horizontal" Spacing="7" Margin="2,0">
-                    <TextBlock FontFamily="{StaticResource IconFont}" Text="{Binding IconGlyph}" Foreground="{DynamicResource AccentGlyphBrush}" FontSize="13" VerticalAlignment="Center" />
+                    <TextBlock FontFamily="{StaticResource IconFont}" Text="{Binding IconGlyph}" Foreground="{DynamicResource AccentGlyphBrush}" FontSize="13" Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
                     <TextBlock Text="{Binding Name}" VerticalAlignment="Center" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}" />
                   </StackPanel>
                 </DataTemplate>
@@ -353,7 +353,7 @@
               <ListBox.ItemTemplate>
                 <DataTemplate>
                   <StackPanel Orientation="Horizontal" Spacing="7" Margin="2,0">
-                    <TextBlock FontFamily="{StaticResource IconFont}" Text="{Binding IconGlyph}" Foreground="{DynamicResource AccentGlyphBrush}" FontSize="13" VerticalAlignment="Center" />
+                    <TextBlock FontFamily="{StaticResource IconFont}" Text="{Binding IconGlyph}" Foreground="{DynamicResource AccentGlyphBrush}" FontSize="13" Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
                     <TextBlock Text="{Binding Name}" VerticalAlignment="Center" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}" />
                   </StackPanel>
                 </DataTemplate>
@@ -366,7 +366,7 @@
             </StackPanel>
             <Button Classes="nav" HorizontalAlignment="Stretch" Click="OnConnectionsClick">
               <StackPanel Orientation="Horizontal" Spacing="7">
-                <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE968;" Foreground="{DynamicResource AccentGlyphBrush}" FontSize="13" VerticalAlignment="Center" />
+                <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE968;" Foreground="{DynamicResource AccentGlyphBrush}" FontSize="13" Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
                 <TextBlock Text="连接管理" VerticalAlignment="Center" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}" />
               </StackPanel>
             </Button>
