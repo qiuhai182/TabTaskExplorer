@@ -337,7 +337,7 @@
               <ListBox.ItemTemplate>
                 <DataTemplate>
                   <StackPanel Orientation="Horizontal" Spacing="7" Margin="2,0">
-                    <TextBlock FontFamily="{StaticResource IconFont}" Text="{Binding IconGlyph}" Foreground="{DynamicResource AccentGlyphBrush}" FontSize="13" Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
+                    <TextBlock FontFamily="{StaticResource IconFont}" Text="{Binding IconGlyph}" Foreground="{DynamicResource AccentGlyphBrush}" FontSize="13" VerticalAlignment="Center" />
                     <TextBlock Text="{Binding Name}" VerticalAlignment="Center" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}" />
                   </StackPanel>
                 </DataTemplate>
@@ -353,7 +353,7 @@
               <ListBox.ItemTemplate>
                 <DataTemplate>
                   <StackPanel Orientation="Horizontal" Spacing="7" Margin="2,0">
-                    <TextBlock FontFamily="{StaticResource IconFont}" Text="{Binding IconGlyph}" Foreground="{DynamicResource AccentGlyphBrush}" FontSize="13" Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
+                    <TextBlock FontFamily="{StaticResource IconFont}" Text="{Binding IconGlyph}" Foreground="{DynamicResource AccentGlyphBrush}" FontSize="13" VerticalAlignment="Center" />
                     <TextBlock Text="{Binding Name}" VerticalAlignment="Center" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}" />
                   </StackPanel>
                 </DataTemplate>
