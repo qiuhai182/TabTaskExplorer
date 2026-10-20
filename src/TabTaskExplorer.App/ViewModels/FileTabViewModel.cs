@@ -509,6 +509,12 @@ public class FileTabViewModel : INotifyPropertyChanged
         get { return this.fileSystemProvider as IFileContentAccess; }
     }
 
+    /// <summary>当前文件系统提供者（IDE 模式据此把当前目录作为工作区，本机 / 远程通用）。</summary>
+    public IFileSystemProvider FileSystemProvider
+    {
+        get { return this.fileSystemProvider; }
+    }
+
     /// <summary>远程权限修改能力；本地提供者不支持时为 null。</summary>
     public IRemotePermissionChanger? PermissionChanger
     {
@@ -533,6 +539,7 @@ public class FileTabViewModel : INotifyPropertyChanged
             }
             return;
         }
+        // 本机文件一律交给系统默认程序打开（IDE 模式下的打开方式由 IDE 侧设置决定）
         try
         {
             ProcessStartInfo startInfo = new ProcessStartInfo();
@@ -874,8 +881,45 @@ public class FileRow : INotifyPropertyChanged
         return row;
     }
 
-    /// <summary>按扩展名映射类型图标与颜色。</summary>
-    private static (string Glyph, string Color) GetIconForExtension(string extension)
+    /// <summary>从全局搜索结果构建行数据。</summary>
+    public static FileRow FromSearchResult(FileSearchResult result, bool showFileExtensions)
+    {
+        FileRow row = new FileRow();
+        row.DisplayName = result.Name;
+        row.FullPath = result.FullPath;
+        row.IsDirectory = result.IsDirectory;
+        row.LengthBytes = result.LengthBytes;
+        row.ModifiedTimeUtc = result.ModifiedTimeUtc;
+        row.ModifiedText = result.ModifiedTimeUtc.ToLocalTime().ToString("yyyy/MM/dd HH:mm");
+
+        if (result.IsDirectory)
+        {
+            row.TypeText = "文件夹";
+            row.IconGlyph = "\uE8B7";
+            row.IconColor = "#FFD75E";
+        }
+        else
+        {
+            string extension = Path.GetExtension(result.Name);
+            if (!showFileExtensions)
+            {
+                row.DisplayName = Path.GetFileNameWithoutExtension(result.Name);
+            }
+            row.TypeText = extension.TrimStart('.').ToUpperInvariant() + " 文件";
+            if (extension.Length == 0)
+            {
+                row.TypeText = "文件";
+            }
+            row.SizeText = FormatSize(result.LengthBytes);
+            (string glyph, string color) = GetIconForExtension(extension);
+            row.IconGlyph = glyph;
+            row.IconColor = color;
+        }
+        return row;
+    }
+
+    /// <summary>按扩展名映射类型图标与颜色（IDE 资源树复用同一套映射）。</summary>
+    public static (string Glyph, string Color) GetIconForExtension(string extension)
     {
         switch (extension.ToLowerInvariant())
         {

@@ -1,0 +1,215 @@
+﻿<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="TabTaskExplorer.App.Views.IdeShellView">
+
+  <UserControl.Resources>
+    <FontFamily x:Key="IdeIconFont">Segoe MDL2 Assets, Segoe Fluent Icons</FontFamily>
+  </UserControl.Resources>
+
+  <Panel>
+    <Grid RowDefinitions="Auto,*,Auto" Background="{DynamicResource ContentBrush}">
+
+      <!-- ===== 顶部：工作区路径与操作按钮 ===== -->
+      <Border Grid.Row="0" Background="{DynamicResource ChromeBrush}" BorderBrush="{DynamicResource SeparatorBrush}" BorderThickness="0,0,0,1">
+        <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto,Auto" Margin="8,4">
+          <TextBlock Grid.Column="0" FontFamily="{StaticResource IdeIconFont}" Text="&#xE8B7;" FontSize="13"
+                     Foreground="{DynamicResource AccentGlyphBrush}" VerticalAlignment="Center" Margin="0,0,6,0" />
+          <TextBlock Grid.Column="1" Text="{Binding WorkspaceRootText}" VerticalAlignment="Center" FontSize="12"
+                     Foreground="{DynamicResource TextPrimaryBrush}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding WorkspaceRootText}" />
+          <Button Grid.Column="2" Classes="nav" Click="OnSaveClick" ToolTip.Tip="保存 (Ctrl+S)" Margin="4,0,0,0">
+            <StackPanel Orientation="Horizontal" Spacing="5">
+              <TextBlock FontFamily="{StaticResource IdeIconFont}" Text="&#xE74E;" FontSize="12" VerticalAlignment="Center" Foreground="{DynamicResource TextMutedBrush}" />
+              <TextBlock Text="保存" FontSize="12" VerticalAlignment="Center" Foreground="{DynamicResource ToolbarTextBrush}" />
+            </StackPanel>
+          </Button>
+          <Button Grid.Column="3" Classes="nav" Click="OnSaveAllClick" ToolTip.Tip="全部保存 (Ctrl+Shift+S)">
+            <StackPanel Orientation="Horizontal" Spacing="5">
+              <TextBlock FontFamily="{StaticResource IdeIconFont}" Text="&#xE8F4;" FontSize="12" VerticalAlignment="Center" Foreground="{DynamicResource TextMutedBrush}" />
+              <TextBlock Text="全部保存" FontSize="12" VerticalAlignment="Center" Foreground="{DynamicResource ToolbarTextBrush}" />
+            </StackPanel>
+          </Button>
+          <Button Grid.Column="4" Classes="nav" Click="OnFindClick" ToolTip.Tip="查找 (Ctrl+F)">
+            <StackPanel Orientation="Horizontal" Spacing="5">
+              <TextBlock FontFamily="{StaticResource IdeIconFont}" Text="&#xE721;" FontSize="12" VerticalAlignment="Center" Foreground="{DynamicResource TextMutedBrush}" />
+              <TextBlock Text="查找" FontSize="12" VerticalAlignment="Center" Foreground="{DynamicResource ToolbarTextBrush}" />
+            </StackPanel>
+          </Button>
+          <Button Grid.Column="5" Classes="nav" Click="OnQuickOpenClick" ToolTip.Tip="快速打开 (Ctrl+P)">
+            <StackPanel Orientation="Horizontal" Spacing="5">
+              <TextBlock FontFamily="{StaticResource IdeIconFont}" Text="&#xE71E;" FontSize="12" VerticalAlignment="Center" Foreground="{DynamicResource TextMutedBrush}" />
+              <TextBlock Text="快速打开" FontSize="12" VerticalAlignment="Center" Foreground="{DynamicResource ToolbarTextBrush}" />
+            </StackPanel>
+          </Button>
+          <Button Grid.Column="6" Classes="nav" Click="OnRefreshClick" ToolTip.Tip="刷新工作区">
+            <StackPanel Orientation="Horizontal" Spacing="5">
+              <TextBlock FontFamily="{StaticResource IdeIconFont}" Text="&#xE72C;" FontSize="12" VerticalAlignment="Center" Foreground="{DynamicResource TextMutedBrush}" />
+              <TextBlock Text="刷新" FontSize="12" VerticalAlignment="Center" Foreground="{DynamicResource ToolbarTextBrush}" />
+            </StackPanel>
+          </Button>
+        </Grid>
+      </Border>
+
+      <!-- ===== 中部：资源树 + 编辑区 ===== -->
+      <Grid Grid.Row="1" ColumnDefinitions="230,Auto,*">
+
+        <!-- 资源树侧边栏 -->
+        <Border Grid.Column="0" Background="{DynamicResource ContentBrush}" BorderBrush="{DynamicResource SubtleBorderBrush}" BorderThickness="0,0,1,0">
+          <Grid RowDefinitions="Auto,*">
+            <TextBlock Grid.Row="0" Text="资源管理器" FontSize="11" Margin="10,8,8,4"
+                       Foreground="{DynamicResource TextMutedBrush}" />
+            <TreeView Grid.Row="1" x:Name="FileTree" ItemsSource="{Binding RootItems}"
+                      Background="Transparent" BorderThickness="0" Padding="4,0">
+              <TreeView.ItemTemplate>
+                <TreeDataTemplate ItemsSource="{Binding Children}">
+                  <StackPanel Orientation="Horizontal" Spacing="5" DoubleTapped="OnTreeItemDoubleTapped">
+                    <TextBlock FontFamily="{StaticResource IdeIconFont}" Text="{Binding IconGlyph}" FontSize="12"
+                               Foreground="{Binding IconColor}" VerticalAlignment="Center" />
+                    <TextBlock Text="{Binding Name}" FontSize="12" VerticalAlignment="Center"
+                               Foreground="{DynamicResource TextPrimaryBrush}" TextTrimming="CharacterEllipsis" />
+                  </StackPanel>
+                </TreeDataTemplate>
+              </TreeView.ItemTemplate>
+            </TreeView>
+          </Grid>
+        </Border>
+
+        <GridSplitter Grid.Column="1" Width="2" Background="{DynamicResource SeparatorBrush}" />
+
+        <!-- 编辑区：标签条 + 行号 + 文本 + 底部面板 -->
+        <Grid Grid.Column="2" RowDefinitions="Auto,*,Auto">
+
+          <!-- 编辑器标签条 -->
+          <Border Grid.Row="0" Background="{DynamicResource ChromeBrush}" BorderBrush="{DynamicResource SeparatorBrush}" BorderThickness="0,0,0,1">
+            <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+              <ListBox ItemsSource="{Binding Editors}" SelectedItem="{Binding SelectedEditor, Mode=TwoWay}"
+                       SelectionMode="Single" Background="Transparent" BorderThickness="0" Padding="4,3"
+                       MinHeight="30">
+                <ListBox.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <StackPanel Orientation="Horizontal" />
+                  </ItemsPanelTemplate>
+                </ListBox.ItemsPanel>
+                <ListBox.ItemTemplate>
+                  <DataTemplate>
+                    <Grid ColumnDefinitions="Auto,Auto,Auto" Margin="4,0,2,0">
+                      <TextBlock Grid.Column="0" FontFamily="{StaticResource IdeIconFont}" Text="&#xE7C3;" FontSize="11"
+                                 Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" Margin="0,0,5,0" />
+                      <TextBlock Grid.Column="1" Text="{Binding DisplayTitle}" FontSize="12" VerticalAlignment="Center"
+                                 Foreground="{DynamicResource TextPrimaryBrush}" ToolTip.Tip="{Binding ToolTipText}"
+                                 TextTrimming="CharacterEllipsis" MaxWidth="180" />
+                      <Button Grid.Column="2" Classes="nav" Width="18" Height="18" Padding="0" Margin="4,0,0,0"
+                              VerticalAlignment="Center" Tag="{Binding}" Click="OnCloseEditorTabClick" ToolTip.Tip="关闭">
+                        <TextBlock FontFamily="{StaticResource IdeIconFont}" Text="&#xE711;" FontSize="10"
+                                   Foreground="{DynamicResource TextMutedBrush}" />
+                      </Button>
+                    </Grid>
+                  </DataTemplate>
+                </ListBox.ItemTemplate>
+              </ListBox>
+            </ScrollViewer>
+          </Border>
+
+          <!-- 编辑主体：行号栏 + 文本框 -->
+          <Grid Grid.Row="1" ColumnDefinitions="Auto,*">
+            <ScrollViewer x:Name="LineNumberScroll" Grid.Column="0" HorizontalScrollBarVisibility="Disabled"
+                          VerticalScrollBarVisibility="Hidden" IsHitTestVisible="False"
+                          Background="{DynamicResource ChromeBrush}" Padding="6,6,6,6">
+              <TextBlock x:Name="LineNumbersBlock" Text="1" TextAlignment="Right"
+                         Foreground="{DynamicResource TextMutedBrush}" />
+            </ScrollViewer>
+            <Border Grid.Column="1" Background="{DynamicResource ContentBrush}">
+              <TextBox x:Name="EditorBox" AcceptsReturn="True" AcceptsTab="True"
+                       Background="Transparent" BorderThickness="0" FontSize="13"
+                       TextWrapping="NoWrap" Padding="6,6,6,6"
+                       ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                       Text="{Binding SelectedEditor.Text, Mode=TwoWay}"
+                       IsReadOnly="{Binding SelectedEditor.IsReadOnly}">
+              </TextBox>
+            </Border>
+            <!-- 空状态提示 -->
+            <TextBlock Grid.Column="1" Text="从左侧资源树双击文件即可开始编辑，Ctrl+P 快速打开，Ctrl+F 查找。"
+                       FontSize="12" Foreground="{DynamicResource TextMutedBrush}" HorizontalAlignment="Center"
+                       VerticalAlignment="Center" IsVisible="{Binding HasNoActiveEditor}" />
+          </Grid>
+
+          <!-- 底部面板：查找替换 + 查找结果 -->
+          <Border Grid.Row="2" Background="{DynamicResource ChromeBrush}" BorderBrush="{DynamicResource SeparatorBrush}"
+                  BorderThickness="0,1,0,0" IsVisible="{Binding ShowFindPanel}">
+            <Grid RowDefinitions="Auto,*" MaxHeight="240">
+              <Grid Grid.Row="0" ColumnDefinitions="Auto,200,200,Auto,Auto,Auto,Auto,*" Margin="8,6">
+                <TextBlock Grid.Column="0" Text="查找" FontSize="12" VerticalAlignment="Center" Margin="0,0,8,0"
+                           Foreground="{DynamicResource TextMutedBrush}" />
+                <TextBox Grid.Column="1" x:Name="FindBox" Text="{Binding FindText, Mode=TwoWay}"
+                         PlaceholderText="查找内容" FontSize="12" KeyDown="OnFindBoxKeyDown" />
+                <TextBox Grid.Column="2" x:Name="ReplaceBox" Text="{Binding ReplaceText, Mode=TwoWay}"
+                         PlaceholderText="替换为" FontSize="12" Margin="6,0,0,0" />
+                <Button Grid.Column="3" Classes="nav" Content="上一个" FontSize="12" Click="OnFindPreviousClick" Margin="6,0,0,0" />
+                <Button Grid.Column="4" Classes="nav" Content="下一个" FontSize="12" Click="OnFindNextClick" />
+                <Button Grid.Column="5" Classes="nav" Content="替换" FontSize="12" Click="OnReplaceClick" />
+                <Button Grid.Column="6" Classes="nav" Content="全部替换" FontSize="12" Click="OnReplaceAllClick" />
+                <Button Grid.Column="7" Classes="nav" Content="在工作区搜索" FontSize="12" HorizontalAlignment="Left" Click="OnSearchWorkspaceClick" />
+              </Grid>
+              <Grid Grid.Row="1" RowDefinitions="Auto,*">
+                <TextBlock Grid.Row="0" Text="{Binding FindStatusText}" FontSize="11" Margin="10,0,8,4"
+                           Foreground="{DynamicResource TextMutedBrush}" />
+                <ListBox Grid.Row="1" x:Name="FindResultList" ItemsSource="{Binding FindResults}"
+                         Background="Transparent" BorderThickness="0" SelectionChanged="OnFindResultSelected">
+                  <ListBox.ItemTemplate>
+                    <DataTemplate>
+                      <Grid ColumnDefinitions="Auto,*" Margin="4,1">
+                        <TextBlock Grid.Column="0" Text="{Binding Summary}" FontSize="12" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,0,10,0" />
+                        <TextBlock Grid.Column="1" Text="{Binding LineText}" FontSize="11" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource TextMutedBrush}" TextTrimming="CharacterEllipsis" />
+                      </Grid>
+                    </DataTemplate>
+                  </ListBox.ItemTemplate>
+                </ListBox>
+              </Grid>
+            </Grid>
+          </Border>
+        </Grid>
+      </Grid>
+
+      <!-- ===== 底部：状态栏 ===== -->
+      <Border Grid.Row="2" Background="{DynamicResource ChromeBrush}" BorderBrush="{DynamicResource SeparatorBrush}" BorderThickness="0,1,0,0">
+        <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto" Margin="12,4,8,4">
+          <TextBlock Grid.Column="0" Text="{Binding SolutionStatusText}" FontSize="12"
+                     Foreground="{DynamicResource TextMutedBrush}" TextTrimming="CharacterEllipsis" />
+          <TextBlock Grid.Column="2" Text="{Binding SelectedEditor.LocationText}" FontSize="11" Margin="0,0,14,0"
+                     Foreground="{DynamicResource TextMutedBrush}" TextTrimming="CharacterEllipsis" MaxWidth="360" />
+          <TextBlock Grid.Column="3" Text="{Binding SelectedEditor.CaretText}" FontSize="11" Margin="0,0,14,0"
+                     Foreground="{DynamicResource TextMutedBrush}" />
+          <TextBlock Grid.Column="4" Text="{Binding SelectedEditor.EncodingName}" FontSize="11"
+                     Foreground="{DynamicResource TextMutedBrush}" />
+        </Grid>
+      </Border>
+    </Grid>
+
+    <!-- ===== 快速打开浮层（Ctrl+P） ===== -->
+    <Border IsVisible="{Binding ShowQuickOpen}" HorizontalAlignment="Center" VerticalAlignment="Top"
+            Margin="0,80,0,0" Width="560" MaxHeight="420"
+            Background="{DynamicResource ChromeBrush}" BorderBrush="{DynamicResource SeparatorBrush}"
+            BorderThickness="1" CornerRadius="6" BoxShadow="0 8 24 0 #66000000">
+      <Grid RowDefinitions="Auto,*" Margin="10">
+        <TextBox Grid.Row="0" x:Name="QuickOpenBox" Text="{Binding QuickOpenText, Mode=TwoWay}"
+                 PlaceholderText="输入文件名（支持模糊匹配），回车打开，Esc 关闭" FontSize="12"
+                 KeyDown="OnQuickOpenKeyDown" />
+        <ListBox Grid.Row="1" x:Name="QuickOpenList" ItemsSource="{Binding QuickOpenItems}" Margin="0,8,0,0"
+                 Background="Transparent" BorderThickness="0" MaxHeight="340"
+                 DoubleTapped="OnQuickOpenDoubleTapped">
+          <ListBox.ItemTemplate>
+            <DataTemplate>
+              <Grid ColumnDefinitions="*,Auto" Margin="4,2">
+                <TextBlock Grid.Column="0" Text="{Binding FileName}" FontSize="12" VerticalAlignment="Center"
+                           Foreground="{DynamicResource TextPrimaryBrush}" />
+                <TextBlock Grid.Column="1" Text="{Binding DirectoryText}" FontSize="11" VerticalAlignment="Center"
+                           Foreground="{DynamicResource TextMutedBrush}" TextTrimming="CharacterEllipsis" MaxWidth="300" />
+              </Grid>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+      </Grid>
+    </Border>
+  </Panel>
+</UserControl>

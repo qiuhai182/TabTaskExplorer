@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 namespace TabTaskExplorer.App.Services;
 
-/// <summary>浏览器调试镜像的界面状态快照：与桌面界面同构。</summary>
+/// <summary>网页端服务的界面状态快照：与桌面界面同构。</summary>
 public class DebugUiState
 {
     /// <summary>快照生成时间。</summary>

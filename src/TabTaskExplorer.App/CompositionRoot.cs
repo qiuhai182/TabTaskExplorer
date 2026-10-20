@@ -27,6 +27,9 @@ public static class CompositionRoot
         services.AddSingleton<IConnectionStore, JsonConnectionStore>();
         services.AddSingleton<IConnectivityTester, TcpConnectivityTester>();
 
+        // 本机文本文件服务：IDE 模式本地文件读写与编码探测（跨平台）
+        services.AddSingleton<ITextFileService, DefaultTextFileService>();
+
         // 凭据加密：Windows 使用 DPAPI 当前用户作用域；其他平台此能力留空，降级为明文保存
         if (OperatingSystem.IsWindows())
         {
@@ -51,7 +54,7 @@ public static class CompositionRoot
             services.AddSingleton<IWindowCaptionHider, NullWindowCaptionHider>();
         }
 
-        // 浏览器调试镜像服务：仅绑定本机回环地址，页面与程序界面实时同构
+        // 网页端服务：仅绑定本机回环地址，页面与程序界面实时同构
         services.AddSingleton<Services.DebugWebHost>();
 
         // 平台专用实现：文件系统、进程枚举与系统资源采样
@@ -61,11 +64,21 @@ public static class CompositionRoot
             services.AddSingleton<IFileSystemProvider, WindowsFileSystemProvider>();
             services.AddSingleton<IProcessProvider, WindowsProcessProvider>();
             services.AddSingleton<ISystemMetricsProvider, WindowsSystemMetricsProvider>();
+            // 磁盘占用统计：Windows 平台实现
+            services.AddSingleton<IDiskUsageProvider, WindowsDiskUsageProvider>();
+
+            // 全盘搜索：内核遍历实现作为兜底，Windows 上优先走 Everything 消息接口
+            services.AddSingleton<FileSystemWalkSearchService>();
+            services.AddSingleton<IFileSearchService, EverythingIpcSearchService>();
         }
         else
         {
-            // 其他平台：文件系统使用内核跨平台默认实现
+            // 其他平台：文件系统使用内核跨平台默认实现，全盘搜索仅用内置遍历实现
             services.AddSingleton<IFileSystemProvider, DefaultFileSystemProvider>();
+            // 磁盘占用统计：其他平台内核默认实现
+            services.AddSingleton<IDiskUsageProvider, DefaultDiskUsageProvider>();
+            services.AddSingleton<FileSystemWalkSearchService>();
+            services.AddSingleton<IFileSearchService, FileSystemWalkSearchService>();
             if (OperatingSystem.IsLinux())
             {
                 services.AddSingleton<IProcessProvider, LinuxProcessProvider>();

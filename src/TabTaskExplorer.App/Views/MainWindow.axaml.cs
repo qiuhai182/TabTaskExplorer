@@ -23,10 +23,13 @@ public partial class MainWindow : Window
     private FileTabViewModel? breadcrumbTab;
     private bool navSyncing;
     private bool forceClose;
+    private bool ideCloseConfirmed;
 
     public MainWindow()
     {
         this.InitializeComponent();
+        UiLogger.AttachWindow(this);
+        UiLogger.Log("程序行为", "主窗口创建完成");
         this.Closing += this.OnWindowClosing;
         this.DataContextChanged += this.OnDataContextChanged;
     }
@@ -37,22 +40,58 @@ public partial class MainWindow : Window
         get { return this.DataContext as MainWindowViewModel; }
     }
 
-    /// <summary>窗口关闭时：默认最小化到托盘常驻；托盘菜单选择退出时才真正关闭并保存会话。</summary>
+    /// <summary>窗口关闭时：IDE 模式先确认未保存编辑器；默认最小化到托盘常驻；托盘菜单选择退出时才真正关闭并保存会话。</summary>
     private void OnWindowClosing(object? sender, CancelEventArgs e)
     {
         MainWindowViewModel? viewModel = this.ViewModel;
-        if (viewModel != null && viewModel.Settings.CloseToTray && !this.forceClose)
+        if (viewModel == null)
+        {
+            return;
+        }
+        if (viewModel.IsIdeMode && viewModel.IdeShell.HasDirtyEditors() && !this.ideCloseConfirmed)
         {
             e.Cancel = true;
+            _ = this.ConfirmIdeEditorsAndCloseAsync(viewModel);
+            return;
+        }
+        if (viewModel.Settings.CloseToTray && !this.forceClose)
+        {
+            e.Cancel = true;
+            UiLogger.Log("程序行为", "关闭主窗口：按设置最小化到托盘常驻");
             this.Hide();
             return;
         }
-        viewModel?.SaveOpenTabs();
+        UiLogger.Log("程序退出", "关闭主窗口：保存会话后退出");
+        viewModel.SaveOpenTabs();
+    }
+
+    /// <summary>关闭窗口前逐个确认 IDE 中未保存的编辑器：全部处理完毕后再真正关闭。</summary>
+    private async Task ConfirmIdeEditorsAndCloseAsync(MainWindowViewModel viewModel)
+    {
+        foreach (IdeEditorTabViewModel editor in viewModel.IdeShell.Editors)
+        {
+            if (!editor.IsDirty)
+            {
+                continue;
+            }
+            SavePromptChoice choice = await MessageDialog.ConfirmSaveAsync(this, editor.Title);
+            if (choice == SavePromptChoice.Cancel)
+            {
+                return;
+            }
+            if (choice == SavePromptChoice.Save)
+            {
+                editor.Save();
+            }
+        }
+        this.ideCloseConfirmed = true;
+        this.Close();
     }
 
     /// <summary>托盘菜单"退出"调用：跳过托盘常驻，真正关闭窗口。</summary>
     public void ForceClose()
     {
+        UiLogger.Log("程序退出", "执行强制退出：跳过托盘常驻，直接关闭主窗口");
         this.forceClose = true;
         this.Close();
     }
@@ -69,6 +108,7 @@ public partial class MainWindow : Window
         {
             return;
         }
+        this.ApplyTopWhiteStrip(viewModel.ShowTopWhiteStrip);
         viewModel.PropertyChanged -= this.OnViewModelPropertyChanged;
         viewModel.PropertyChanged += this.OnViewModelPropertyChanged;
         viewModel.Tabs.CollectionChanged -= this.OnTabsCollectionChanged;
@@ -82,8 +122,27 @@ public partial class MainWindow : Window
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (e.PropertyName == nameof(MainWindowViewModel.ShowTopWhiteStrip))
+        {
+            MainWindowViewModel? current = this.ViewModel;
+            if (current != null)
+            {
+                this.ApplyTopWhiteStrip(current.ShowTopWhiteStrip);
+            }
+            return;
+        }
         if (e.PropertyName == nameof(MainWindowViewModel.SelectedTab))
         {
+            // IDE 模式下点选资源管理器标签：自动切回资源管理器模式展示该标签内容
+            MainWindowViewModel? viewModel = this.ViewModel;
+            if (viewModel != null && viewModel.IsIdeMode && viewModel.SelectedTab != null)
+            {
+                viewModel.ExitIdeMode();
+            }
+            if (viewModel != null)
+            {
+                UiLogger.Log("程序行为", "切换标签：当前标签序号=" + viewModel.Tabs.IndexOf(viewModel.SelectedTab));
+            }
             this.UpdateTabStripHighlights();
             this.AttachSelectedTabListener();
             this.RefreshBreadcrumbAndStatus();
@@ -151,6 +210,7 @@ public partial class MainWindow : Window
     {
         if (e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
         {
+            UiLogger.Log("程序行为", "标题栏拖动：开始移动窗口");
             this.BeginMoveDrag(e);
         }
     }
@@ -170,10 +230,12 @@ public partial class MainWindow : Window
         {
             this.WindowState = WindowState.Maximized;
         }
+        UiLogger.Log("程序行为", "标题栏双击：窗口状态切换为 " + this.WindowState);
     }
 
     private void OnMinimizeClick(object? sender, RoutedEventArgs e)
     {
+        UiLogger.Log("程序行为", "点击最小化按钮");
         this.WindowState = WindowState.Minimized;
     }
 
@@ -187,19 +249,27 @@ public partial class MainWindow : Window
         {
             this.WindowState = WindowState.Maximized;
         }
+        UiLogger.Log("程序行为", "点击最大化按钮：窗口状态切换为 " + this.WindowState);
     }
 
     private void OnCloseWindowClick(object? sender, RoutedEventArgs e)
     {
+        UiLogger.Log("程序行为", "点击关闭按钮");
         this.Close();
     }
 
-    /// <summary>全局快捷键：Ctrl+T、Ctrl+W、Ctrl+Tab、F5、F2、Delete。</summary>
+    /// <summary>全局快捷键：IDE 模式下走 IDE 快捷键，否则走资源管理器快捷键。</summary>
     private void OnWindowKeyDown(object? sender, KeyEventArgs e)
     {
         MainWindowViewModel? viewModel = this.ViewModel;
         if (viewModel == null)
         {
+            return;
+        }
+
+        if (viewModel.IsIdeMode)
+        {
+            this.HandleIdeKeyDown(viewModel, e);
             return;
         }
 
@@ -242,6 +312,97 @@ public partial class MainWindow : Window
         }
     }
 
+    /// <summary>IDE 模式快捷键：保存 / 全部保存 / 关闭编辑器 / 快速打开 / 查找，按键组合取自自定义快捷键配置。</summary>
+    private void HandleIdeKeyDown(MainWindowViewModel viewModel, KeyEventArgs e)
+    {
+        IdeShellViewModel shell = viewModel.IdeShell;
+        if (this.MatchesHotkey(viewModel, "Save", e))
+        {
+            shell.SaveActive();
+            e.Handled = true;
+        }
+        else if (this.MatchesHotkey(viewModel, "SaveAll", e))
+        {
+            shell.SaveAll();
+            e.Handled = true;
+        }
+        else if (this.MatchesHotkey(viewModel, "CloseEditor", e))
+        {
+            IdeEditorTabViewModel? editor = shell.SelectedEditor;
+            if (editor != null)
+            {
+                _ = this.CloseIdeEditorAsync(shell, editor);
+            }
+            e.Handled = true;
+        }
+        else if (this.MatchesHotkey(viewModel, "QuickOpen", e))
+        {
+            shell.OpenQuickOpen();
+            e.Handled = true;
+        }
+        else if (this.MatchesHotkey(viewModel, "Find", e))
+        {
+            shell.ShowFindPanel = true;
+            e.Handled = true;
+        }
+    }
+
+    /// <summary>判断按键事件是否命中指定动作的自定义快捷键（修饰键需完全一致）。</summary>
+    private bool MatchesHotkey(MainWindowViewModel viewModel, string actionName, KeyEventArgs e)
+    {
+        foreach (HotkeySetting setting in viewModel.Settings.Hotkeys)
+        {
+            if (setting.ActionName != actionName)
+            {
+                continue;
+            }
+            Key key;
+            if (!Enum.TryParse(setting.KeyText, out key))
+            {
+                return false;
+            }
+            KeyModifiers required = KeyModifiers.None;
+            if (setting.Ctrl)
+            {
+                required |= KeyModifiers.Control;
+            }
+            if (setting.Alt)
+            {
+                required |= KeyModifiers.Alt;
+            }
+            if (setting.Shift)
+            {
+                required |= KeyModifiers.Shift;
+            }
+            return e.Key == key && e.KeyModifiers == required;
+        }
+        return false;
+    }
+
+    /// <summary>关闭 IDE 编辑器标签：脏内容先弹「保存 / 不保存 / 取消」确认框。</summary>
+    public async Task CloseIdeEditorAsync(IdeShellViewModel shell, IdeEditorTabViewModel editor)
+    {
+        if (editor.IsDirty)
+        {
+            SavePromptChoice choice = await MessageDialog.ConfirmSaveAsync(this, editor.Title);
+            if (choice == SavePromptChoice.Cancel)
+            {
+                return;
+            }
+            if (choice == SavePromptChoice.Save)
+            {
+                editor.Save();
+            }
+        }
+        shell.CloseEditor(editor);
+    }
+
+    /// <summary>IDE 模式切换按钮：在资源管理器模式与 IDE 模式之间一键切换。</summary>
+    private void OnToggleIdeModeClick(object? sender, RoutedEventArgs e)
+    {
+        this.ViewModel?.ToggleIdeMode();
+    }
+
     private void OnNewTabClick(object? sender, RoutedEventArgs e)
     {
         this.ViewModel?.AddTab(string.Empty);
@@ -250,6 +411,11 @@ public partial class MainWindow : Window
     private void OnTaskBoardClick(object? sender, RoutedEventArgs e)
     {
         this.ViewModel?.OpenTaskBoardTab();
+    }
+
+    private void OnGlobalSearchClick(object? sender, RoutedEventArgs e)
+    {
+        this.ViewModel?.OpenSearchTab();
     }
 
     private void OnCloseTabClick(object? sender, RoutedEventArgs e)
@@ -708,6 +874,11 @@ public partial class MainWindow : Window
         this.ViewModel?.OpenConnectionsTab();
     }
 
+    private void OnDiskViewClick(object? sender, RoutedEventArgs e)
+    {
+        this.ViewModel?.OpenDiskViewTab();
+    }
+
     private async void OnSettingsClick(object? sender, RoutedEventArgs e)
     {
         MainWindowViewModel? viewModel = this.ViewModel;
@@ -715,13 +886,34 @@ public partial class MainWindow : Window
         {
             return;
         }
+        UiLogger.Log("程序行为", "打开设置窗口");
         SettingsWindow window = new SettingsWindow(viewModel.Settings);
         await window.ShowDialog(this);
+        UiLogger.Log("程序行为", "设置窗口已关闭，开始应用设置");
         App current = (App)App.Current!;
+        // 开机自启：写入后校验系统真实结果，未生效时把设置回退为关
+        bool autoStartApplied = AutoStartManager.Apply(viewModel.Settings.AutoStart);
+        if (viewModel.Settings.AutoStart && !autoStartApplied)
+        {
+            viewModel.Settings.AutoStart = false;
+        }
         current.SyncTrayAutoStartState();
-        AutoStartManager.Apply(viewModel.Settings.AutoStart);
         DefaultFileManagerManager.Apply(viewModel.Settings.DefaultFileManager);
         viewModel.SaveSettingsAndApply();
+    }
+
+    /// <summary>按设置切换窗口装饰：显示白条时保留 Avalonia 绘制的窗口边框，隐藏时不绘制任何装饰。</summary>
+    private void ApplyTopWhiteStrip(bool show)
+    {
+        if (show)
+        {
+            this.WindowDecorations = Avalonia.Controls.WindowDecorations.BorderOnly;
+        }
+        else
+        {
+            this.WindowDecorations = Avalonia.Controls.WindowDecorations.None;
+        }
+        UiLogger.Log("程序行为", "应用顶部白色条设置：是否显示=" + show + " 当前窗口装饰=" + this.WindowDecorations);
     }
 
     private void OnProcessMonitorClick(object? sender, RoutedEventArgs e)

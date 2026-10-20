@@ -36,15 +36,36 @@ public class App : Application
             // 扩展客户区下隐藏系统绘制的窗口图标与程序名（与 TabX 一致，只留自绘徽标）
             desktop.MainWindow.Opened += this.OnMainWindowOpened;
 
-            // 浏览器调试镜像：界面同构实时同步，浏览器打开 http://127.0.0.1:15919 查看
+            // 网页端服务：界面同构实时同步，浏览器打开后访问本机回环地址查看；是否启动由设置决定
             MainWindowViewModel mainViewModel = (MainWindowViewModel)desktop.MainWindow.DataContext;
-            mainViewModel.StartDebugWebHost(services.GetRequiredService<Services.DebugWebHost>());
+            mainViewModel.AttachDebugWebHost(services.GetRequiredService<Services.DebugWebHost>());
 
-            // 采集未处理异常到调试镜像（浏览器 /api/diagnostics 可查看）
+            // 开机自启：以配置为准重新写入系统注册并校验结果，保证设置与系统真实状态一致
+            this.ReconcileAutoStart(mainViewModel);
+
+            // 采集未处理异常到网页端服务（浏览器 /api/diagnostics 可查看）
             Avalonia.Threading.Dispatcher.UIThread.UnhandledException += this.OnUiUnhandledException;
             AppDomain.CurrentDomain.UnhandledException += this.OnDomainUnhandledException;
+            System.Threading.Tasks.TaskScheduler.UnobservedTaskException += this.OnUnobservedTaskException;
+
+            // 程序生命周期日志：正常退出与进程退出，保证每次运行都有明确的起点与终点
+            desktop.ShutdownRequested += this.OnShutdownRequested;
+            desktop.Exit += this.OnDesktopExit;
+            AppDomain.CurrentDomain.ProcessExit += this.OnProcessExit;
+
+            // 程序启动日志：版本、进程、可执行文件、运行环境与关键启动配置
+            System.Reflection.AssemblyName assemblyName = System.Reflection.Assembly.GetExecutingAssembly().GetName();
+            string version = assemblyName.Version != null ? assemblyName.Version.ToString() : "未知";
+            string executablePath = Environment.ProcessPath ?? "未知";
+            Services.UiLogger.Log("程序启动", "版本=" + version + " 进程号=" + Environment.ProcessId + " 可执行文件=" + executablePath);
+            Services.UiLogger.Log("程序启动", "操作系统=" + Environment.OSVersion.VersionString + " 运行环境=" + System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription
+                + " 开机自启=" + mainViewModel.Settings.AutoStart + " 网页端服务开关=" + mainViewModel.Settings.EnableWebService
+                + " 网页端服务端口=" + mainViewModel.Settings.WebServicePort + " 界面主题=" + mainViewModel.Settings.Theme);
+            Services.UiLogger.Log("程序启动", "日志文件路径=" + Services.UiLogger.FilePath);
 
             this.CreateTrayIcon();
+            // 托盘菜单在创建后才存在，此处再同步一次开机自启的真实状态文字
+            this.SyncTrayAutoStartState();
         }
 
         base.OnFrameworkInitializationCompleted();
@@ -63,20 +84,52 @@ public class App : Application
         }
     }
 
-    /// <summary>UI 线程未处理异常：记录到调试镜像，并尽量保持程序运行。</summary>
+    /// <summary>UI 线程未处理异常：记录到网页端服务，并尽量保持程序运行。</summary>
     private void OnUiUnhandledException(object? sender, Avalonia.Threading.DispatcherUnhandledExceptionEventArgs e)
     {
         Services.DebugWebHost.RecordDiagnostic("UI线程", e.Exception);
+        Services.UiLogger.LogError("界面异常", "UI 线程未处理异常，已拦截并保持运行", e.Exception);
         e.Handled = true;
     }
 
-    /// <summary>AppDomain 未处理异常：记录到调试镜像。</summary>
+    /// <summary>AppDomain 未处理异常：进程即将终止，按闪退崩溃记录完整堆栈。</summary>
     private void OnDomainUnhandledException(object? sender, UnhandledExceptionEventArgs e)
     {
         if (e.ExceptionObject is Exception error)
         {
             Services.DebugWebHost.RecordDiagnostic("AppDomain", error);
+            Services.UiLogger.LogError("崩溃", "AppDomain 未处理异常，是否终止进程=" + e.IsTerminating, error);
+            return;
         }
+        Services.UiLogger.Log("崩溃", "AppDomain 未处理异常，异常对象无法转换为 Exception，是否终止进程=" + e.IsTerminating
+            + " 异常对象=" + (e.ExceptionObject != null ? e.ExceptionObject.ToString() : "空"));
+    }
+
+    /// <summary>后台任务未观察异常：不终止进程，记录后标记为已观察，避免进程被升级终止。</summary>
+    private void OnUnobservedTaskException(object? sender, System.Threading.Tasks.UnobservedTaskExceptionEventArgs e)
+    {
+        Services.DebugWebHost.RecordDiagnostic("后台任务", e.Exception);
+        Services.UiLogger.LogError("界面异常", "后台任务未观察异常（不影响界面，已标记为已观察）", e.Exception);
+        e.SetObserved();
+    }
+
+    /// <summary>系统会话结束：记录退出请求来源。</summary>
+    private void OnShutdownRequested(object? sender, Avalonia.Controls.ApplicationLifetimes.ShutdownRequestedEventArgs e)
+    {
+        Services.UiLogger.Log("程序退出", "收到系统关机或会话结束请求：取消退出=" + e.Cancel);
+    }
+
+    /// <summary>桌面生命周期结束：程序正常退出。</summary>
+    private void OnDesktopExit(object? sender, ControlledApplicationLifetimeExitEventArgs e)
+    {
+        Services.UiLogger.Log("程序退出", "主程序正常退出：退出码=" + e.ApplicationExitCode + " 运行时长="
+            + (DateTime.Now - System.Diagnostics.Process.GetCurrentProcess().StartTime).ToString(@"hh\:mm\:ss"));
+    }
+
+    /// <summary>进程退出：作为最后的兜底记录，保证正常退出与闪退都能留下终止痕迹。</summary>
+    private void OnProcessExit(object? sender, EventArgs e)
+    {
+        Services.UiLogger.Log("程序退出", "进程退出：退出码=" + Environment.ExitCode);
     }
 
     /// <summary>创建托盘常驻图标与右键菜单：显示主窗口、开机自启、退出。</summary>
@@ -184,7 +237,26 @@ public class App : Application
         this.ShowMainWindow();
     }
 
-    /// <summary>托盘菜单：切换开机自启。</summary>
+    /// <summary>
+    /// 启动时校正开机自启：以配置为准用当前可执行文件路径重新写入系统注册，
+    /// 注册失败时把配置回写为关，避免配置与系统真实状态长期不一致。
+    /// </summary>
+    private void ReconcileAutoStart(MainWindowViewModel viewModel)
+    {
+        AppSettings settings = viewModel.Settings;
+        bool applied = AutoStartManager.Apply(settings.AutoStart);
+        Services.UiLogger.Log("配置更改", "开机自启：启动时校正 配置值=" + settings.AutoStart + " 系统写入结果=" + applied);
+        if (settings.AutoStart && !applied)
+        {
+            settings.AutoStart = false;
+            viewModel.SaveSettingsAndApply();
+            Services.UiLogger.Log("配置更改", "开机自启：系统写入未生效，配置已回写为关闭");
+            Services.DebugWebHost.RecordDiagnostic("开机自启", new InvalidOperationException("开机自启注册未生效，已把配置回写为关闭"));
+        }
+        this.SyncTrayAutoStartState();
+    }
+
+    /// <summary>托盘菜单：切换开机自启，仅在系统实际生效后更新配置。</summary>
     public void OnTrayAutoStartClick(object? sender, EventArgs e)
     {
         MainWindowViewModel? viewModel = this.MainViewModel;
@@ -192,15 +264,21 @@ public class App : Application
         {
             return;
         }
-        viewModel.Settings.AutoStart = !viewModel.Settings.AutoStart;
-        AutoStartManager.Apply(viewModel.Settings.AutoStart);
-        viewModel.SaveSettingsAndApply();
+        bool target = !viewModel.Settings.AutoStart;
+        bool applied = AutoStartManager.Apply(target);
+        if (applied)
+        {
+            viewModel.Settings.AutoStart = target;
+            viewModel.SaveSettingsAndApply();
+        }
+        Services.UiLogger.Log("配置更改", "开机自启：托盘菜单切换 目标值=" + target + " 系统写入结果=" + applied);
         this.SyncTrayAutoStartState();
     }
 
     /// <summary>托盘菜单：真正退出并保存会话。</summary>
     public void OnTrayExitClick(object? sender, EventArgs e)
     {
+        Services.UiLogger.Log("程序退出", "托盘菜单选择退出：保存会话后关闭主窗口");
         this.CurrentMainWindow?.ForceClose();
     }
 

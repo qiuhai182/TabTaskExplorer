@@ -1,6 +1,7 @@
 ﻿using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
+using TabTaskExplorer.App.Services;
 
 namespace TabTaskExplorer.App.Views;
 
@@ -11,6 +12,7 @@ public partial class InputDialog : Window
     public InputDialog()
     {
         this.InitializeComponent();
+        UiLogger.AttachWindow(this);
     }
 
     /// <summary>用户点击确定后的输入结果。</summary>

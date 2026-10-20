@@ -11,8 +11,8 @@ using System.Threading.Tasks;
 namespace TabTaskExplorer.App.Services;
 
 /// <summary>
-/// 浏览器调试镜像服务：在本机回环地址上开启一个轻量 HTTP 服务，
-/// 浏览器打开后看到的页面与程序界面同构并实时同步，便于调试。
+/// 网页端服务：在本机回环地址上开启一个轻量 HTTP 服务，
+/// 浏览器打开后看到的页面与程序界面同构并实时同步。
 /// 只绑定 127.0.0.1，不监听外部网络；基于 TcpListener 实现，无额外依赖、无需端口授权。
 /// </summary>
 public class DebugWebHost
@@ -71,15 +71,21 @@ public class DebugWebHost
         }
     }
 
-    /// <summary>实际监听的地址（启动成功后可读）。</summary>
+    /// <summary>实际监听的地址（启动成功后可读，停止后为空）。</summary>
     public string ListenUrl { get; private set; } = string.Empty;
 
-    /// <summary>启动服务。端口被占用或其他网络错误时静默放弃（调试服务不影响主程序）。</summary>
-    public void Start(Func<Task<DebugUiState>> snapshotProvider, Action<int> selectHandler, Action<string> themeHandler, Action<string> openHandler, int port = DefaultPort)
+    /// <summary>实际监听的端口（启动成功后可读）。</summary>
+    public int ListenPort { get; private set; }
+
+    /// <summary>
+    /// 启动服务。端口被占用或其他网络错误时返回 false，由调用方记录并提示；
+    /// 网页端服务启动失败不影响主程序继续运行。
+    /// </summary>
+    public bool Start(Func<Task<DebugUiState>> snapshotProvider, Action<int> selectHandler, Action<string> themeHandler, Action<string> openHandler, int port = DefaultPort)
     {
         if (this.running)
         {
-            return;
+            return true;
         }
         this.snapshotProvider = snapshotProvider;
         this.selectHandler = selectHandler;
@@ -93,17 +99,19 @@ public class DebugWebHost
         }
         catch (Exception error)
         {
-            Trace.WriteLine("调试镜像服务启动失败：" + error.Message);
+            Trace.WriteLine("网页端服务启动失败：端口 " + port + " 不可用，" + error.Message);
             this.listener = null;
-            return;
+            return false;
         }
 
         this.running = true;
+        this.ListenPort = port;
         this.ListenUrl = "http://127.0.0.1:" + port + "/";
         Thread acceptThread = new Thread(this.AcceptLoop);
         acceptThread.IsBackground = true;
         acceptThread.Start();
-        Trace.WriteLine("调试镜像服务已启动：" + this.ListenUrl);
+        Trace.WriteLine("网页端服务已启动：" + this.ListenUrl);
+        return true;
     }
 
     /// <summary>停止服务（程序退出时由后台线程自动结束，无需显式调用）。</summary>
@@ -118,6 +126,8 @@ public class DebugWebHost
         {
             // 忽略停止时的套接字错误
         }
+        this.ListenPort = 0;
+        this.ListenUrl = string.Empty;
     }
 
     /// <summary>接受连接循环：每个连接交给独立后台线程处理。</summary>
@@ -176,7 +186,9 @@ public class DebugWebHost
 
                 if (path == "/" || path == "/index.html")
                 {
-                    WriteResponse(stream, "text/html; charset=utf-8", Encoding.UTF8.GetBytes(DebugPageHtml));
+                    // 页面顶部的地址跟随当前实际监听端口
+                    string html = DebugPageHtml.Replace("127.0.0.1:15919", "127.0.0.1:" + this.ListenPort);
+                    WriteResponse(stream, "text/html; charset=utf-8", Encoding.UTF8.GetBytes(html));
                 }
                 else if (path == "/api/state" && method == "GET")
                 {
@@ -290,7 +302,7 @@ public class DebugWebHost
 <html lang=""zh-CN"">
 <head>
 <meta charset=""utf-8"">
-<title>TabTaskExplorer 调试镜像</title>
+<title>TabTaskExplorer 网页端服务</title>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
   body { font:12px 'Segoe UI','Microsoft YaHei',sans-serif; color:#1C1C1C; background:#FFFFFF; }
@@ -360,7 +372,7 @@ public class DebugWebHost
     <div class=""url"" id=""url""></div>
     <button class=""themeBtn"" id=""themeBtn"" onclick=""toggleTheme()"">浅色</button>
   </div>
-  <div class=""bookmarkbar"">浏览器调试镜像：页面与程序界面实时同构，点击标签可在程序中切换，右侧按钮可切换程序主题</div>
+  <div class=""bookmarkbar"">网页端服务：页面与程序界面实时同构，点击标签可在程序中切换，右侧按钮可切换程序主题</div>
   <div class=""toolbar"">
     <span class=""tbtn"">查看</span><span class=""tbtn"">新建文件夹</span><span class=""tbtn"">批量改名</span><span class=""tbtn"">回收站</span><span class=""tbtn"">显示隐藏条目</span><span class=""tbtn"">信息窗格</span><span class=""tbtn"">刷新</span>
   </div>

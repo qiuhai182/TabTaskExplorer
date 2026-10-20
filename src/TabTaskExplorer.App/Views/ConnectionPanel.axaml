@@ -13,6 +13,7 @@
       <Button x:Name="ImportButton" Content="导入" Click="OnImportClick" ToolTip.Tip="从 JSON 文件导入连接配置" />
       <Button x:Name="OpenTerminalButton" Content="打开终端" Click="OnOpenTerminalClick" ToolTip.Tip="建立 SSH 远程终端" />
       <Button x:Name="OpenFolderButton" Content="打开远程文件夹" Click="OnOpenFolderClick" ToolTip.Tip="把远程目录作为文件标签打开" />
+      <Button x:Name="OpenIdeButton" Content="在 IDE 中打开" Click="OnOpenIdeClick" ToolTip.Tip="以远程目录为工作区进入 IDE 模式，直接编辑保存回传" />
       <Button x:Name="OpenTransfersButton" Content="传输队列" Click="OnOpenTransfersClick" ToolTip.Tip="打开上传下载队列（支持断点续传）" />
       <Button x:Name="ImportXshellButton" Content="导入 Xshell" Click="OnImportXshellClick" ToolTip.Tip="从 Xshell 会话文件（.xsh / .xshf）导入连接" />
     </StackPanel>
@@ -70,7 +71,7 @@
 
           <StackPanel x:Name="SecretSection" IsVisible="False">
             <TextBlock Text="密码（留空保持原密码）" FontSize="12" />
-            <TextBox x:Name="SecretBox" Margin="0,2,0,8" PasswordChar="•" />
+            <TextBox x:Name="SecretBox" Margin="0,2,0,8" PasswordChar="?" />
           </StackPanel>
 
           <StackPanel x:Name="KeySection" IsVisible="False">

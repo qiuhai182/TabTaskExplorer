@@ -35,13 +35,46 @@ public class MainWindowViewModel : INotifyPropertyChanged
     private object? selectedTab;
     private bool showToolbar = true;
     private bool showBookmarkBar = true;
+    private bool showTopWhiteStrip = false;
+    private bool isIdeMode;
     private List<string>? clipboardPaths;
     private bool clipboardIsCut;
+    private DebugWebHost? debugWebHost;
+    private bool webServiceRunning;
+    private int webServicePort;
+    private string webServiceStatus = "网页端服务：未启动";
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
     /// <summary>应用设置（所有标签页共享同一份实例）。</summary>
     public AppSettings Settings { get; private set; }
+
+    /// <summary>网页端服务的状态文字：真实监听地址，或未启动原因（状态栏展示）。</summary>
+    public string WebServiceStatus
+    {
+        get { return this.webServiceStatus; }
+    }
+
+    /// <summary>IDE 模式外壳视图模型（资源树 + 编辑器标签 + 查找面板）。</summary>
+    public IdeShellViewModel IdeShell { get; private set; }
+
+    /// <summary>当前是否处于 IDE 模式。</summary>
+    public bool IsIdeMode
+    {
+        get { return this.isIdeMode; }
+        private set
+        {
+            this.isIdeMode = value;
+            this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(this.IsIdeMode)));
+            this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsExplorerMode)));
+        }
+    }
+
+    /// <summary>当前是否处于资源管理器模式（与 IDE 模式互斥）。</summary>
+    public bool IsExplorerMode
+    {
+        get { return !this.isIdeMode; }
+    }
 
     /// <summary>全部打开的标签页（可能是文件标签或任务看板）。</summary>
     public ObservableCollection<object> Tabs { get; } = new ObservableCollection<object>();
@@ -96,6 +129,17 @@ public class MainWindowViewModel : INotifyPropertyChanged
         }
     }
 
+    /// <summary>是否在窗口顶部显示白色边框条（关闭时窗口由框架绘制为无边框外观）。</summary>
+    public bool ShowTopWhiteStrip
+    {
+        get { return this.showTopWhiteStrip; }
+        private set
+        {
+            this.showTopWhiteStrip = value;
+            this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ShowTopWhiteStrip)));
+        }
+    }
+
     /// <summary>是否显示顶部书签栏。</summary>
     public bool ShowBookmarkBar
     {
@@ -111,6 +155,7 @@ public class MainWindowViewModel : INotifyPropertyChanged
     {
         this.services = services;
         this.Settings = this.settingsStore.Load();
+        this.IdeShell = new IdeShellViewModel(this.Settings, services);
         this.FillThisPcItems();
         this.FillQuickAccessItems();
         this.SyncViewSettings();
@@ -128,6 +173,88 @@ public class MainWindowViewModel : INotifyPropertyChanged
         {
             this.AddTab(string.Empty);
         }
+
+        // 按「默认打开模式」决定启动时进入 IDE 模式还是资源管理器模式
+        if (string.Equals(this.Settings.DefaultOpenMode, "Ide", StringComparison.OrdinalIgnoreCase))
+        {
+            this.EnterIdeMode();
+        }
+    }
+
+    /// <summary>两种模式一键切换。</summary>
+    public void ToggleIdeMode()
+    {
+        if (this.IsIdeMode)
+        {
+            this.ExitIdeMode();
+        }
+        else
+        {
+            this.EnterIdeMode();
+        }
+    }
+
+    /// <summary>
+    /// 进入 IDE 模式：以当前文件标签所在目录（本机或远程）作为工作区，保留资源管理器标签会话。
+    /// </summary>
+    public void EnterIdeMode()
+    {
+        this.IsIdeMode = true;
+        string root = this.ResolveIdeWorkspaceRoot(out IFileSystemProvider provider, out IFileContentAccess? contentAccess, out string connectionName);
+        this.IdeShell.SetWorkspace(root, provider, contentAccess, connectionName);
+        UiLogger.Log("程序行为", "切换到 IDE 模式：工作区=" + (string.IsNullOrEmpty(root) ? "无" : root) + " 连接=" + (string.IsNullOrEmpty(connectionName) ? "本机" : connectionName));
+        if (!string.IsNullOrEmpty(root))
+        {
+            this.Settings.IdeWorkspacePath = contentAccess == null ? root : string.Empty;
+            this.settingsStore.Save(this.Settings);
+        }
+    }
+
+    /// <summary>退出 IDE 模式，回到资源管理器模式（标签会话保持不变）。</summary>
+    public void ExitIdeMode()
+    {
+        this.IsIdeMode = false;
+        UiLogger.Log("程序行为", "退出 IDE 模式：回到资源管理器模式");
+    }
+
+    /// <summary>
+    /// 计算 IDE 工作区根路径与对应提供者：优先当前文件标签目录，其次最近使用的 IDE 工作区，最后用户目录。
+    /// </summary>
+    private string ResolveIdeWorkspaceRoot(out IFileSystemProvider provider, out IFileContentAccess? contentAccess, out string connectionName)
+    {
+        FileTabViewModel? tab = this.SelectedFileTab;
+        if (tab != null && !string.IsNullOrEmpty(tab.CurrentPath))
+        {
+            provider = tab.FileSystemProvider;
+            contentAccess = tab.ContentAccess;
+            connectionName = this.ResolveConnectionName(tab.AttachedProfileId);
+            return tab.CurrentPath;
+        }
+
+        provider = this.services.GetRequiredService<IFileSystemProvider>();
+        contentAccess = null;
+        connectionName = string.Empty;
+        if (!string.IsNullOrEmpty(this.Settings.IdeWorkspacePath) && Directory.Exists(this.Settings.IdeWorkspacePath))
+        {
+            return this.Settings.IdeWorkspacePath;
+        }
+        string fallback = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        return fallback;
+    }
+
+    /// <summary>按连接编号解析连接名称（IDE 工作区标题与远程编辑显示用）。</summary>
+    private string ResolveConnectionName(string profileId)
+    {
+        if (string.IsNullOrEmpty(profileId))
+        {
+            return string.Empty;
+        }
+        RemoteConnectionProfile? profile = this.services.GetRequiredService<Kernel.Services.ConnectionManager>().FindById(profileId);
+        if (profile == null)
+        {
+            return "远程";
+        }
+        return profile.Name;
     }
 
     /// <summary>新建文件标签页并打开指定路径。</summary>
@@ -140,6 +267,7 @@ public class MainWindowViewModel : INotifyPropertyChanged
         tab.PathChanged += this.OnTabPathChanged;
         this.Tabs.Add(tab);
         this.SelectedTab = tab;
+        UiLogger.Log("程序行为", "新建文件标签：路径=" + (string.IsNullOrEmpty(path) ? "此电脑" : path) + " 标签总数=" + this.Tabs.Count);
     }
 
     /// <summary>最近访问的路径（供地址栏"最近"下拉列表展示）。</summary>
@@ -186,6 +314,24 @@ public class MainWindowViewModel : INotifyPropertyChanged
         TaskBoardViewModel newBoard = new TaskBoardViewModel(this.services.GetRequiredService<ITaskStore>());
         this.Tabs.Add(newBoard);
         this.SelectedTab = newBoard;
+        UiLogger.Log("程序行为", "新建任务看板标签：标签总数=" + this.Tabs.Count);
+    }
+
+    /// <summary>打开全局搜索标签页（已存在时直接选中）。</summary>
+    public void OpenSearchTab()
+    {
+        foreach (object tab in this.Tabs)
+        {
+            if (tab is SearchTabViewModel search)
+            {
+                this.SelectedTab = search;
+                return;
+            }
+        }
+        SearchTabViewModel newSearch = new SearchTabViewModel(this.services.GetRequiredService<IFileSearchService>());
+        this.Tabs.Add(newSearch);
+        this.SelectedTab = newSearch;
+        UiLogger.Log("程序行为", "新建全局搜索标签：标签总数=" + this.Tabs.Count);
     }
 
     /// <summary>打开连接管理标签页（已存在时直接选中）。</summary>
@@ -204,6 +350,26 @@ public class MainWindowViewModel : INotifyPropertyChanged
         newManager.Owner = this;
         this.Tabs.Add(newManager);
         this.SelectedTab = newManager;
+        UiLogger.Log("程序行为", "新建连接管理标签：标签总数=" + this.Tabs.Count);
+    }
+
+    /// <summary>打开磁盘视图标签页（已存在时直接选中）。</summary>
+    public void OpenDiskViewTab()
+    {
+        foreach (object tab in this.Tabs)
+        {
+            if (tab is DiskViewPanelViewModel diskView)
+            {
+                this.SelectedTab = diskView;
+                return;
+            }
+        }
+
+        DiskViewPanelViewModel newDiskView = new DiskViewPanelViewModel(
+            this.services.GetRequiredService<IDiskUsageProvider>());
+        this.Tabs.Add(newDiskView);
+        this.SelectedTab = newDiskView;
+        UiLogger.Log("程序行为", "新建磁盘视图标签：标签总数=" + this.Tabs.Count);
     }
 
     /// <summary>各连接的传输服务缓存：同一连接复用同一个传输队列。</summary>
@@ -297,6 +463,39 @@ public class MainWindowViewModel : INotifyPropertyChanged
         catch (Exception ex)
         {
             Views.MessageDialog.Show(this.OwnerWindow, "连接失败", "无法打开远程文件夹：" + ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// 以指定连接的远程根目录为工作区进入 IDE 模式：资源树直接浏览远端，
+    /// 打开文本文件后保存会经 SFTP 回传。
+    /// </summary>
+    public async void OpenRemoteIdeRoot(RemoteConnectionProfile profile)
+    {
+        if (profile == null)
+        {
+            return;
+        }
+        try
+        {
+            string secret = this.ResolveSecret(profile);
+            IRemoteSessionFactory factory = this.services.GetRequiredService<IRemoteSessionFactory>();
+            IFileSystemProvider provider = await Task.Run(delegate
+            {
+                return factory.OpenFileSystem(profile, secret);
+            });
+            IFileContentAccess? contentAccess = provider as IFileContentAccess;
+            if (contentAccess == null)
+            {
+                Views.MessageDialog.Show(this.OwnerWindow, "不支持", "该连接不支持远程文件内容读写，无法在 IDE 中编辑。");
+                return;
+            }
+            this.IsIdeMode = true;
+            this.IdeShell.SetWorkspace("/", provider, contentAccess, profile.Name);
+        }
+        catch (Exception ex)
+        {
+            Views.MessageDialog.Show(this.OwnerWindow, "连接失败", "无法打开远程 IDE 工作区：" + ex.Message);
         }
     }
 
@@ -407,6 +606,7 @@ public class MainWindowViewModel : INotifyPropertyChanged
             return;
         }
         this.Tabs.Remove(tab);
+        UiLogger.Log("程序行为", "关闭标签：序号=" + index + " 剩余标签数=" + this.Tabs.Count);
         if (this.Tabs.Count == 0)
         {
             this.SelectedTab = null;
@@ -509,6 +709,7 @@ public class MainWindowViewModel : INotifyPropertyChanged
         }
         this.Settings.PinnedPaths.Add(path);
         this.settingsStore.Save(this.Settings);
+        UiLogger.Log("配置更改", "快捷访问：新增固定路径=" + path + " 当前固定数量=" + this.Settings.PinnedPaths.Count);
         this.FillQuickAccessItems();
     }
 
@@ -517,6 +718,7 @@ public class MainWindowViewModel : INotifyPropertyChanged
     {
         this.Settings.PinnedPaths.Remove(path);
         this.settingsStore.Save(this.Settings);
+        UiLogger.Log("配置更改", "快捷访问：取消固定路径=" + path + " 当前固定数量=" + this.Settings.PinnedPaths.Count);
         this.FillQuickAccessItems();
     }
 
@@ -614,11 +816,31 @@ public class MainWindowViewModel : INotifyPropertyChanged
         tab.Refresh();
     }
 
-    /// <summary>保存设置并让全部文件标签页按新设置刷新。</summary>
+    /// <summary>保存设置并让全部文件标签页按新设置刷新；网页端服务的开关与端口在此重新应用。</summary>
     public void SaveSettingsAndApply()
     {
         this.settingsStore.Save(this.Settings);
+        UiLogger.Log("配置更改", "保存设置并应用：隐藏文件=" + this.Settings.ShowHiddenFiles
+            + " 显示扩展名=" + this.Settings.ShowFileExtensions
+            + " 双击标签关闭=" + this.Settings.DoubleClickTabClose
+            + " 关闭到托盘=" + this.Settings.CloseToTray
+            + " 显示工具栏=" + this.Settings.ShowToolbar
+            + " 显示书签栏=" + this.Settings.ShowBookmarkBar
+            + " 顶部白色条=" + this.Settings.ShowTopWhiteStrip
+            + " 界面主题=" + this.Settings.Theme
+            + " 开机自启=" + this.Settings.AutoStart
+            + " 网页端服务开关=" + this.Settings.EnableWebService
+            + " 网页端服务端口=" + this.Settings.WebServicePort
+            + " 恢复上次标签=" + this.Settings.RestoreLastTabs
+            + " 默认打开模式=" + this.Settings.DefaultOpenMode
+            + " 默认文件管理器=" + this.Settings.DefaultFileManager
+            + " 编辑器字号=" + this.Settings.EditorFontSize
+            + " 编辑器Tab宽度=" + this.Settings.EditorTabWidth
+            + " 快捷访问固定数=" + this.Settings.PinnedPaths.Count
+            + " 打开方式规则数=" + (this.Settings.FileOpenRules != null ? this.Settings.FileOpenRules.Count : 0)
+            + " 快捷键条数=" + this.Settings.Hotkeys.Count);
         this.SyncViewSettings();
+        this.ApplyWebServiceSettings();
         foreach (object tab in this.Tabs)
         {
             if (tab is FileTabViewModel fileTab)
@@ -640,6 +862,7 @@ public class MainWindowViewModel : INotifyPropertyChanged
             }
         }
         this.settingsStore.Save(this.Settings);
+        UiLogger.Log("配置更改", "会话保存：记录打开的标签数量=" + this.Settings.OpenTabPaths.Count);
     }
 
     /// <summary>创建进程监控面板（供独立窗口使用）。</summary>
@@ -650,14 +873,85 @@ public class MainWindowViewModel : INotifyPropertyChanged
         return new ProcessPanelViewModel(processProvider, metricsProvider);
     }
 
-    /// <summary>启动浏览器调试镜像服务：页面与程序界面实时同构，便于调试。</summary>
-    public void StartDebugWebHost(DebugWebHost host)
+    /// <summary>接入网页端服务并按当前设置决定是否随程序启动。</summary>
+    public void AttachDebugWebHost(DebugWebHost host)
     {
-        host.Start(
+        this.debugWebHost = host;
+        this.ApplyWebServiceSettings();
+    }
+
+    /// <summary>
+    /// 按设置启动或停止网页端服务：开关关闭时停止，端口变化时按新端口重启，
+    /// 并在状态栏显示真实监听地址或未启动原因。设置发生变化后由 SaveSettingsAndApply 调用。
+    /// </summary>
+    public void ApplyWebServiceSettings()
+    {
+        DebugWebHost? host = this.debugWebHost;
+        if (host == null)
+        {
+            return;
+        }
+
+        if (!this.Settings.EnableWebService)
+        {
+            if (this.webServiceRunning)
+            {
+                host.Stop();
+                this.webServiceRunning = false;
+                UiLogger.Log("网页端服务", "停止：按设置关闭 原监听地址=" + host.ListenUrl + " 原端口=" + this.webServicePort);
+            }
+            else
+            {
+                UiLogger.Log("网页端服务", "保持停止：设置中已关闭，服务未在运行");
+            }
+            this.SetWebServiceStatus("网页端服务：未启动");
+            return;
+        }
+
+        int port = this.Settings.WebServicePort;
+        if (port < 1024 || port > 65535)
+        {
+            UiLogger.Log("网页端服务", "端口非法已回落默认值：配置端口=" + port + " 默认端口=" + DebugWebHost.DefaultPort);
+            port = DebugWebHost.DefaultPort;
+            this.Settings.WebServicePort = port;
+        }
+        if (this.webServiceRunning && this.webServicePort == port)
+        {
+            return;
+        }
+        if (this.webServiceRunning)
+        {
+            host.Stop();
+            this.webServiceRunning = false;
+            UiLogger.Log("网页端服务", "停止：端口变化需重启 原端口=" + this.webServicePort + " 新端口=" + port);
+        }
+
+        bool started = host.Start(
             delegate { return this.DispatchDebugSnapshotAsync(); },
             delegate(int index) { this.SelectDebugTabOnUiThread(index); },
             delegate(string theme) { this.SetThemeOnUiThread(theme); },
-            delegate(string path) { this.OpenPathOnUiThread(path); });
+            delegate(string path) { this.OpenPathOnUiThread(path); },
+            port);
+
+        this.webServiceRunning = started;
+        this.webServicePort = port;
+        if (started)
+        {
+            this.SetWebServiceStatus("网页端服务：" + host.ListenUrl);
+            UiLogger.Log("网页端服务", "启动成功：监听地址=" + host.ListenUrl + " 端口=" + port);
+        }
+        else
+        {
+            this.SetWebServiceStatus("网页端服务：未启动（端口 " + port + " 不可用）");
+            UiLogger.Log("网页端服务", "启动失败：端口=" + port + " 不可用，可能已被其他程序占用");
+        }
+    }
+
+    /// <summary>更新网页端服务的状态文字（状态栏展示）。</summary>
+    private void SetWebServiceStatus(string status)
+    {
+        this.webServiceStatus = status;
+        this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(this.WebServiceStatus)));
     }
 
     /// <summary>浏览器镜像打开路径：跨线程安全，无文件标签时自动新建。</summary>
@@ -708,11 +1002,16 @@ public class MainWindowViewModel : INotifyPropertyChanged
     /// <summary>应用主题值并持久化（必须在 UI 线程）。</summary>
     private void ApplyThemeValue(string theme)
     {
+        string previous = this.Settings.Theme;
         this.Settings.Theme = theme == "Light" ? "Light" : "Dark";
         Avalonia.Application.Current!.RequestedThemeVariant = this.Settings.Theme == "Light"
             ? Avalonia.Styling.ThemeVariant.Light
             : Avalonia.Styling.ThemeVariant.Dark;
         this.settingsStore.Save(this.Settings);
+        if (previous != this.Settings.Theme)
+        {
+            UiLogger.Log("配置更改", "界面主题：原值=" + previous + " 新值=" + this.Settings.Theme);
+        }
     }
 
     /// <summary>构建界面状态快照（必须在 UI 线程调用）。</summary>
@@ -858,6 +1157,7 @@ public class MainWindowViewModel : INotifyPropertyChanged
     {
         this.ShowToolbar = this.Settings.ShowToolbar;
         this.ShowBookmarkBar = this.Settings.ShowBookmarkBar;
+        this.ShowTopWhiteStrip = this.Settings.ShowTopWhiteStrip;
     }
 
     /// <summary>填充此电脑分组：磁盘分区与常用文件夹。</summary>

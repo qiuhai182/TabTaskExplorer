@@ -3,6 +3,7 @@ using System.Collections.ObjectModel;
 using System.IO;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
+using TabTaskExplorer.App.Services;
 using TabTaskExplorer.App.ViewModels;
 using TabTaskExplorer.Kernel.Models;
 using TabTaskExplorer.Kernel.Services;
@@ -21,6 +22,7 @@ public partial class BatchRenameDialog : Window
     public BatchRenameDialog()
     {
         this.InitializeComponent();
+        UiLogger.AttachWindow(this);
     }
 
     /// <summary>以勾选的条目初始化对话框。</summary>

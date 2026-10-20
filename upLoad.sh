@@ -4,7 +4,7 @@
 
 git pull
 
-python convert_to_utf8.py --strip-bom
+python convert_to_utf8.py
 
 git add --all
 

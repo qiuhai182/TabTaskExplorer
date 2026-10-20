@@ -124,6 +124,18 @@ public partial class ConnectionPanel : UserControl
         viewModel.Owner.OpenRemoteFolderTab(selected);
     }
 
+    /// <summary>以选中连接的远程目录为工作区进入 IDE 模式，可直接编辑并保存回传。</summary>
+    private void OnOpenIdeClick(object? sender, RoutedEventArgs e)
+    {
+        ConnectionManagerViewModel? viewModel = this.ViewModel;
+        RemoteConnectionProfile? selected = viewModel?.SelectedConnection;
+        if (viewModel?.Owner == null || selected == null)
+        {
+            return;
+        }
+        viewModel.Owner.OpenRemoteIdeRoot(selected);
+    }
+
     /// <summary>打开选中连接的传输队列。</summary>
     private void OnOpenTransfersClick(object? sender, RoutedEventArgs e)
     {

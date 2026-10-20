@@ -1,6 +1,6 @@
 <Project>
 
-  <!-- È«²Ö¿âÍ³Ò»µÄ±àÒëÉèÖÃ£ºËùÓĞ¹¤³Ì¹²ÓÃÍ¬Ò»Ä¿±ê¿ò¼Ü£¬±£Ö¤¿çÆ½Ì¨±àÒëÒ»ÖÂĞÔ -->
+  <!-- å…¨ä»“åº“ç»Ÿä¸€çš„ç¼–è¯‘è®¾ç½®ï¼šæ‰€æœ‰å·¥ç¨‹å…±ç”¨åŒä¸€ç›®æ ‡æ¡†æ¶ï¼Œä¿è¯è·¨å¹³å°ç¼–è¯‘ä¸€è‡´æ€§ -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <LangVersion>latest</LangVersion>
@@ -8,7 +8,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
 
-  <!-- ÈÎºÎ¹¹½¨·½Ê½£¨dotnet run / dotnet build / VS / build.bat£©±àÒëÇ°£¬ÏÈ°Ñ±¾¹¤³ÌÔ´Âë¹éÒ»»¯Îª UTF-8 BOM£¬¸ùÖÎ±à¼­Æ÷·´¸´×ªÂëµ¼ÖÂµÄ±àÒëÆÚÖĞÎÄÂÒÂë -->
+  <!-- ä»»ä½•æ„å»ºæ–¹å¼ï¼ˆdotnet run / dotnet build / VS / build.batï¼‰ç¼–è¯‘å‰ï¼Œå…ˆæŠŠæœ¬å·¥ç¨‹æºç å½’ä¸€åŒ–ä¸º UTF-8 BOMï¼Œæ ¹æ²»ç¼–è¾‘å™¨åå¤è½¬ç å¯¼è‡´çš„ç¼–è¯‘æœŸä¸­æ–‡ä¹±ç  -->
   <Target Name="NormalizeSourceEncoding" BeforeTargets="BeforeBuild" Condition="'$(OS)' == 'Windows_NT'">
     <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -Command &quot;$utf8Bom = New-Object System.Text.UTF8Encoding($true); $utf8Strict = New-Object System.Text.UTF8Encoding($false, $true); $gbk = [System.Text.Encoding]::GetEncoding(936); $files = Get-ChildItem -Path '$(MSBuildProjectDirectory)' -Recurse -File -Include *.cs,*.xaml,*.axaml,*.csproj,*.props,*.json; foreach ($file in $files) { $bytes = [System.IO.File]::ReadAllBytes($file.FullName); if ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) { $text = $utf8Strict.GetString($bytes[3..($bytes.Length-1)]) } else { try { $text = $utf8Strict.GetString($bytes) } catch { $text = $gbk.GetString($bytes) } }; while ($text.Length -gt 0 -and $text[0] -eq [char]0xFEFF) { $text = $text.Substring(1) }; if ($text.StartsWith('?&lt;') -or $text.StartsWith('?using')) { $text = $text.Substring(1) }; [System.IO.File]::WriteAllText($file.FullName, $text, $utf8Bom) }&quot;" />
   </Target>

@@ -1,0 +1,920 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.ComponentModel;
+using System.IO;
+using System.Threading.Tasks;
+using Avalonia.Threading;
+using TabTaskExplorer.App.Services;
+using TabTaskExplorer.Kernel.Abstractions;
+using TabTaskExplorer.Kernel.Models;
+using TabTaskExplorer.Kernel.Services;
+
+namespace TabTaskExplorer.App.ViewModels;
+
+/// <summary>IDE 底部面板中的一个查找结果条目。</summary>
+public class FindResultItem
+{
+    /// <summary>文件名。</summary>
+    public string FileName { get; set; } = string.Empty;
+
+    /// <summary>文件完整路径。</summary>
+    public string FilePath { get; set; } = string.Empty;
+
+    /// <summary>行号（1 基）。</summary>
+    public int LineNumber { get; set; }
+
+    /// <summary>该行文本（已裁剪）。</summary>
+    public string LineText { get; set; } = string.Empty;
+
+    /// <summary>结果摘要文字。</summary>
+    public string Summary
+    {
+        get { return this.FileName + "  行 " + this.LineNumber; }
+    }
+}
+
+/// <summary>IDE 快速打开（Ctrl+P）列表项。</summary>
+public class QuickOpenItem
+{
+    /// <summary>文件名。</summary>
+    public string FileName { get; set; } = string.Empty;
+
+    /// <summary>文件完整路径。</summary>
+    public string FilePath { get; set; } = string.Empty;
+
+    /// <summary>所在目录显示文字。</summary>
+    public string DirectoryText { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// IDE 外壳视图模型：工作区资源树 + 编辑器标签集合 + 当前编辑器 + 查找 / 输出面板。
+/// 与资源管理器模式并存，切换仅改可见性，标签会话各自保持。
+/// </summary>
+public class IdeShellViewModel : INotifyPropertyChanged
+{
+    private static readonly string[] TextFileExtensions =
+    {
+        ".cs", ".txt", ".md", ".json", ".xml", ".config", ".csproj", ".sln", ".props", ".targets",
+        ".js", ".ts", ".css", ".html", ".htm", ".py", ".java", ".c", ".cpp", ".h", ".hpp", ".go",
+        ".rs", ".sh", ".bat", ".cmd", ".ps1", ".ini", ".yml", ".yaml", ".sql", ".log", ".gitignore",
+        ".editorconfig", ".axaml", ".xaml", ".csv", ".tsv", ".toml", ".env", ".gradle", ".kt",
+    };
+
+    private readonly AppSettings settings;
+    private readonly IServiceProvider? services;
+    private string workspaceRoot = string.Empty;
+    private IFileSystemProvider workspaceProvider;
+    private IFileContentAccess? workspaceContentAccess;
+    private string workspaceConnectionName = string.Empty;
+    private IdeEditorTabViewModel? selectedEditor;
+    private bool showFindPanel;
+    private string findText = string.Empty;
+    private string replaceText = string.Empty;
+    private string findStatusText = string.Empty;
+    private string solutionStatusText = "就绪";
+    private bool isWorkspaceLoading;
+    private string quickOpenText = string.Empty;
+    private bool showQuickOpen;
+
+    /// <inheritdoc />
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    /// <summary>打开文件请求转发（资源树双击时由视图调用）。</summary>
+    public event EventHandler<string>? StatusMessage;
+
+    /// <summary>应用设置（字体、字号、Tab 宽度等由视图读取）。</summary>
+    public AppSettings Settings
+    {
+        get { return this.settings; }
+    }
+
+    /// <summary>工作区根路径。</summary>
+    public string WorkspaceRoot
+    {
+        get { return this.workspaceRoot; }
+        private set
+        {
+            this.workspaceRoot = value;
+            this.RaisePropertyChanged(nameof(this.WorkspaceRoot));
+            this.RaisePropertyChanged(nameof(this.WorkspaceRootText));
+        }
+    }
+
+    /// <summary>工作区根路径显示文字（远程加连接名前缀）。</summary>
+    public string WorkspaceRootText
+    {
+        get
+        {
+            if (this.workspaceConnectionName.Length == 0)
+            {
+                return this.workspaceRoot;
+            }
+            return this.workspaceConnectionName + ":" + this.workspaceRoot;
+        }
+    }
+
+    /// <summary>工作区资源树根节点集合。</summary>
+    public ObservableCollection<FileTreeItemViewModel> RootItems { get; } = new ObservableCollection<FileTreeItemViewModel>();
+
+    /// <summary>已打开的编辑器标签。</summary>
+    public ObservableCollection<IdeEditorTabViewModel> Editors { get; } = new ObservableCollection<IdeEditorTabViewModel>();
+
+    /// <summary>当前激活的编辑器标签。</summary>
+    public IdeEditorTabViewModel? SelectedEditor
+    {
+        get { return this.selectedEditor; }
+        set
+        {
+            this.selectedEditor = value;
+            this.RaisePropertyChanged(nameof(this.SelectedEditor));
+            this.RaisePropertyChanged(nameof(this.HasActiveEditor));
+            this.RaisePropertyChanged(nameof(this.HasNoActiveEditor));
+        }
+    }
+
+    /// <summary>是否存在激活的编辑器。</summary>
+    public bool HasActiveEditor
+    {
+        get { return this.selectedEditor != null; }
+    }
+
+    /// <summary>是否没有激活的编辑器（供空状态提示绑定）。</summary>
+    public bool HasNoActiveEditor
+    {
+        get { return this.selectedEditor == null; }
+    }
+
+    /// <summary>是否显示底部查找面板。</summary>
+    public bool ShowFindPanel
+    {
+        get { return this.showFindPanel; }
+        set
+        {
+            this.showFindPanel = value;
+            this.RaisePropertyChanged(nameof(this.ShowFindPanel));
+        }
+    }
+
+    /// <summary>查找关键字。</summary>
+    public string FindText
+    {
+        get { return this.findText; }
+        set
+        {
+            this.findText = value;
+            this.RaisePropertyChanged(nameof(this.FindText));
+        }
+    }
+
+    /// <summary>替换文字。</summary>
+    public string ReplaceText
+    {
+        get { return this.replaceText; }
+        set
+        {
+            this.replaceText = value;
+            this.RaisePropertyChanged(nameof(this.ReplaceText));
+        }
+    }
+
+    /// <summary>查找状态提示。</summary>
+    public string FindStatusText
+    {
+        get { return this.findStatusText; }
+        private set
+        {
+            this.findStatusText = value;
+            this.RaisePropertyChanged(nameof(this.FindStatusText));
+        }
+    }
+
+    /// <summary>输出面板状态文字。</summary>
+    public string SolutionStatusText
+    {
+        get { return this.solutionStatusText; }
+        private set
+        {
+            this.solutionStatusText = value;
+            this.RaisePropertyChanged(nameof(this.SolutionStatusText));
+        }
+    }
+
+    /// <summary>工作区是否正在加载。</summary>
+    public bool IsWorkspaceLoading
+    {
+        get { return this.isWorkspaceLoading; }
+        private set
+        {
+            this.isWorkspaceLoading = value;
+            this.RaisePropertyChanged(nameof(this.IsWorkspaceLoading));
+        }
+    }
+
+    /// <summary>查找结果集合（工作区范围内搜索）。</summary>
+    public ObservableCollection<FindResultItem> FindResults { get; } = new ObservableCollection<FindResultItem>();
+
+    /// <summary>快速打开候选集合（Ctrl+P）。</summary>
+    public ObservableCollection<QuickOpenItem> QuickOpenItems { get; } = new ObservableCollection<QuickOpenItem>();
+
+    /// <summary>快速打开关键字。</summary>
+    public string QuickOpenText
+    {
+        get { return this.quickOpenText; }
+        set
+        {
+            this.quickOpenText = value;
+            this.ApplyQuickOpenFilter();
+            this.RaisePropertyChanged(nameof(this.QuickOpenText));
+        }
+    }
+
+    /// <summary>是否显示快速打开浮层。</summary>
+    public bool ShowQuickOpen
+    {
+        get { return this.showQuickOpen; }
+        set
+        {
+            this.showQuickOpen = value;
+            this.RaisePropertyChanged(nameof(this.ShowQuickOpen));
+        }
+    }
+
+    /// <summary>构建 IDE 外壳；工作区初始为空（由 SetWorkspace 注入）。</summary>
+    public IdeShellViewModel(AppSettings settings, IServiceProvider? services)
+    {
+        this.settings = settings;
+        this.services = services;
+        this.workspaceProvider = new NullFileSystemProvider();
+    }
+
+    /// <summary>
+    /// 设置工作区：注入文件系统提供者与远程内容访问能力，随后重建资源树。
+    /// 本机调用时 contentAccess 传 null（走内核 ITextFileService），远程传入会话的内容访问能力。
+    /// </summary>
+    public void SetWorkspace(string rootPath, IFileSystemProvider provider, IFileContentAccess? contentAccess, string connectionName)
+    {
+        this.workspaceProvider = provider;
+        this.workspaceContentAccess = contentAccess;
+        this.workspaceConnectionName = connectionName ?? string.Empty;
+        this.WorkspaceRoot = contentAccess != null ? RemotePathUtility.Normalize(rootPath) : (rootPath ?? string.Empty);
+        this.ReloadWorkspace();
+    }
+
+    /// <summary>重建资源树根节点（后台枚举根目录）。</summary>
+    public void ReloadWorkspace()
+    {
+        if (this.workspaceProvider is NullFileSystemProvider || string.IsNullOrEmpty(this.workspaceRoot))
+        {
+            this.RootItems.Clear();
+            return;
+        }
+        this.IsWorkspaceLoading = true;
+        string root = this.workspaceRoot;
+        IFileSystemProvider provider = this.workspaceProvider;
+        bool includeHidden = this.settings.ShowHiddenFiles;
+        bool remote = this.workspaceContentAccess != null;
+        IFileContentAccess? access = this.workspaceContentAccess;
+        string connection = this.workspaceConnectionName;
+
+        Task.Run(delegate
+        {
+            List<FileTreeItemViewModel> loaded = new List<FileTreeItemViewModel>();
+            string? errorText = null;
+            try
+            {
+                DirectoryListingOptions options = new DirectoryListingOptions();
+                options.ShowHiddenFiles = includeHidden;
+                foreach (FileEntry entry in provider.ListDirectory(root, options))
+                {
+                    loaded.Add(new FileTreeItemViewModel(provider, includeHidden, entry, remote, access, connection));
+                }
+            }
+            catch (Exception error)
+            {
+                errorText = error.Message;
+            }
+            Dispatcher.UIThread.Post(delegate { this.ApplyWorkspace(loaded, errorText); });
+        });
+    }
+
+    /// <summary>在界面线程应用资源树根节点。</summary>
+    private void ApplyWorkspace(List<FileTreeItemViewModel> loaded, string? errorText)
+    {
+        loaded.Sort(new Comparison<FileTreeItemViewModel>(CompareItems));
+        this.RootItems.Clear();
+        foreach (FileTreeItemViewModel item in loaded)
+        {
+            this.RootItems.Add(item);
+        }
+        this.IsWorkspaceLoading = false;
+        if (errorText != null)
+        {
+            this.SolutionStatusText = "无法读取工作区：" + errorText;
+        }
+        else
+        {
+            this.SolutionStatusText = "已加载 " + loaded.Count + " 个根条目";
+        }
+    }
+
+    /// <summary>根节点排序：文件夹在前。</summary>
+    private static int CompareItems(FileTreeItemViewModel left, FileTreeItemViewModel right)
+    {
+        if (left.IsDirectory != right.IsDirectory)
+        {
+            return left.IsDirectory ? -1 : 1;
+        }
+        return string.Compare(left.Name, right.Name, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>构建设计 <see cref="IEditorFileAccess"/>：本机走内核文本服务，远程走内容访问能力。</summary>
+    public IEditorFileAccess BuildAccess(string filePath, IFileContentAccess? contentAccess, string connectionName)
+    {
+        if (contentAccess != null)
+        {
+            return new RemoteEditorFileAccess(contentAccess, filePath, connectionName);
+        }
+        ITextFileService textService = ResolveTextService();
+        return new LocalEditorFileAccess(textService, filePath);
+    }
+
+    /// <summary>解析内核文本服务实例。</summary>
+    private ITextFileService ResolveTextService()
+    {
+        if (this.services != null)
+        {
+            ITextFileService? registered = this.services.GetService(typeof(ITextFileService)) as ITextFileService;
+            if (registered != null)
+            {
+                return registered;
+            }
+        }
+        return new DefaultTextFileService();
+    }
+
+    /// <summary>打开一个文件到编辑器标签（已打开则直接激活）。</summary>
+    public void OpenFile(string filePath, IFileContentAccess? contentAccess, string connectionName)
+    {
+        if (string.IsNullOrEmpty(filePath))
+        {
+            return;
+        }
+        foreach (IdeEditorTabViewModel existing in this.Editors)
+        {
+            if (string.Equals(existing.FilePath, filePath, StringComparison.OrdinalIgnoreCase))
+            {
+                this.SelectedEditor = existing;
+                return;
+            }
+        }
+
+        IEditorFileAccess access = this.BuildAccess(filePath, contentAccess, connectionName);
+        // 按设置解析打开方式：优先系统默认程序，或优先内置编辑器（不支持的类型再交给系统默认程序）
+        string priority = FileOpenPolicy.ResolvePriority(this.settings.FileOpenRules, this.settings.FileOpenDefaultPriority, access.FileName);
+        if (priority == FileOpenPriority.System)
+        {
+            this.OpenWithSystem(filePath, access.IsRemote);
+            return;
+        }
+        // 未显式声明该类型时，先按扩展名判断是否为文本类型，非文本直接交给系统默认程序
+        bool explicitBuiltin = FileOpenPolicy.HasExplicitBuiltinRule(this.settings.FileOpenRules, access.FileName);
+        if (!explicitBuiltin && !access.IsRemote && !IsLikelyTextFile(access.FileName))
+        {
+            this.OpenWithSystem(filePath, false);
+            return;
+        }
+
+        try
+        {
+            TextFileContent content = IdeEditorTabViewModel.ReadContent(access);
+            // 二进制或超出大小上限：不属于可编辑文本，交给系统默认程序
+            if (!content.IsEditable)
+            {
+                this.OpenWithSystem(filePath, access.IsRemote);
+                return;
+            }
+            IdeEditorTabViewModel editor = new IdeEditorTabViewModel(access, content);
+            editor.Saved += this.OnEditorSaved;
+            this.Editors.Add(editor);
+            this.SelectedEditor = editor;
+            this.SolutionStatusText = "已打开 " + editor.Title;
+        }
+        catch (Exception error)
+        {
+            this.SolutionStatusText = "打开失败：" + error.Message;
+        }
+    }
+
+    /// <summary>按扩展名判断是否为可编辑文本文件。</summary>
+    public static bool IsLikelyTextFile(string fileName)
+    {
+        string extension = Path.GetExtension(fileName);
+        if (extension.Length == 0)
+        {
+            return true;
+        }
+        foreach (string known in TextFileExtensions)
+        {
+            if (string.Equals(known, extension, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>用系统默认程序打开；远程文件无法在本机调起默认程序时只在状态栏提示。</summary>
+    private void OpenWithSystem(string filePath, bool isRemote)
+    {
+        if (isRemote)
+        {
+            this.SolutionStatusText = "按当前设置该类型使用系统默认程序打开，远程文件请改为在设置中指定「优先内置编辑器」";
+            return;
+        }
+        try
+        {
+            System.Diagnostics.ProcessStartInfo startInfo = new System.Diagnostics.ProcessStartInfo();
+            startInfo.FileName = filePath;
+            startInfo.UseShellExecute = true;
+            System.Diagnostics.Process.Start(startInfo);
+            this.SolutionStatusText = "已用系统默认程序打开 " + Path.GetFileName(filePath);
+        }
+        catch (Exception error)
+        {
+            this.SolutionStatusText = "无法打开：" + error.Message;
+        }
+    }
+
+    /// <summary>文件保存完成：刷新状态。</summary>
+    private void OnEditorSaved(object? sender, EventArgs e)
+    {
+        if (sender is IdeEditorTabViewModel editor)
+        {
+            this.SolutionStatusText = "已保存 " + editor.Title;
+        }
+    }
+
+    /// <summary>关闭编辑器标签；脏内容由调用方先确认。</summary>
+    public void CloseEditor(IdeEditorTabViewModel editor)
+    {
+        int index = this.Editors.IndexOf(editor);
+        if (index < 0)
+        {
+            return;
+        }
+        this.Editors.Remove(editor);
+        if (this.selectedEditor == editor)
+        {
+            if (this.Editors.Count == 0)
+            {
+                this.SelectedEditor = null;
+            }
+            else
+            {
+                int nextIndex = index >= this.Editors.Count ? this.Editors.Count - 1 : index;
+                this.SelectedEditor = this.Editors[nextIndex];
+            }
+        }
+    }
+
+    /// <summary>保存当前编辑器。</summary>
+    public void SaveActive()
+    {
+        this.selectedEditor?.Save();
+    }
+
+    /// <summary>保存全部编辑器。</summary>
+    public void SaveAll()
+    {
+        foreach (IdeEditorTabViewModel editor in this.Editors)
+        {
+            editor.Save();
+        }
+    }
+
+    /// <summary>是否存在未保存内容。</summary>
+    public bool HasDirtyEditors()
+    {
+        foreach (IdeEditorTabViewModel editor in this.Editors)
+        {
+            if (editor.IsDirty)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // ======== 查找替换（当前文件） ========
+
+    /// <summary>在当前编辑器内查找下一个匹配并选中（由视图执行实际选中）。</summary>
+    public bool FindNext(bool forward)
+    {
+        IdeEditorTabViewModel? editor = this.selectedEditor;
+        if (editor == null || string.IsNullOrEmpty(this.findText))
+        {
+            this.FindStatusText = "请输入查找内容";
+            return false;
+        }
+        string content = editor.Text;
+        int start = forward ? this.lastFindIndex + 1 : this.lastFindIndex - 1;
+        if (start < 0)
+        {
+            start = content.Length - 1;
+        }
+        if (start > content.Length)
+        {
+            start = 0;
+        }
+        int found = -1;
+        if (forward)
+        {
+            found = content.IndexOf(this.findText, Math.Min(start, content.Length), StringComparison.OrdinalIgnoreCase);
+            if (found < 0)
+            {
+                found = content.IndexOf(this.findText, 0, StringComparison.OrdinalIgnoreCase);
+            }
+        }
+        else
+        {
+            int searchFrom = Math.Min(start, content.Length - 1);
+            found = searchFrom < 0 ? -1 : content.LastIndexOf(this.findText, searchFrom, StringComparison.OrdinalIgnoreCase);
+            if (found < 0)
+            {
+                found = content.LastIndexOf(this.findText, StringComparison.OrdinalIgnoreCase);
+            }
+        }
+        if (found < 0)
+        {
+            this.FindStatusText = "未找到「" + this.findText + "」";
+            this.lastFindIndex = -1;
+            return false;
+        }
+        this.lastFindIndex = found;
+        this.FindStatusText = "找到于第 " + found + " 个字符";
+        this.FindSelectionStart = found;
+        this.FindSelectionLength = this.findText.Length;
+        this.RaisePropertyChanged(nameof(this.FindSelectionStart));
+        this.RaisePropertyChanged(nameof(this.FindSelectionLength));
+        return true;
+    }
+
+    private int lastFindIndex = -1;
+
+    /// <summary>查找命中起始位置（供视图设置选区）。</summary>
+    public int FindSelectionStart { get; private set; } = -1;
+
+    /// <summary>查找命中长度。</summary>
+    public int FindSelectionLength { get; private set; }
+
+    /// <summary>选区变化事件（供视图同步选中并滚动到可见）。</summary>
+    public event EventHandler? FindSelectionChanged;
+
+    /// <summary>通知视图应用查找选区。</summary>
+    public void RequestApplyFindSelection()
+    {
+        EventHandler? handler = this.FindSelectionChanged;
+        if (handler != null)
+        {
+            handler(this, EventArgs.Empty);
+        }
+    }
+
+    /// <summary>替换当前命中。</summary>
+    public void ReplaceCurrent()
+    {
+        IdeEditorTabViewModel? editor = this.selectedEditor;
+        if (editor == null || editor.IsReadOnly || string.IsNullOrEmpty(this.findText))
+        {
+            return;
+        }
+        if (this.FindSelectionStart < 0 || this.FindSelectionLength <= 0)
+        {
+            this.FindNext(true);
+            return;
+        }
+        string content = editor.Text;
+        if (this.FindSelectionStart + this.FindSelectionLength > content.Length)
+        {
+            return;
+        }
+        string replaced = content.Substring(0, this.FindSelectionStart) + this.replaceText
+            + content.Substring(this.FindSelectionStart + this.FindSelectionLength);
+        editor.Text = replaced;
+        this.FindStatusText = "已替换 1 处";
+        this.lastFindIndex = this.FindSelectionStart;
+        this.FindSelectionStart = -1;
+        this.FindSelectionLength = 0;
+    }
+
+    /// <summary>替换当前文件全部命中。</summary>
+    public void ReplaceAll()
+    {
+        IdeEditorTabViewModel? editor = this.selectedEditor;
+        if (editor == null || editor.IsReadOnly || string.IsNullOrEmpty(this.findText))
+        {
+            return;
+        }
+        string content = editor.Text;
+        int count = 0;
+        int index = content.IndexOf(this.findText, StringComparison.OrdinalIgnoreCase);
+        while (index >= 0)
+        {
+            count++;
+            content = content.Substring(0, index) + this.replaceText + content.Substring(index + this.findText.Length);
+            index = content.IndexOf(this.findText, index + this.replaceText.Length, StringComparison.OrdinalIgnoreCase);
+        }
+        if (count > 0)
+        {
+            editor.Text = content;
+            this.FindStatusText = "已替换 " + count + " 处";
+        }
+        else
+        {
+            this.FindStatusText = "未找到「" + this.findText + "」";
+        }
+    }
+
+    // ======== 工作区搜索（输出 / 查找结果面板） ========
+
+    /// <summary>在当前工作区各级目录中递归搜索关键字，结果写入查找结果面板。</summary>
+    public async void SearchWorkspace()
+    {
+        if (string.IsNullOrEmpty(this.findText))
+        {
+            this.FindStatusText = "请输入查找内容";
+            return;
+        }
+        this.ShowFindPanel = true;
+        this.FindStatusText = "正在搜索……";
+        this.FindResults.Clear();
+
+        string root = this.workspaceRoot;
+        IFileSystemProvider provider = this.workspaceProvider;
+        bool includeHidden = this.settings.ShowHiddenFiles;
+        string keyword = this.findText;
+        bool remote = this.workspaceContentAccess != null;
+        IFileContentAccess? access = this.workspaceContentAccess;
+
+        List<FindResultItem> found = await Task.Run(delegate
+        {
+            return SearchWorkspaceCore(provider, root, keyword, includeHidden, remote, access);
+        });
+
+        foreach (FindResultItem item in found)
+        {
+            this.FindResults.Add(item);
+        }
+        this.FindStatusText = "工作区搜索完成，命中 " + found.Count + " 处";
+        this.SolutionStatusText = this.FindStatusText;
+    }
+
+    /// <summary>后台递归搜索：本机走 ITextFileService，远程走内容访问能力。</summary>
+    private static List<FindResultItem> SearchWorkspaceCore(
+        IFileSystemProvider provider,
+        string root,
+        string keyword,
+        bool includeHidden,
+        bool remote,
+        IFileContentAccess? contentAccess)
+    {
+        List<FindResultItem> results = new List<FindResultItem>();
+        if (string.IsNullOrEmpty(root))
+        {
+            return results;
+        }
+        ITextFileService textService = new DefaultTextFileService();
+        Stack<string> pending = new Stack<string>();
+        pending.Push(root);
+        int scannedFiles = 0;
+        while (pending.Count > 0 && scannedFiles < 2000 && results.Count < 500)
+        {
+            string directory = pending.Pop();
+            IReadOnlyList<FileEntry> entries;
+            try
+            {
+                DirectoryListingOptions options = new DirectoryListingOptions();
+                options.ShowHiddenFiles = includeHidden;
+                entries = provider.ListDirectory(directory, options);
+            }
+            catch
+            {
+                continue;
+            }
+            foreach (FileEntry entry in entries)
+            {
+                if (entry.IsDirectory)
+                {
+                    pending.Push(entry.FullPath);
+                    continue;
+                }
+                scannedFiles++;
+                string text;
+                try
+                {
+                    if (remote)
+                    {
+                        if (contentAccess == null || entry.LengthBytes > TextFileCodec.MaxTextFileBytes)
+                        {
+                            continue;
+                        }
+                        TextFileContent decoded = TextFileCodec.Decode(contentAccess.ReadAllBytes(entry.FullPath));
+                        if (!decoded.IsEditable)
+                        {
+                            continue;
+                        }
+                        text = decoded.Text;
+                    }
+                    else
+                    {
+                        TextFileContent decoded = textService.Read(entry.FullPath);
+                        if (!decoded.IsEditable)
+                        {
+                            continue;
+                        }
+                        text = decoded.Text;
+                    }
+                }
+                catch
+                {
+                    continue;
+                }
+                AppendMatches(results, entry.Name, entry.FullPath, text, keyword);
+            }
+        }
+        return results;
+    }
+
+    /// <summary>在文本中逐行查找关键字并追加结果。</summary>
+    private static void AppendMatches(List<FindResultItem> results, string fileName, string filePath, string text, string keyword)
+    {
+        int lineNumber = 0;
+        int lineStart = 0;
+        for (int index = 0; index <= text.Length; index++)
+        {
+            if (index == text.Length || text[index] == '\n')
+            {
+                lineNumber++;
+                string lineText = text.Substring(lineStart, index - lineStart).TrimEnd('\r');
+                if (lineText.IndexOf(keyword, StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    FindResultItem item = new FindResultItem();
+                    item.FileName = fileName;
+                    item.FilePath = filePath;
+                    item.LineNumber = lineNumber;
+                    item.LineText = lineText.Trim();
+                    results.Add(item);
+                    if (results.Count >= 500)
+                    {
+                        return;
+                    }
+                }
+                lineStart = index + 1;
+            }
+        }
+    }
+
+    /// <summary>打开查找结果对应文件并定位到该行。</summary>
+    public void OpenFindResult(FindResultItem item)
+    {
+        if (item == null)
+        {
+            return;
+        }
+        this.OpenFile(item.FilePath, this.workspaceContentAccess, this.workspaceConnectionName);
+        this.PendingCaretLine = item.LineNumber;
+        this.FindStatusText = "已定位 " + item.FileName + " 行 " + item.LineNumber;
+    }
+
+    /// <summary>待定位行号（打开编辑器后由视图消费一次）。</summary>
+    public int PendingCaretLine { get; set; }
+
+    // ======== 快速打开（Ctrl+P） ========
+
+    private readonly List<QuickOpenItem> quickOpenAll = new List<QuickOpenItem>();
+
+    /// <summary>打开快速打开浮层并后台收集工作区文件清单。</summary>
+    public void OpenQuickOpen()
+    {
+        this.ShowQuickOpen = true;
+        this.QuickOpenText = string.Empty;
+        if (this.quickOpenAll.Count > 0)
+        {
+            this.ApplyQuickOpenFilter();
+            return;
+        }
+        string root = this.workspaceRoot;
+        IFileSystemProvider provider = this.workspaceProvider;
+        bool includeHidden = this.settings.ShowHiddenFiles;
+        if (string.IsNullOrEmpty(root))
+        {
+            return;
+        }
+        Task.Run(delegate
+        {
+            List<QuickOpenItem> collected = CollectWorkspaceFiles(provider, root, includeHidden);
+            Dispatcher.UIThread.Post(delegate { this.ApplyQuickOpenAll(collected); });
+        });
+    }
+
+    /// <summary>后台收集工作区文件清单（最多 5000 个）。</summary>
+    private static List<QuickOpenItem> CollectWorkspaceFiles(IFileSystemProvider provider, string root, bool includeHidden)
+    {
+        List<QuickOpenItem> items = new List<QuickOpenItem>();
+        Stack<string> pending = new Stack<string>();
+        pending.Push(root);
+        while (pending.Count > 0 && items.Count < 5000)
+        {
+            string directory = pending.Pop();
+            IReadOnlyList<FileEntry> entries;
+            try
+            {
+                DirectoryListingOptions options = new DirectoryListingOptions();
+                options.ShowHiddenFiles = includeHidden;
+                entries = provider.ListDirectory(directory, options);
+            }
+            catch
+            {
+                continue;
+            }
+            foreach (FileEntry entry in entries)
+            {
+                if (entry.IsDirectory)
+                {
+                    pending.Push(entry.FullPath);
+                    continue;
+                }
+                QuickOpenItem item = new QuickOpenItem();
+                item.FileName = entry.Name;
+                item.FilePath = entry.FullPath;
+                item.DirectoryText = directory;
+                items.Add(item);
+            }
+        }
+        return items;
+    }
+
+    /// <summary>在界面线程应用收集到的文件清单。</summary>
+    private void ApplyQuickOpenAll(List<QuickOpenItem> collected)
+    {
+        this.quickOpenAll.Clear();
+        this.quickOpenAll.AddRange(collected);
+        this.ApplyQuickOpenFilter();
+    }
+
+    /// <summary>按关键字模糊过滤快速打开列表（子序列匹配）。</summary>
+    private void ApplyQuickOpenFilter()
+    {
+        this.QuickOpenItems.Clear();
+        string keyword = this.quickOpenText == null ? string.Empty : this.quickOpenText.Trim();
+        int count = 0;
+        foreach (QuickOpenItem item in this.quickOpenAll)
+        {
+            if (keyword.Length == 0 || IsSubsequenceMatch(item.FileName, keyword))
+            {
+                this.QuickOpenItems.Add(item);
+                count++;
+                if (count >= 200)
+                {
+                    break;
+                }
+            }
+        }
+    }
+
+    /// <summary>子序列模糊匹配：关键字的字符按序出现在文件名中即命中。</summary>
+    private static bool IsSubsequenceMatch(string name, string keyword)
+    {
+        int keyIndex = 0;
+        for (int index = 0; index < name.Length && keyIndex < keyword.Length; index++)
+        {
+            if (char.ToLowerInvariant(name[index]) == char.ToLowerInvariant(keyword[keyIndex]))
+            {
+                keyIndex++;
+            }
+        }
+        return keyIndex == keyword.Length;
+    }
+
+    /// <summary>快速打开选中项：关闭浮层并打开文件。</summary>
+    public void CommitQuickOpen(QuickOpenItem item)
+    {
+        this.ShowQuickOpen = false;
+        if (item == null)
+        {
+            return;
+        }
+        this.OpenFile(item.FilePath, this.workspaceContentAccess, this.workspaceConnectionName);
+    }
+
+    /// <summary>触发属性变更通知。</summary>
+    private void RaisePropertyChanged(string propertyName)
+    {
+        PropertyChangedEventHandler? handler = this.PropertyChanged;
+        if (handler != null)
+        {
+            handler(this, new PropertyChangedEventArgs(propertyName));
+        }
+    }
+}

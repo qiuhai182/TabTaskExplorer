@@ -46,6 +46,11 @@ public class HotkeySetting
         defaults.Add(Create("Copy", "C", true, false, false));
         defaults.Add(Create("Cut", "X", true, false, false));
         defaults.Add(Create("Paste", "V", true, false, false));
+        defaults.Add(Create("Save", "S", true, false, false));
+        defaults.Add(Create("SaveAll", "S", true, false, true));
+        defaults.Add(Create("CloseEditor", "F4", true, false, false));
+        defaults.Add(Create("QuickOpen", "P", true, false, false));
+        defaults.Add(Create("Find", "F", true, false, false));
         return defaults;
     }
 
@@ -64,6 +69,11 @@ public class HotkeySetting
             case "Copy": return "复制勾选项";
             case "Cut": return "剪切勾选项";
             case "Paste": return "粘贴";
+            case "Save": return "保存（IDE 模式）";
+            case "SaveAll": return "全部保存（IDE 模式）";
+            case "CloseEditor": return "关闭编辑器（IDE 模式）";
+            case "QuickOpen": return "快速打开（IDE 模式）";
+            case "Find": return "查找（IDE 模式）";
             default: return actionName;
         }
     }

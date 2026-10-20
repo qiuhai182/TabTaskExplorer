@@ -1,0 +1,39 @@
+﻿<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="TabTaskExplorer.App.Views.SearchPanel">
+
+  <Grid RowDefinitions="Auto,*,Auto" Margin="8">
+
+    <!-- 搜索行：关键字输入框 + 搜索按钮 -->
+    <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
+      <TextBox x:Name="SearchBox" Width="380" PlaceholderText="输入全盘文件名关键字，回车或点击搜索"
+               Text="{Binding QueryText, Mode=TwoWay}" KeyDown="OnSearchKeyDown" />
+      <Button x:Name="SearchButton" Content="搜索" Click="OnSearchButtonClick"
+              IsEnabled="{Binding !IsSearching}" ToolTip.Tip="执行全局搜索" />
+    </StackPanel>
+
+    <!-- 搜索结果列表（ListBox 自带虚拟化） -->
+    <ListBox Grid.Row="1" ItemsSource="{Binding Results}">
+      <ListBox.ItemTemplate>
+        <DataTemplate>
+          <Grid ColumnDefinitions="Auto,*,Auto,Auto" Margin="2,3" ToolTip.Tip="{Binding FullPath}">
+            <TextBlock Grid.Column="0" FontFamily="Segoe MDL2 Assets, Segoe Fluent Icons"
+                       Text="{Binding IconGlyph}" Foreground="{Binding IconColor}"
+                       FontSize="13" VerticalAlignment="Center" Margin="0,0,8,0" />
+            <TextBlock Grid.Column="1" Text="{Binding DisplayName}" VerticalAlignment="Center"
+                       TextTrimming="CharacterEllipsis" />
+            <TextBlock Grid.Column="2" Text="{Binding ModifiedText}" VerticalAlignment="Center"
+                       Margin="12,0" Foreground="#90808080" FontSize="11" />
+            <TextBlock Grid.Column="3" Text="{Binding SizeText}" VerticalAlignment="Center"
+                       HorizontalAlignment="Right" MinWidth="70" TextAlignment="Right" FontSize="11" />
+          </Grid>
+        </DataTemplate>
+      </ListBox.ItemTemplate>
+    </ListBox>
+
+    <!-- 状态栏：搜索引擎名称、进度与结果数量 -->
+    <Border Grid.Row="2" Margin="0,8,0,0" Padding="8,4" CornerRadius="6" Background="#20808080">
+      <TextBlock Text="{Binding StatusText}" TextWrapping="Wrap" FontSize="12" />
+    </Border>
+  </Grid>
+</UserControl>

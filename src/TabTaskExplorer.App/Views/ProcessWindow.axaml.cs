@@ -1,5 +1,6 @@
 ﻿using Avalonia.Controls;
 using Avalonia.Interactivity;
+using TabTaskExplorer.App.Services;
 using TabTaskExplorer.App.ViewModels;
 
 namespace TabTaskExplorer.App.Views;
@@ -10,6 +11,7 @@ public partial class ProcessWindow : Window
     public ProcessWindow()
     {
         this.InitializeComponent();
+        UiLogger.AttachWindow(this);
     }
 
     private void OnRefreshClick(object? sender, RoutedEventArgs e)

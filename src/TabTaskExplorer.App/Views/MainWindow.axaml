@@ -4,11 +4,12 @@
         xmlns:vm="using:TabTaskExplorer.App.ViewModels"
         x:Class="TabTaskExplorer.App.Views.MainWindow"
         Title="TabTaskExplorer"
-        Width="1200" Height="760"
+        Width="1200" Height="800"
         Background="{DynamicResource ContentBrush}"
         WindowStartupLocation="CenterScreen"
         ExtendClientAreaToDecorationsHint="True"
         ExtendClientAreaTitleBarHeightHint="36"
+        WindowDecorations="None"
         KeyDown="OnWindowKeyDown">
 
   <Window.Resources>
@@ -27,11 +28,11 @@
         <Button Grid.Column="0" Classes="nav" Width="32" Height="36" Click="OnLogoClick" ToolTip.Tip="此电脑">
           <Image Source="{DynamicResource LogoIcon}" Width="16" Height="14" />
         </Button>
-        <Border Grid.Column="1" Width="1" Height="20" Background="{DynamicResource SeparatorBrush}" Margin="2,0" VerticalAlignment="Center" />
+        <Border Grid.Column="1" Width="1" Height="24" Background="{DynamicResource SeparatorBrush}" Margin="2,0" VerticalAlignment="Center" />
 
         <!-- 标签条 -->
         <ListBox Grid.Column="3" x:Name="TabStrip" ItemsSource="{Binding Tabs}" SelectedItem="{Binding SelectedTab, Mode=TwoWay}"
-                 SelectionMode="Single" Background="Transparent" BorderThickness="0" Padding="2,4,0,0">
+                 SelectionMode="Single" Background="Transparent" BorderThickness="0" Padding="0,5,0,0">
           <ListBox.ItemsPanel>
             <ItemsPanelTemplate>
               <StackPanel Orientation="Horizontal" />
@@ -60,7 +61,7 @@
                 <TextBlock Grid.Column="0" Text="&#xE8B7;" FontFamily="{StaticResource IconFont}" FontSize="12"
                            Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" Margin="0,0,6,0" />
                 <TextBlock Grid.Column="1" Text="{Binding Title}" VerticalAlignment="Center" FontSize="12"
-                           Foreground="{DynamicResource TextPrimaryBrush}" MaxWidth="220" TextTrimming="CharacterEllipsis" />
+                           Foreground="{DynamicResource TextPrimaryBrush}" MaxWidth="246" TextTrimming="CharacterEllipsis" />
                 <Button Grid.Column="2" Width="18" Height="18" Padding="0" Background="Transparent"
                         Click="OnCloseTabClick" VerticalAlignment="Center" ToolTip.Tip="关闭">
                   <Button.Styles>
@@ -86,17 +87,24 @@
           <Image Classes="part" Width="24" Height="24" />
         </Button>
 
-        <!-- 工具盒子（任务看板） -->
-        <Button Grid.Column="5" Classes="nav" Width="28" Height="28" Padding="0"
-                VerticalAlignment="Center" Click="OnToolboxClick" ToolTip.Tip="任务看板">
-          <Button.Styles>
-            <Style Selector="Image.part"><Setter Property="Source" Value="{DynamicResource BtnToolboxN}" /></Style>
-            <Style Selector="Button:pointerover Image.part"><Setter Property="Source" Value="{DynamicResource BtnToolboxH}" /></Style>
-            <Style Selector="Button:pressed Image.part"><Setter Property="Source" Value="{DynamicResource BtnToolboxP}" /></Style>
-          </Button.Styles>
-          <Image Classes="part" Width="16" Height="16" />
-        </Button>
-        <Border Grid.Column="6" Width="1" Height="20" Background="{DynamicResource SeparatorBrush}" Margin="2,0" VerticalAlignment="Center" />
+        <!-- 工具盒子（任务看板）+ IDE 模式切换 -->
+        <StackPanel Grid.Column="5" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
+          <Button Classes="nav" Width="28" Height="28" Padding="0"
+                  VerticalAlignment="Center" Click="OnToolboxClick" ToolTip.Tip="任务看板">
+            <Button.Styles>
+              <Style Selector="Image.part"><Setter Property="Source" Value="{DynamicResource BtnToolboxN}" /></Style>
+              <Style Selector="Button:pointerover Image.part"><Setter Property="Source" Value="{DynamicResource BtnToolboxH}" /></Style>
+              <Style Selector="Button:pressed Image.part"><Setter Property="Source" Value="{DynamicResource BtnToolboxP}" /></Style>
+            </Button.Styles>
+            <Image Classes="part" Width="16" Height="16" />
+          </Button>
+          <Button Classes="nav" Width="28" Height="28" Padding="0"
+                  VerticalAlignment="Center" Click="OnToggleIdeModeClick" ToolTip.Tip="IDE 模式 / 资源管理器模式">
+            <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE943;" FontSize="14"
+                       Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" HorizontalAlignment="Center" />
+          </Button>
+        </StackPanel>
+        <Border Grid.Column="6" Width="1" Height="24" Background="{DynamicResource SeparatorBrush}" Margin="2,0" VerticalAlignment="Center" />
 
         <!-- 主题切换（TabX 同款按钮位） -->
         <Button Grid.Column="7" Classes="nav" Width="40" Height="36" Padding="0"
@@ -168,12 +176,13 @@
     </Border>
 
     <!-- ===== 行 1：TabX 书签栏（快捷访问固定项） ===== -->
-    <Border Grid.Row="1" Background="{DynamicResource ContentBrush}" BorderBrush="{DynamicResource SubtleBorderBrush}" BorderThickness="0,0,0,1">
+    <Border Grid.Row="1" Background="{DynamicResource BookmarkBarBrush}" BorderBrush="{DynamicResource SeparatorBrush}" BorderThickness="0,0,0,1"
+            IsVisible="{Binding IsExplorerMode}">
       <StackPanel Orientation="Horizontal" Spacing="4" Margin="8,2">
         <Image Source="{DynamicResource BookmarkLogoIcon}" Width="20" Height="20" VerticalAlignment="Center" />
         <TextBlock Text=" 可拖动常用文件/文档/文件夹到此，创建成书签，以便能快速找到并打开"
-                   FontSize="11" Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center"
-                   IsVisible="{Binding HasNoBookmarks}" />
+                         FontSize="12" Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center"
+                         IsVisible="{Binding HasNoBookmarks}" />
         <ItemsControl ItemsSource="{Binding QuickAccessItems}">
           <ItemsControl.ItemsPanel>
             <ItemsPanelTemplate>
@@ -199,11 +208,18 @@
     </Border>
 
     <!-- ===== 行 2：工具栏（TabX 同款：图标 + 文字） ===== -->
-    <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="2" Margin="6,2,6,2">
+    <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="2" Margin="6,2,6,2"
+                IsVisible="{Binding IsExplorerMode}">
+      <Button Classes="nav tool" Click="OnToggleIdeModeClick" ToolTip.Tip="切换到 IDE 模式">
+        <StackPanel Orientation="Horizontal" Spacing="5">
+          <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE943;" FontSize="13" Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
+          <TextBlock Text="IDE 模式" VerticalAlignment="Center" Foreground="{DynamicResource ToolbarTextBrush}" />
+        </StackPanel>
+      </Button>
       <Button Classes="nav tool" ToolTip.Tip="切换视图">
         <StackPanel Orientation="Horizontal" Spacing="5">
           <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE7B3;" FontSize="13" Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
-          <TextBlock Text="查看" VerticalAlignment="Center" />
+          <TextBlock Text="查看" VerticalAlignment="Center" Foreground="{DynamicResource ToolbarTextBrush}" />
         </StackPanel>
         <Button.Flyout>
           <MenuFlyout Placement="BottomEdgeAlignedLeft">
@@ -223,7 +239,7 @@
       <Button Classes="nav tool" ToolTip.Tip="复制（含路径与名称变体）">
         <StackPanel Orientation="Horizontal" Spacing="5">
           <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE8C8;" FontSize="13" Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
-          <TextBlock Text="复制" VerticalAlignment="Center" />
+          <TextBlock Text="复制" VerticalAlignment="Center" Foreground="{DynamicResource ToolbarTextBrush}" />
         </StackPanel>
         <Button.Flyout>
           <MenuFlyout Placement="BottomEdgeAlignedLeft">
@@ -238,62 +254,62 @@
       <Button Classes="nav tool" Click="OnToolbarCutClick" ToolTip.Tip="剪切勾选项">
         <StackPanel Orientation="Horizontal" Spacing="5">
           <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE8C6;" FontSize="13" Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
-          <TextBlock Text="剪切" VerticalAlignment="Center" />
+          <TextBlock Text="剪切" VerticalAlignment="Center" Foreground="{DynamicResource ToolbarTextBrush}" />
         </StackPanel>
       </Button>
       <Button Classes="nav tool" Click="OnToolbarPasteClick" ToolTip.Tip="粘贴到当前目录">
         <StackPanel Orientation="Horizontal" Spacing="5">
           <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE77F;" FontSize="13" Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
-          <TextBlock Text="粘贴" VerticalAlignment="Center" />
+          <TextBlock Text="粘贴" VerticalAlignment="Center" Foreground="{DynamicResource ToolbarTextBrush}" />
         </StackPanel>
       </Button>
       <Button Classes="nav tool" Click="OnToolbarNewFolderClick" ToolTip.Tip="新建文件夹">
         <StackPanel Orientation="Horizontal" Spacing="5">
           <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE8F4;" FontSize="13" Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
-          <TextBlock Text="新建文件夹" VerticalAlignment="Center" />
+          <TextBlock Text="新建文件夹" VerticalAlignment="Center" Foreground="{DynamicResource ToolbarTextBrush}" />
         </StackPanel>
       </Button>
       <Button Classes="nav tool" Click="OnToolbarBatchRenameClick" ToolTip.Tip="批量改名（先勾选条目）">
         <StackPanel Orientation="Horizontal" Spacing="5">
           <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE8AC;" FontSize="13" Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
-          <TextBlock Text="批量改名" VerticalAlignment="Center" />
+          <TextBlock Text="批量改名" VerticalAlignment="Center" Foreground="{DynamicResource ToolbarTextBrush}" />
         </StackPanel>
       </Button>
       <Button Classes="nav tool" Click="OnToolbarDeleteClick" ToolTip.Tip="删除勾选项（Windows 移入回收站）">
         <StackPanel Orientation="Horizontal" Spacing="5">
           <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE74D;" FontSize="13" Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
-          <TextBlock Text="回收站" VerticalAlignment="Center" />
+          <TextBlock Text="回收站" VerticalAlignment="Center" Foreground="{DynamicResource ToolbarTextBrush}" />
         </StackPanel>
       </Button>
       <Button Classes="nav tool" Click="OnToolbarHiddenClick" ToolTip.Tip="显示 / 隐藏隐藏条目">
         <StackPanel Orientation="Horizontal" Spacing="5">
           <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE7B3;" FontSize="13" Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
-          <TextBlock Text="显示隐藏条目" VerticalAlignment="Center" />
+          <TextBlock Text="显示隐藏条目" VerticalAlignment="Center" Foreground="{DynamicResource ToolbarTextBrush}" />
         </StackPanel>
       </Button>
       <Button Classes="nav tool" Click="OnToolbarInfoPaneClick" ToolTip.Tip="显示 / 隐藏详细信息窗格">
         <StackPanel Orientation="Horizontal" Spacing="5">
           <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE7C9;" FontSize="13" Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
-          <TextBlock Text="显示详细信息窗格" VerticalAlignment="Center" />
+          <TextBlock Text="显示详细信息窗格" VerticalAlignment="Center" Foreground="{DynamicResource ToolbarTextBrush}" />
         </StackPanel>
       </Button>
       <Button Classes="nav tool" Click="OnToolbarRefreshClick" ToolTip.Tip="刷新 (F5)">
         <StackPanel Orientation="Horizontal" Spacing="5">
           <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE72C;" FontSize="13" Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
-          <TextBlock Text="刷新" VerticalAlignment="Center" />
+          <TextBlock Text="刷新" VerticalAlignment="Center" Foreground="{DynamicResource ToolbarTextBrush}" />
         </StackPanel>
       </Button>
     </StackPanel>
 
     <!-- ===== 行 3：导航 + 可编辑地址栏（点击空白即编辑）+ 最近 / 刷新 / 收藏 + 搜索 ===== -->
-    <Grid Grid.Row="3" ColumnDefinitions="Auto,*,240" Margin="6,2,6,4">
+    <Grid Grid.Row="3" ColumnDefinitions="Auto,*,240" Margin="6,2,6,4" IsVisible="{Binding IsExplorerMode}">
       <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="2">
         <Button Classes="nav tool" FontFamily="{StaticResource IconFont}" Content="&#xE72B;" Click="OnBackClick" ToolTip.Tip="后退" />
         <Button Classes="nav tool" FontFamily="{StaticResource IconFont}" Content="&#xE72A;" Click="OnForwardClick" ToolTip.Tip="前进" />
         <Button Classes="nav tool" FontFamily="{StaticResource IconFont}" Content="&#xE74A;" Click="OnUpClick" ToolTip.Tip="上一级" />
       </StackPanel>
       <Border Grid.Column="1" Margin="6,0,0,0" Background="{DynamicResource ChromeBrush}" CornerRadius="3" MinHeight="30"
-              BorderBrush="{DynamicResource SubtleBorderBrush}" BorderThickness="1">
+              BorderBrush="{DynamicResource AddressBarBorderBrush}" BorderThickness="1">
         <Grid ColumnDefinitions="*,Auto,Auto,Auto">
           <Panel Grid.Column="0">
             <!-- 点击路径区空白处即进入编辑，无需专门按钮 -->
@@ -323,8 +339,9 @@
       <TextBox Grid.Column="2" x:Name="SearchBox" Width="200" PlaceholderText="搜索当前目录" TextChanged="OnSearchTextChanged" />
     </Grid>
 
-    <!-- ===== 行 4：左侧导航栏 + 内容区 ===== -->
-    <Grid Grid.Row="4" ColumnDefinitions="200,*">
+    <!-- ===== 行 4：左侧导航栏 + 内容区（资源管理器模式）/ IDE 工作区（IDE 模式） ===== -->
+    <Panel Grid.Row="4">
+    <Grid ColumnDefinitions="200,*" IsVisible="{Binding IsExplorerMode}">
       <Border Grid.Column="0" BorderBrush="{DynamicResource SubtleBorderBrush}" BorderThickness="0,0,1,0">
         <ScrollViewer>
           <StackPanel Margin="4">
@@ -370,6 +387,22 @@
                 <TextBlock Text="连接管理" VerticalAlignment="Center" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}" />
               </StackPanel>
             </Button>
+
+            <!-- 全局搜索（Everything IPC 内核加速） -->
+            <Button Classes="nav" HorizontalAlignment="Stretch" Click="OnGlobalSearchClick">
+              <StackPanel Orientation="Horizontal" Spacing="7">
+                <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE721;" Foreground="{DynamicResource AccentGlyphBrush}" FontSize="13" VerticalAlignment="Center" />
+                <TextBlock Text="全局搜索" VerticalAlignment="Center" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}" />
+              </StackPanel>
+            </Button>
+
+            <!-- 磁盘视图（WizTree 逆向成果合并：目录占用统计） -->
+            <Button Classes="nav" HorizontalAlignment="Stretch" Click="OnDiskViewClick">
+              <StackPanel Orientation="Horizontal" Spacing="7">
+                <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE9F4;" Foreground="{DynamicResource AccentGlyphBrush}" FontSize="13" VerticalAlignment="Center" />
+                <TextBlock Text="磁盘视图" VerticalAlignment="Center" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}" />
+              </StackPanel>
+            </Button>
           </StackPanel>
         </ScrollViewer>
       </Border>
@@ -395,15 +428,28 @@
           <DataTemplate DataType="vm:EditorTabViewModel">
             <views:EditorPanel />
           </DataTemplate>
+          <DataTemplate DataType="vm:SearchTabViewModel">
+            <views:SearchPanel />
+          </DataTemplate>
+          <DataTemplate DataType="vm:DiskViewPanelViewModel">
+            <views:DiskViewPanel />
+          </DataTemplate>
         </ContentControl.DataTemplates>
       </ContentControl>
     </Grid>
 
-    <!-- ===== 行 5：状态栏（N 个项目 + 调试镜像地址） ===== -->
-    <Border Grid.Row="5" Background="{DynamicResource ChromeBrush}" BorderBrush="{DynamicResource SeparatorBrush}" BorderThickness="0,1,0,0">
+    <!-- IDE 模式工作区：资源树 + 编辑器标签 + 代码区 + 底部面板 -->
+    <Panel IsVisible="{Binding IsIdeMode}">
+      <views:IdeShellView DataContext="{Binding IdeShell}" />
+    </Panel>
+    </Panel>
+
+    <!-- ===== 行 5：状态栏（N 个项目 + 网页端服务地址；IDE 模式由 IDE 状态栏接管） ===== -->
+    <Border Grid.Row="5" Background="{DynamicResource ChromeBrush}" BorderBrush="{DynamicResource SeparatorBrush}" BorderThickness="0,1,0,0"
+            IsVisible="{Binding IsExplorerMode}">
       <Grid ColumnDefinitions="*,Auto" Margin="12,4,8,4">
         <TextBlock Grid.Column="0" x:Name="StatusCountText" Text="0 个项目" FontSize="12" Foreground="{DynamicResource TextMutedBrush}" />
-        <TextBlock Grid.Column="1" Text="调试镜像 http://127.0.0.1:15919" FontSize="11" Foreground="{DynamicResource TextMutedBrush}" Opacity="0.7" />
+        <TextBlock Grid.Column="1" Text="{Binding WebServiceStatus}" FontSize="11" Foreground="{DynamicResource TextMutedBrush}" Opacity="0.7" />
       </Grid>
     </Border>
   </Grid>

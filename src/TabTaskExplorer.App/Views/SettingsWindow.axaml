@@ -7,9 +7,11 @@
   <Grid RowDefinitions="*,Auto">
     <Grid Grid.Row="0" ColumnDefinitions="150,*">
       <ListBox Grid.Column="0" x:Name="SectionList" Margin="8" SelectionChanged="OnSectionChanged">
-        <ListBoxItem Content="基本设置" IsSelected="True" />
+        <ListBoxItem Content="基本设置" />
         <ListBoxItem Content="快捷操作" />
         <ListBoxItem Content="文件/文件夹" />
+        <ListBoxItem Content="编辑器" />
+        <ListBoxItem Content="打开方式" />
         <ListBoxItem Content="关于" />
       </ListBox>
       <ScrollViewer Grid.Column="1" Margin="16">
@@ -21,9 +23,17 @@
             <CheckBox Content="默认用本程序打开文件夹（Windows，仅当前用户，可随时关闭恢复）" IsChecked="{Binding DefaultFileManager, Mode=TwoWay}" />
             <TextBlock Text="启动设置" FontWeight="Medium" Margin="0,8,0,0" />
             <CheckBox Content="启动时打开上次关闭的标签" IsChecked="{Binding RestoreLastTabs, Mode=TwoWay}" />
+            <CheckBox Content="随程序启动网页端服务（浏览器打开本机镜像页面，仅本机可访问）" IsChecked="{Binding EnableWebService, Mode=TwoWay}" />
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <TextBlock Text="网页端服务端口" VerticalAlignment="Center" />
+              <TextBox x:Name="WebServicePortBox" Width="90" />
+            </StackPanel>
+            <TextBlock TextWrapping="Wrap" Opacity="0.7"
+                       Text="说明：端口取 1024 至 65535，默认 15919；改动点确定后按新端口重启网页端服务，端口被占用时状态栏会提示未启动。" />
             <TextBlock Text="页面设置" FontWeight="Medium" Margin="0,8,0,0" />
             <CheckBox Content="显示工具栏" IsChecked="{Binding ShowToolbar, Mode=TwoWay}" />
             <CheckBox Content="显示书签栏" IsChecked="{Binding ShowBookmarkBar, Mode=TwoWay}" />
+            <CheckBox Content="顶部显示白色条" IsChecked="{Binding ShowTopWhiteStrip, Mode=TwoWay}" />
           </StackPanel>
           <StackPanel x:Name="MousePage" Spacing="12" IsVisible="False">
             <TextBlock Text="鼠标操作" FontWeight="Medium" />
@@ -50,6 +60,67 @@
           <StackPanel x:Name="FilePage" Spacing="12" IsVisible="False">
             <CheckBox Content="显示隐藏的文件/文件夹" IsChecked="{Binding ShowHiddenFiles, Mode=TwoWay}" />
             <CheckBox Content="显示文件扩展名" IsChecked="{Binding ShowFileExtensions, Mode=TwoWay}" />
+          </StackPanel>
+          <StackPanel x:Name="EditorPage" Spacing="12" IsVisible="False">
+            <TextBlock Text="编辑器字体" FontWeight="Medium" />
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <TextBlock Text="字体回退链" VerticalAlignment="Center" />
+              <TextBox Width="380" Text="{Binding EditorFontFamily, Mode=TwoWay}" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <TextBlock Text="字号" VerticalAlignment="Center" />
+              <TextBox x:Name="EditorFontSizeBox" Width="90" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <TextBlock Text="Tab 宽度（空格数）" VerticalAlignment="Center" />
+              <TextBox x:Name="EditorTabWidthBox" Width="90" />
+            </StackPanel>
+            <CheckBox Content="按下 Tab 用空格替换" IsChecked="{Binding EditorInsertSpaces, Mode=TwoWay}" />
+            <CheckBox Content="编辑器自动换行（关闭时按代码编辑习惯横向滚动）" IsChecked="{Binding EditorWordWrap, Mode=TwoWay}" />
+            <CheckBox Content="显示空白符（原生编辑器暂不渲染）" IsChecked="{Binding EditorShowWhitespace, Mode=TwoWay}" IsEnabled="False" />
+            <TextBlock Text="启动模式" FontWeight="Medium" Margin="0,8,0,0" />
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <TextBlock Text="默认打开模式" VerticalAlignment="Center" />
+              <ComboBox x:Name="DefaultOpenModeBox" Width="180" HorizontalAlignment="Left">
+                <ComboBoxItem Content="资源管理器模式" />
+                <ComboBoxItem Content="IDE 模式" />
+              </ComboBox>
+            </StackPanel>
+            <TextBlock TextWrapping="Wrap" Opacity="0.7"
+                       Text="说明：IDE 模式为 VSCode 风格轻量编辑器，可从工具栏按钮或标题栏图标一键切换；编码自动探测（BOM → UTF-8 → GBK），超过 5MB 或二进制文件不按文本打开。" />
+          </StackPanel>
+          <StackPanel x:Name="OpenWithPage" Spacing="12" IsVisible="False">
+            <TextBlock Text="打开文件方式" FontWeight="Medium" />
+            <TextBlock TextWrapping="Wrap" Opacity="0.7"
+                       Text="仅对 IDE 模式生效：资源管理器模式始终使用系统默认程序打开文件。IDE 模式下，可对全部类型或某个具体类型分别指定「优先内置编辑器」还是「优先系统默认程序」；选择优先内置但该文件不是可编辑文本（二进制或超过 5MB）时，仍会交给系统默认程序。" />
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <TextBlock Text="全部类型默认" VerticalAlignment="Center" />
+              <ComboBox x:Name="DefaultPriorityBox" Width="180" HorizontalAlignment="Left">
+                <ComboBoxItem Content="优先内置编辑器" />
+                <ComboBoxItem Content="优先系统默认程序" />
+              </ComboBox>
+            </StackPanel>
+            <TextBlock Text="按文件类型单独指定" FontWeight="Medium" Margin="0,8,0,0" />
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Button Content="添加类型" Click="OnAddOpenRuleClick" />
+              <Button Content="删除选中" Click="OnRemoveOpenRuleClick" />
+            </StackPanel>
+            <ListBox x:Name="OpenRuleList" Height="240" BorderThickness="1">
+              <ListBox.ItemTemplate>
+                <DataTemplate>
+                  <Grid ColumnDefinitions="180,190" Margin="0,2">
+                    <TextBox Grid.Column="0" Text="{Binding Extension, Mode=TwoWay}" PlaceholderText="例如 .txt 或 *" VerticalAlignment="Center" />
+                    <ComboBox Grid.Column="1" HorizontalAlignment="Left" Width="180"
+                              SelectedIndex="{Binding PriorityIndex, Mode=TwoWay}" VerticalAlignment="Center">
+                      <ComboBoxItem Content="优先内置编辑器" />
+                      <ComboBoxItem Content="优先系统默认程序" />
+                    </ComboBox>
+                  </Grid>
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+            <TextBlock TextWrapping="Wrap" Opacity="0.7"
+                       Text="说明：扩展名填 * 表示全部类型；同类型只会采用精确匹配的那条规则，修改后点确定生效。" />
           </StackPanel>
           <StackPanel x:Name="AboutPage" Spacing="12" IsVisible="False">
             <TextBlock Text="TabTaskExplorer v0.1" FontWeight="Medium" />

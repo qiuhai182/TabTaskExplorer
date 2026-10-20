@@ -1,0 +1,38 @@
+﻿<UserControl xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="TabTaskExplorer.App.Views.DiskViewPanel">
+  <Grid RowDefinitions="Auto,Auto,*,Auto" Margin="12">
+
+    <!-- 行 0：路径栏与操作按钮 -->
+    <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto,Auto">
+      <TextBox Grid.Column="0" Text="{Binding RootPathInput}" Watermark="输入磁盘或目录路径，点击扫描统计占用" />
+      <Button Grid.Column="1" Content="打开" Margin="6,0,0,0" Click="OnOpenClick" />
+      <Button Grid.Column="2" Content="上一级" Margin="6,0,0,0" Click="OnNavigateUpClick" />
+      <Button Grid.Column="3" Content="刷新" Margin="6,0,0,0" Click="OnRefreshClick" />
+    </Grid>
+
+    <!-- 行 1：统计摘要 -->
+    <TextBlock Grid.Row="1" Margin="0,8,0,8" Text="{Binding SummaryText}" />
+
+    <!-- 行 2：表头与占用列表 -->
+    <Grid Grid.Row="2" RowDefinitions="Auto,*">
+      <Grid Grid.Row="0" ColumnDefinitions="3*,110,2*" Margin="0,0,0,4">
+        <TextBlock Grid.Column="0" Text="名称" FontWeight="Medium" />
+        <TextBlock Grid.Column="1" Text="类型" FontWeight="Medium" />
+        <TextBlock Grid.Column="2" Text="大小" FontWeight="Medium" />
+      </Grid>
+      <ListBox Grid.Row="1" ItemsSource="{Binding Rows}" DoubleTapped="OnRowDoubleTapped">
+        <ListBox.ItemTemplate>
+          <DataTemplate>
+            <Grid ColumnDefinitions="3*,110,2*">
+              <TextBlock Grid.Column="0" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+              <TextBlock Grid.Column="1" Text="{Binding EntryTypeText}" />
+              <TextBlock Grid.Column="2" Text="{Binding SizeText}" />
+            </Grid>
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+    </Grid>
+
+  </Grid>
+</UserControl>
