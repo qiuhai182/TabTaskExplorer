@@ -11,6 +11,10 @@
       <Button x:Name="TestButton" Content="测试连接" Click="OnTestClick" />
       <Button x:Name="ExportButton" Content="导出" Click="OnExportClick" ToolTip.Tip="导出全部连接配置到 JSON 文件" />
       <Button x:Name="ImportButton" Content="导入" Click="OnImportClick" ToolTip.Tip="从 JSON 文件导入连接配置" />
+      <Button x:Name="OpenTerminalButton" Content="打开终端" Click="OnOpenTerminalClick" ToolTip.Tip="建立 SSH 远程终端" />
+      <Button x:Name="OpenFolderButton" Content="打开远程文件夹" Click="OnOpenFolderClick" ToolTip.Tip="把远程目录作为文件标签打开" />
+      <Button x:Name="OpenTransfersButton" Content="传输队列" Click="OnOpenTransfersClick" ToolTip.Tip="打开上传下载队列（支持断点续传）" />
+      <Button x:Name="ImportXshellButton" Content="导入 Xshell" Click="OnImportXshellClick" ToolTip.Tip="从 Xshell 会话文件（.xsh / .xshf）导入连接" />
     </StackPanel>
 
     <!-- 列表 + 编辑表单 -->
@@ -73,6 +77,9 @@
             <TextBlock Text="私钥文件路径" FontSize="12" />
             <TextBox x:Name="KeyPathBox" Margin="0,2,0,8" PlaceholderText="例如 C:\Users\you\.ssh\id_rsa" />
           </StackPanel>
+
+          <TextBlock Text="保活间隔（秒，0 关闭）" FontSize="12" />
+          <TextBox x:Name="KeepAliveBox" Margin="0,2,0,8" PlaceholderText="15" />
 
           <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
             <Button x:Name="SaveButton" Content="保存" Click="OnSaveClick" />

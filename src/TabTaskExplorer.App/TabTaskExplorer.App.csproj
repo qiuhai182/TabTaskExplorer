@@ -19,6 +19,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\TabTaskExplorer.Kernel\TabTaskExplorer.Kernel.csproj" />
+    <ProjectReference Include="..\TabTaskExplorer.Protocol.Ssh\TabTaskExplorer.Protocol.Ssh.csproj" />
+    <ProjectReference Include="..\TabTaskExplorer.Protocol.Ftp\TabTaskExplorer.Protocol.Ftp.csproj" />
     <ProjectReference Include="..\TabTaskExplorer.Platform.Windows\TabTaskExplorer.Platform.Windows.csproj" />
     <ProjectReference Include="..\TabTaskExplorer.Platform.Linux\TabTaskExplorer.Platform.Linux.csproj" />
     <ProjectReference Include="..\TabTaskExplorer.Platform.MacOS\TabTaskExplorer.Platform.MacOS.csproj" />

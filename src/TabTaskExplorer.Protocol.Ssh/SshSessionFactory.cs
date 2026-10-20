@@ -98,7 +98,9 @@ public class SshSessionFactory : IRemoteSessionFactory
         ConnectionInfo info = BuildConnectionInfo(profile, credential);
 
         SshClient client = new SshClient(info);
-        client.KeepAliveInterval = TimeSpan.FromSeconds(15);
+        // 保活：按主机配置的间隔发送忽略包，防止 NAT 与防火墙切断空闲连接（参考 Xshell 会话保活）
+        int keepAliveSeconds = profile.KeepAliveSeconds > 0 ? profile.KeepAliveSeconds : 15;
+        client.KeepAliveInterval = TimeSpan.FromSeconds(keepAliveSeconds);
         return client;
     }
 

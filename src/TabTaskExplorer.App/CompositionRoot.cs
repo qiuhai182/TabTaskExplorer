@@ -1,10 +1,12 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
+using TabTaskExplorer.App.Services;
 using TabTaskExplorer.Kernel.Abstractions;
 using TabTaskExplorer.Kernel.Services;
 using TabTaskExplorer.Kernel.Storage;
 using TabTaskExplorer.Platform.Linux;
 using TabTaskExplorer.Platform.MacOS;
 using TabTaskExplorer.Platform.Windows;
+using TabTaskExplorer.Protocol.Ssh;
 
 namespace TabTaskExplorer.App;
 
@@ -35,6 +37,9 @@ public static class CompositionRoot
             services.AddSingleton<ISecretProtector, PlaintextSecretProtector>();
         }
         services.AddSingleton<ConnectionManager>();
+
+        // 远程协议适配：按连接协议分派 SSH / SFTP 与 FTP 实现（终端、远程文件系统与传输队列）
+        services.AddSingleton<IRemoteSessionFactory, CompositeRemoteSessionFactory>();
 
         // 系统标题隐藏：Windows 去除 WS_CAPTION 样式位；其他平台留空
         if (OperatingSystem.IsWindows())

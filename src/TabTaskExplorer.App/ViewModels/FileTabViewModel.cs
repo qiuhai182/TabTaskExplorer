@@ -16,9 +16,14 @@ namespace TabTaskExplorer.App.ViewModels;
 /// </summary>
 public enum FileViewMode
 {
-    Details = 0,
-    LargeIcons = 1,
-    MediumIcons = 2,
+    Details = 0,         // 详细信息
+    List = 1,            // 列表
+    ExtraLargeIcons = 2, // 超大图标
+    LargeIcons = 3,      // 大图标
+    MediumIcons = 4,     // 中图标
+    SmallIcons = 5,      // 小图标
+    Tile = 6,            // 平铺
+    Content = 7,         // 内容
 }
 
 /// <summary>
@@ -69,6 +74,9 @@ public class FileTabViewModel : INotifyPropertyChanged
             this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(VisibleRows)));
         }
     }
+
+    /// <summary>关联的连接配置编号；本地标签为空文本。</summary>
+    public string AttachedProfileId { get; set; } = string.Empty;
 
     /// <summary>当前目录完整路径，空字符串表示此电脑根视图。</summary>
     public string CurrentPath
@@ -146,6 +154,10 @@ public class FileTabViewModel : INotifyPropertyChanged
             this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ViewMode)));
             this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsDetailsLayout)));
             this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsIconsLayout)));
+            this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsListLayout)));
+            this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsTileLayout)));
+            this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsContentLayout)));
+            this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsRowStyleLayout)));
             this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(TileWidth)));
         }
     }
@@ -156,16 +168,79 @@ public class FileTabViewModel : INotifyPropertyChanged
         get { return this.viewMode == FileViewMode.Details; }
     }
 
-    /// <summary>是否为图标布局（大图标或中图标）。</summary>
+    /// <summary>是否为图标布局（超大 / 大 / 中 / 小图标）。</summary>
     public bool IsIconsLayout
     {
-        get { return this.viewMode != FileViewMode.Details; }
+        get
+        {
+            return this.viewMode == FileViewMode.ExtraLargeIcons
+                || this.viewMode == FileViewMode.LargeIcons
+                || this.viewMode == FileViewMode.MediumIcons
+                || this.viewMode == FileViewMode.SmallIcons;
+        }
+    }
+
+    /// <summary>是否为列表布局（仅名称列）。</summary>
+    public bool IsListLayout
+    {
+        get { return this.viewMode == FileViewMode.List; }
+    }
+
+    /// <summary>是否为平铺布局（图标 + 名称 + 类型两行）。</summary>
+    public bool IsTileLayout
+    {
+        get { return this.viewMode == FileViewMode.Tile; }
+    }
+
+    /// <summary>是否为内容布局（名称 + 类型行式展示）。</summary>
+    public bool IsContentLayout
+    {
+        get { return this.viewMode == FileViewMode.Content; }
+    }
+
+    /// <summary>是否为行式布局（详细信息 / 列表 / 内容 共用列表控件）。</summary>
+    public bool IsRowStyleLayout
+    {
+        get
+        {
+            return this.viewMode == FileViewMode.Details
+                || this.viewMode == FileViewMode.List
+                || this.viewMode == FileViewMode.Content;
+        }
     }
 
     /// <summary>图标模式的磁贴宽度。</summary>
     public double TileWidth
     {
-        get { return this.viewMode == FileViewMode.LargeIcons ? 150 : 110; }
+        get
+        {
+            if (this.viewMode == FileViewMode.ExtraLargeIcons)
+            {
+                return 210;
+            }
+            if (this.viewMode == FileViewMode.LargeIcons)
+            {
+                return 130;
+            }
+            if (this.viewMode == FileViewMode.SmallIcons)
+            {
+                return 64;
+            }
+            return 96;
+        }
+    }
+
+    private bool isPinned;
+
+    /// <summary>标签是否被固定（固定后排在标签条最前）。</summary>
+    public bool IsPinned
+    {
+        get { return this.isPinned; }
+        set
+        {
+            this.isPinned = value;
+            this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsPinned)));
+        }
     }
 
     /// <summary>是否显示右侧信息窗格。</summary>
@@ -249,21 +324,49 @@ public class FileTabViewModel : INotifyPropertyChanged
         this.LoadCore(this.currentPath, false);
     }
 
-    /// <summary>切换视图模式：详细信息 → 大图标 → 中图标 → 详细信息。</summary>
+    /// <summary>设置视图模式（供查看菜单调用）。</summary>
+    public void SetViewMode(FileViewMode mode)
+    {
+        this.ViewMode = mode;
+    }
+
+    /// <summary>切换视图模式：按超大 → 大 → 中 → 小 → 列表 → 平铺 → 内容 → 详细信息 循环。</summary>
     public void CycleViewMode()
     {
+        FileViewMode next;
         if (this.viewMode == FileViewMode.Details)
         {
-            this.ViewMode = FileViewMode.LargeIcons;
+            next = FileViewMode.ExtraLargeIcons;
+        }
+        else if (this.viewMode == FileViewMode.ExtraLargeIcons)
+        {
+            next = FileViewMode.LargeIcons;
         }
         else if (this.viewMode == FileViewMode.LargeIcons)
         {
-            this.ViewMode = FileViewMode.MediumIcons;
+            next = FileViewMode.MediumIcons;
+        }
+        else if (this.viewMode == FileViewMode.MediumIcons)
+        {
+            next = FileViewMode.SmallIcons;
+        }
+        else if (this.viewMode == FileViewMode.SmallIcons)
+        {
+            next = FileViewMode.List;
+        }
+        else if (this.viewMode == FileViewMode.List)
+        {
+            next = FileViewMode.Tile;
+        }
+        else if (this.viewMode == FileViewMode.Tile)
+        {
+            next = FileViewMode.Content;
         }
         else
         {
-            this.ViewMode = FileViewMode.Details;
+            next = FileViewMode.Details;
         }
+        this.ViewMode = next;
     }
 
     /// <summary>设置排序字段；重复点击同一字段时切换升序降序。</summary>
@@ -397,12 +500,37 @@ public class FileTabViewModel : INotifyPropertyChanged
         this.Refresh();
     }
 
-    /// <summary>打开一个条目：文件夹进入目录，文件用系统默认程序打开。</summary>
+    /// <summary>远程文件内容打开请求（仅当提供者支持内容读写时触发），参数为文件完整路径。</summary>
+    public event EventHandler<string>? RemoteFileOpenRequested;
+
+    /// <summary>远程文件内容访问能力；本地提供者不支持时为 null。</summary>
+    public IFileContentAccess? ContentAccess
+    {
+        get { return this.fileSystemProvider as IFileContentAccess; }
+    }
+
+    /// <summary>远程权限修改能力；本地提供者不支持时为 null。</summary>
+    public IRemotePermissionChanger? PermissionChanger
+    {
+        get { return this.fileSystemProvider as IRemotePermissionChanger; }
+    }
+
+    /// <summary>打开一个条目：文件夹进入目录，远程文件在线编辑，本地文件用系统默认程序打开。</summary>
     public void OpenEntry(FileRow row)
     {
         if (row.IsDirectory)
         {
             this.OpenPath(row.FullPath);
+            return;
+        }
+        // 远程文件（提供者支持内容读写）双击后进入在线编辑标签
+        if (this.ContentAccess != null)
+        {
+            EventHandler<string>? handler = this.RemoteFileOpenRequested;
+            if (handler != null)
+            {
+                handler(this, row.FullPath);
+            }
             return;
         }
         try

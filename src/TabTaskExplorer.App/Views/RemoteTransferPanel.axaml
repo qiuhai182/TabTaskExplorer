@@ -1,0 +1,31 @@
+﻿<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="TabTaskExplorer.App.Views.RemoteTransferPanel">
+
+  <Grid RowDefinitions="Auto,*" Margin="8">
+
+    <!-- 工具栏 -->
+    <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
+      <Button x:Name="UploadButton" Content="上传文件" Click="OnUploadClick" ToolTip.Tip="选择本地文件上传到指定远端路径" />
+      <Button x:Name="DownloadButton" Content="下载文件" Click="OnDownloadClick" ToolTip.Tip="输入远端路径下载到本地目录" />
+      <Button x:Name="PauseButton" Content="暂停" Click="OnPauseClick" />
+      <Button x:Name="ResumeButton" Content="继续" Click="OnResumeClick" ToolTip.Tip="从断点继续传输" />
+      <Button x:Name="CancelButton" Content="取消" Click="OnCancelClick" />
+    </StackPanel>
+
+    <!-- 任务列表 -->
+    <Border Grid.Row="1" Padding="6" BorderBrush="#40808080" BorderThickness="1" CornerRadius="8">
+      <ListBox x:Name="JobList" ItemsSource="{Binding Jobs}" Background="Transparent">
+        <ListBox.ItemTemplate>
+          <DataTemplate>
+            <StackPanel Margin="4,2">
+              <TextBlock Text="{Binding Summary}" FontWeight="Medium" />
+              <TextBlock FontSize="11" Opacity="0.75" Text="{Binding StatusText}" />
+            </StackPanel>
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+    </Border>
+
+  </Grid>
+</UserControl>

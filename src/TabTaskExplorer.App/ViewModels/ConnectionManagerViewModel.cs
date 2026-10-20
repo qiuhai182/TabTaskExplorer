@@ -22,6 +22,9 @@ public class ConnectionManagerViewModel : INotifyPropertyChanged
     private readonly ConnectionManager manager;
     private RemoteConnectionProfile? selectedConnection;
 
+    /// <summary>所属主窗口视图模型：用于打开终端、远程文件夹与传输队列标签。</summary>
+    public MainWindowViewModel? Owner { get; set; }
+
     public event PropertyChangedEventHandler? PropertyChanged;
 
     /// <summary>全部连接配置。</summary>
@@ -94,6 +97,14 @@ public class ConnectionManagerViewModel : INotifyPropertyChanged
         {
             this.SelectedConnection = null;
         }
+    }
+
+    /// <summary>导入一个从 Xshell 会话文件解析出的连接配置并选中新条目。</summary>
+    public void ImportXshellProfile(RemoteConnectionProfile profile)
+    {
+        RemoteConnectionProfile added = this.manager.Add(profile);
+        this.Reload();
+        this.SelectById(added.Id);
     }
 
     /// <summary>测试指定连接的连通性（网络请求放在后台线程执行）。</summary>

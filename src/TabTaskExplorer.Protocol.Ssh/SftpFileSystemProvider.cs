@@ -10,7 +10,7 @@ namespace TabTaskExplorer.Protocol.Ssh;
 /// 路径采用远端风格的绝对路径（例如 /home/user），
 /// 因此远程文件夹打开为文件标签后，批量改名、搜索、信息窗格等既有能力全部自动复用。
 /// </summary>
-public class SftpFileSystemProvider : IFileSystemProvider
+public class SftpFileSystemProvider : IFileSystemProvider, IFileContentAccess, IRemotePermissionChanger
 {
     private const int CopyChunkSize = 64 * 1024;
 
@@ -178,8 +178,38 @@ public class SftpFileSystemProvider : IFileSystemProvider
         sftp.RenameFile(source, targetPath);
     }
 
+    /// <inheritdoc />
+    public byte[] ReadAllBytes(string path)
+    {
+        SftpClient sftp = this.EnsureClient();
+        using (SftpFileStream stream = sftp.OpenRead(NormalizeRemotePath(path)))
+        using (MemoryStream buffer = new MemoryStream())
+        {
+            stream.CopyTo(buffer);
+            return buffer.ToArray();
+        }
+    }
+
+    /// <inheritdoc />
+    public void WriteAllBytes(string path, byte[] content)
+    {
+        SftpClient sftp = this.EnsureClient();
+        using (SftpFileStream stream = sftp.OpenWrite(NormalizeRemotePath(path)))
+        {
+            stream.Write(content, 0, content.Length);
+            stream.SetLength(content.Length);
+        }
+    }
+
+    /// <inheritdoc />
+    public void ChangePermissions(string path, int octalMode)
+    {
+        SftpClient sftp = this.EnsureClient();
+        sftp.ChangePermissions(NormalizeRemotePath(path), (short)octalMode);
+    }
+
     /// <summary>把任意输入规整为以 / 开头的远端绝对路径。</summary>
-    internal static string NormalizeRemotePath(string path)
+    public static string NormalizeRemotePath(string path)
     {
         string trimmed = (path ?? string.Empty).Replace('\\', '/').Trim();
         if (trimmed.Length == 0)
@@ -190,6 +220,12 @@ public class SftpFileSystemProvider : IFileSystemProvider
         {
             trimmed = "/" + trimmed;
         }
+
+        // 折叠连续斜杠并去除结尾斜杠
+        while (trimmed.Contains("//"))
+        {
+            trimmed = trimmed.Replace("//", "/");
+        }
         while (trimmed.Length > 1 && trimmed.EndsWith("/", StringComparison.Ordinal))
         {
             trimmed = trimmed.TrimEnd('/');
@@ -198,19 +234,19 @@ public class SftpFileSystemProvider : IFileSystemProvider
     }
 
     /// <summary>取远端路径的最后一段名称。</summary>
-    internal static string GetRemoteFileName(string path)
+    public static string GetRemoteFileName(string path)
     {
         string normalized = NormalizeRemotePath(path);
-        int index = normalized.LastIndexOf('/');
-        if (index <= 0)
+        if (normalized == "/")
         {
             return normalized;
         }
+        int index = normalized.LastIndexOf('/');
         return normalized.Substring(index + 1);
     }
 
     /// <summary>取远端路径的父目录；根目录返回自身。</summary>
-    internal static string GetParentRemotePath(string path)
+    public static string GetParentRemotePath(string path)
     {
         string normalized = NormalizeRemotePath(path);
         int index = normalized.LastIndexOf('/');
@@ -222,7 +258,7 @@ public class SftpFileSystemProvider : IFileSystemProvider
     }
 
     /// <summary>拼接远端目录与名称。</summary>
-    internal static string JoinRemotePath(string directory, string name)
+    public static string JoinRemotePath(string directory, string name)
     {
         string dir = NormalizeRemotePath(directory);
         if (dir == "/")

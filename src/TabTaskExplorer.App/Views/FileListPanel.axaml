@@ -1,5 +1,6 @@
 ﻿<UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:conv="using:Avalonia.Data.Converters"
              x:Class="TabTaskExplorer.App.Views.FileListPanel">
 
   <Grid RowDefinitions="Auto,*,Auto">
@@ -9,7 +10,7 @@
 
       <!-- 列表：双击空白处返回上一级 -->
       <Grid Grid.Column="0" RowDefinitions="Auto,*" DoubleTapped="OnListBackgroundDoubleTapped">
-        <Grid Grid.Row="0" ColumnDefinitions="30,26,3*,130,140,110" Margin="0,0,12,4">
+        <Grid Grid.Row="0" ColumnDefinitions="30,26,3*,130,140,110" Margin="0,0,12,4" IsVisible="{Binding IsDetailsLayout}">
           <TextBlock Grid.Column="0" />
           <TextBlock Grid.Column="1" />
           <Button Grid.Column="2" Content="名称" Tag="Name" Click="OnSortClick" HorizontalAlignment="Left" Background="Transparent" />
@@ -20,7 +21,7 @@
         <ScrollViewer Grid.Row="1">
           <StackPanel>
             <!-- 详细信息视图：ListBox 自带虚拟化，大目录也流畅 -->
-            <ListBox x:Name="RowList" ItemsSource="{Binding VisibleRows}" IsVisible="{Binding IsDetailsLayout}"
+            <ListBox x:Name="RowList" ItemsSource="{Binding VisibleRows}" IsVisible="{Binding IsRowStyleLayout}"
                      SelectionMode="Single" Background="Transparent" Padding="0" BorderThickness="0">
               <ListBox.ItemContainerTheme>
                 <ControlTheme TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
@@ -39,6 +40,7 @@
                         <MenuItem Header="复制" Click="OnMenuCopyClick" />
                         <MenuItem Header="剪切" Click="OnMenuCutClick" />
                         <MenuItem Header="重命名" Click="OnMenuRenameClick" />
+                        <MenuItem Header="修改权限" Click="OnMenuChangePermissionsClick" />
                         <MenuItem Header="删除" Click="OnMenuDeleteClick" />
                       </ContextMenu>
                     </Border.ContextMenu>
@@ -46,9 +48,12 @@
                       <CheckBox Grid.Column="0" IsChecked="{Binding IsSelected, Mode=TwoWay}" Click="OnRowCheckChanged" />
                       <TextBlock Grid.Column="1" FontFamily="Segoe MDL2 Assets, Segoe Fluent Icons" Text="{Binding IconGlyph}" Foreground="{Binding IconColor}" FontSize="13" VerticalAlignment="Center" />
                       <TextBlock Grid.Column="2" Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
-                      <TextBlock Grid.Column="3" Text="{Binding TypeText}" Opacity="0.8" VerticalAlignment="Center" />
-                      <TextBlock Grid.Column="4" Text="{Binding ModifiedText}" Opacity="0.8" VerticalAlignment="Center" />
-                      <TextBlock Grid.Column="5" Text="{Binding SizeText}" Opacity="0.8" VerticalAlignment="Center" />
+                      <TextBlock Grid.Column="3" Text="{Binding TypeText}" Opacity="0.8" VerticalAlignment="Center"
+                                 IsVisible="{Binding DataContext.IsListLayout, RelativeSource={RelativeSource AncestorType=ListBox}, Converter={x:Static conv:BoolConverters.Not}}" />
+                      <TextBlock Grid.Column="4" Text="{Binding ModifiedText}" Opacity="0.8" VerticalAlignment="Center"
+                                 IsVisible="{Binding DataContext.IsDetailsLayout, RelativeSource={RelativeSource AncestorType=ListBox}}" />
+                      <TextBlock Grid.Column="5" Text="{Binding SizeText}" Opacity="0.8" VerticalAlignment="Center"
+                                 IsVisible="{Binding DataContext.IsDetailsLayout, RelativeSource={RelativeSource AncestorType=ListBox}}" />
                     </Grid>
                   </Border>
                 </DataTemplate>
@@ -73,6 +78,7 @@
                           <MenuItem Header="复制" Click="OnMenuCopyClick" />
                           <MenuItem Header="剪切" Click="OnMenuCutClick" />
                           <MenuItem Header="重命名" Click="OnMenuRenameClick" />
+                          <MenuItem Header="修改权限" Click="OnMenuChangePermissionsClick" />
                           <MenuItem Header="删除" Click="OnMenuDeleteClick" />
                         </ContextMenu>
                       </Border.ContextMenu>
@@ -80,6 +86,8 @@
                         <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}" Click="OnRowCheckChanged" HorizontalAlignment="Left" />
                         <TextBlock FontFamily="Segoe MDL2 Assets, Segoe Fluent Icons" Text="{Binding IconGlyph}" Foreground="{Binding IconColor}" FontSize="22" HorizontalAlignment="Left" />
                         <TextBlock Text="{Binding DisplayName}" TextWrapping="Wrap" />
+                        <TextBlock Text="{Binding TypeText}" FontSize="11" Opacity="0.7"
+                                   IsVisible="{Binding DataContext.IsTileLayout, RelativeSource={RelativeSource AncestorType=ItemsControl}}" />
                         <TextBlock Text="{Binding SizeText}" FontSize="11" Opacity="0.7" />
                       </StackPanel>
                     </Border>

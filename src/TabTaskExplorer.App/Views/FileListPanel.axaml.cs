@@ -99,6 +99,48 @@ public partial class FileListPanel : UserControl
         }
     }
 
+    /// <summary>修改远程文件权限（仅远程连接支持，输入八进制权限如 644）。</summary>
+    private async void OnMenuChangePermissionsClick(object? sender, RoutedEventArgs e)
+    {
+        Avalonia.Controls.Window? owner = TopLevel.GetTopLevel(this) as Avalonia.Controls.Window;
+        FileTabViewModel? viewModel = this.ViewModel;
+        if (owner == null || viewModel == null)
+        {
+            return;
+        }
+        if (viewModel.PermissionChanger == null)
+        {
+            viewModel.ShowMessage("当前标签不是远程连接，无法修改权限");
+            return;
+        }
+        if (sender is MenuItem menuItem && menuItem.DataContext is FileRow row)
+        {
+            string? modeText = await InputDialog.Show(owner, "修改权限", "请输入八进制权限（如 644、755）：", "644");
+            if (string.IsNullOrWhiteSpace(modeText))
+            {
+                return;
+            }
+            if (!int.TryParse(modeText.Trim(), System.Globalization.NumberStyles.Integer, null, out int octalMode) || octalMode < 0 || octalMode > 511)
+            {
+                viewModel.ShowMessage("权限格式无效（0~777 八进制）");
+                return;
+            }
+            string targetPath = row.FullPath;
+            try
+            {
+                await System.Threading.Tasks.Task.Run(delegate
+                {
+                    viewModel.PermissionChanger.ChangePermissions(targetPath, Convert.ToInt32(octalMode.ToString(), 8));
+                });
+                viewModel.ShowMessage("权限已修改：" + row.DisplayName + " → " + modeText.Trim());
+            }
+            catch (Exception error)
+            {
+                viewModel.ShowMessage("修改权限失败：" + error.Message);
+            }
+        }
+    }
+
     private async void OnMenuRenameClick(object? sender, RoutedEventArgs e)
     {
         Avalonia.Controls.Window? owner = TopLevel.GetTopLevel(this) as Avalonia.Controls.Window;

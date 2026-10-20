@@ -55,6 +55,9 @@ public class RemoteConnectionProfile
     /// <summary>私钥文件完整路径（认证方式为私钥时使用）。</summary>
     public string PrivateKeyPath { get; set; } = string.Empty;
 
+    /// <summary>SSH 保活间隔（秒）；0 表示关闭保活，默认 15 秒（参考 Xshell 会话保活选项）。</summary>
+    public int KeepAliveSeconds { get; set; } = 15;
+
     /// <summary>创建时间。</summary>
     public DateTime CreatedTime { get; set; }
 

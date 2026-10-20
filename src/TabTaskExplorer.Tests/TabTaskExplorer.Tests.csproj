@@ -8,6 +8,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\TabTaskExplorer.Kernel\TabTaskExplorer.Kernel.csproj" />
+    <ProjectReference Include="..\TabTaskExplorer.Protocol.Ssh\TabTaskExplorer.Protocol.Ssh.csproj" />
   </ItemGroup>
 
   <ItemGroup>

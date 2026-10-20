@@ -45,6 +45,12 @@ public class AppSettings
 
     /// <summary>????????????·???б???</summary>
     public List<string> PinnedPaths { get; set; } = new List<string>();
+
+    /// <summary>远程终端快捷命令列表（终端面板一键发送，参考 Xshell 快捷命令）。</summary>
+    public List<string> RemoteQuickCommands { get; set; } = new List<string>
+    {
+        "ls -la", "df -h", "free -m", "uptime",
+    };
 }
 
 /// <summary>

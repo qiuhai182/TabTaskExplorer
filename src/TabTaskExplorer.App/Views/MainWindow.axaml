@@ -47,6 +47,16 @@
           <ListBox.ItemTemplate>
             <DataTemplate>
               <Grid ColumnDefinitions="Auto,*,Auto" Margin="8,0,4,0" Height="28" DoubleTapped="OnTabHeaderDoubleTapped">
+                <Grid.ContextMenu>
+                  <ContextMenu>
+                    <MenuItem Header="新建标签" Click="OnTabMenuNewTab" />
+                    <MenuItem Header="复制当前标签" Click="OnTabMenuDuplicate" />
+                    <MenuItem Header="添加到书签栏" Click="OnTabMenuAddToBookmarks" />
+                    <MenuItem Header="关闭当前标签" Click="OnTabMenuClose" />
+                    <MenuItem Header="关闭其他标签" Click="OnTabMenuCloseOthers" />
+                    <MenuItem Header="固定 / 取消固定标签" Click="OnTabMenuTogglePin" />
+                  </ContextMenu>
+                </Grid.ContextMenu>
                 <TextBlock Grid.Column="0" Text="&#xE8B7;" FontFamily="{StaticResource IconFont}" FontSize="12"
                            Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" Margin="0,0,6,0" />
                 <TextBlock Grid.Column="1" Text="{Binding Title}" VerticalAlignment="Center" FontSize="12"
@@ -190,10 +200,51 @@
 
     <!-- ===== 行 2：工具栏（TabX 同款：图标 + 文字） ===== -->
     <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="2" Margin="6,2,6,2">
-      <Button Classes="nav tool" Click="OnToolbarViewClick" ToolTip.Tip="切换视图：详细信息 / 大图标 / 中图标">
+      <Button Classes="nav tool" ToolTip.Tip="切换视图">
         <StackPanel Orientation="Horizontal" Spacing="5">
           <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE7B3;" FontSize="13" VerticalAlignment="Center" />
           <TextBlock Text="查看" VerticalAlignment="Center" />
+        </StackPanel>
+        <Button.Flyout>
+          <MenuFlyout Placement="BottomEdgeAlignedLeft">
+            <MenuItem Header="超大图标" Tag="ExtraLargeIcons" Click="OnViewModeClick" />
+            <MenuItem Header="大图标" Tag="LargeIcons" Click="OnViewModeClick" />
+            <MenuItem Header="中图标" Tag="MediumIcons" Click="OnViewModeClick" />
+            <MenuItem Header="小图标" Tag="SmallIcons" Click="OnViewModeClick" />
+            <MenuItem Header="列表" Tag="List" Click="OnViewModeClick" />
+            <MenuItem Header="详细信息" Tag="Details" Click="OnViewModeClick" />
+            <MenuItem Header="平铺" Tag="Tile" Click="OnViewModeClick" />
+            <MenuItem Header="内容" Tag="Content" Click="OnViewModeClick" />
+            <Separator />
+            <MenuItem Header="文件夹选项" Click="OnFolderOptionsClick" />
+          </MenuFlyout>
+        </Button.Flyout>
+      </Button>
+      <Button Classes="nav tool" ToolTip.Tip="复制（含路径与名称变体）">
+        <StackPanel Orientation="Horizontal" Spacing="5">
+          <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE8C8;" FontSize="13" VerticalAlignment="Center" />
+          <TextBlock Text="复制" VerticalAlignment="Center" />
+        </StackPanel>
+        <Button.Flyout>
+          <MenuFlyout Placement="BottomEdgeAlignedLeft">
+            <MenuItem Header="复制" Tag="files" Click="OnCopyVariantClick" />
+            <MenuItem Header="复制文件所在路径" Tag="dir" Click="OnCopyVariantClick" />
+            <MenuItem Header="复制文件完整路径" Tag="full" Click="OnCopyVariantClick" />
+            <MenuItem Header="复制文件名称" Tag="name" Click="OnCopyVariantClick" />
+            <MenuItem Header="复制文件名称（带扩展名）" Tag="nameext" Click="OnCopyVariantClick" />
+          </MenuFlyout>
+        </Button.Flyout>
+      </Button>
+      <Button Classes="nav tool" Click="OnToolbarCutClick" ToolTip.Tip="剪切勾选项">
+        <StackPanel Orientation="Horizontal" Spacing="5">
+          <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE8C6;" FontSize="13" VerticalAlignment="Center" />
+          <TextBlock Text="剪切" VerticalAlignment="Center" />
+        </StackPanel>
+      </Button>
+      <Button Classes="nav tool" Click="OnToolbarPasteClick" ToolTip.Tip="粘贴到当前目录">
+        <StackPanel Orientation="Horizontal" Spacing="5">
+          <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE77F;" FontSize="13" VerticalAlignment="Center" />
+          <TextBlock Text="粘贴" VerticalAlignment="Center" />
         </StackPanel>
       </Button>
       <Button Classes="nav tool" Click="OnToolbarNewFolderClick" ToolTip.Tip="新建文件夹">
@@ -334,6 +385,15 @@
           </DataTemplate>
           <DataTemplate DataType="vm:ConnectionManagerViewModel">
             <views:ConnectionPanel />
+          </DataTemplate>
+          <DataTemplate DataType="vm:TerminalTabViewModel">
+            <views:TerminalPanel />
+          </DataTemplate>
+          <DataTemplate DataType="vm:RemoteTransferPanelViewModel">
+            <views:RemoteTransferPanel />
+          </DataTemplate>
+          <DataTemplate DataType="vm:EditorTabViewModel">
+            <views:EditorPanel />
           </DataTemplate>
         </ContentControl.DataTemplates>
       </ContentControl>

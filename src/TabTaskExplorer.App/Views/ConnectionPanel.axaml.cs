@@ -100,6 +100,84 @@ public partial class ConnectionPanel : UserControl
         }
     }
 
+    /// <summary>打开选中连接的远程终端。</summary>
+    private void OnOpenTerminalClick(object? sender, RoutedEventArgs e)
+    {
+        ConnectionManagerViewModel? viewModel = this.ViewModel;
+        RemoteConnectionProfile? selected = viewModel?.SelectedConnection;
+        if (viewModel?.Owner == null || selected == null)
+        {
+            return;
+        }
+        viewModel.Owner.OpenTerminalTab(selected);
+    }
+
+    /// <summary>把选中连接的远程目录打开为文件标签。</summary>
+    private void OnOpenFolderClick(object? sender, RoutedEventArgs e)
+    {
+        ConnectionManagerViewModel? viewModel = this.ViewModel;
+        RemoteConnectionProfile? selected = viewModel?.SelectedConnection;
+        if (viewModel?.Owner == null || selected == null)
+        {
+            return;
+        }
+        viewModel.Owner.OpenRemoteFolderTab(selected);
+    }
+
+    /// <summary>打开选中连接的传输队列。</summary>
+    private void OnOpenTransfersClick(object? sender, RoutedEventArgs e)
+    {
+        ConnectionManagerViewModel? viewModel = this.ViewModel;
+        RemoteConnectionProfile? selected = viewModel?.SelectedConnection;
+        if (viewModel?.Owner == null || selected == null)
+        {
+            return;
+        }
+        viewModel.Owner.OpenTransfersTab(selected);
+    }
+
+    /// <summary>从用户选择的 Xshell 会话文件导入连接配置。</summary>
+    private async void OnImportXshellClick(object? sender, RoutedEventArgs e)
+    {
+        ConnectionManagerViewModel? viewModel = this.ViewModel;
+        TopLevel? owner = TopLevel.GetTopLevel(this);
+        if (viewModel == null || owner == null)
+        {
+            return;
+        }
+        FilePickerOpenOptions options = new FilePickerOpenOptions
+        {
+            Title = "选择 Xshell 会话文件",
+            AllowMultiple = true,
+            FileTypeFilter = new List<FilePickerFileType>
+            {
+                new FilePickerFileType("Xshell 会话文件")
+                {
+                    Patterns = new List<string> { "*.xsh", "*.xshf" },
+                },
+            },
+        };
+        IReadOnlyList<IStorageFile> files = await owner.StorageProvider.OpenFilePickerAsync(options);
+        int importedCount = 0;
+        foreach (IStorageFile file in files)
+        {
+            string? localPath = file.TryGetLocalPath();
+            if (string.IsNullOrEmpty(localPath))
+            {
+                continue;
+            }
+            RemoteConnectionProfile? profile = XshellSessionImporter.ImportFromFile(localPath);
+            if (profile != null)
+            {
+                viewModel.ImportXshellProfile(profile);
+                importedCount++;
+            }
+        }
+        this.StatusText.Text = importedCount > 0
+            ? "已导入 " + importedCount + " 个连接（Xshell 密码需重新输入）"
+            : "未导入任何连接（文件解析失败或缺少主机信息）";
+    }
+
     /// <summary>导出全部连接配置到用户选择的 JSON 文件。</summary>
     private async void OnExportClick(object? sender, RoutedEventArgs e)
     {
@@ -232,6 +310,7 @@ public partial class ConnectionPanel : UserControl
         this.AuthBox.SelectedIndex = profile.AuthType == RemoteAuthType.PrivateKey ? 1 : 0;
         this.SecretBox.Text = string.Empty;
         this.KeyPathBox.Text = profile.PrivateKeyPath;
+        this.KeepAliveBox.Text = profile.KeepAliveSeconds > 0 ? profile.KeepAliveSeconds.ToString() : "0";
         this.UpdateAuthSections();
     }
 
@@ -258,6 +337,15 @@ public partial class ConnectionPanel : UserControl
         profile.Username = this.UserBox.Text == null ? string.Empty : this.UserBox.Text.Trim();
         profile.AuthType = this.AuthBox.SelectedIndex == 1 ? RemoteAuthType.PrivateKey : RemoteAuthType.Password;
         profile.PrivateKeyPath = this.KeyPathBox.Text == null ? string.Empty : this.KeyPathBox.Text.Trim();
+        int keepAlive = 15;
+        if (int.TryParse(this.KeepAliveBox.Text == null ? string.Empty : this.KeepAliveBox.Text.Trim(), out keepAlive) && keepAlive >= 0)
+        {
+            profile.KeepAliveSeconds = keepAlive;
+        }
+        else
+        {
+            profile.KeepAliveSeconds = 15;
+        }
     }
 
     /// <summary>按认证方式切换密码与私钥输入区的可见性。</summary>

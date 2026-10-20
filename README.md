@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿# TabTaskExplorer
+﻿﻿﻿﻿﻿﻿﻿﻿# TabTaskExplorer
 
 跨平台的 Windows 风格 **资源管理器 + 任务管理器** 二合一桌面应用。
 
@@ -18,10 +18,9 @@
 
 ### 远程与终端（开发中）
 - 连接管理（已完成）：SSH / FTP 主机管理，新增 / 编辑 / 删除 / 测试连接（TCP 可达性），配置导出导入，凭据 DPAPI 加密（Windows）
-- 远程终端：SSH 远程 Shell，窗口尺寸同步到远程 pty，xterm.js 渲染
-- 本机终端：PowerShell / bash 直连，Windows ConPTY 与 Unix PTY 双实现
-- 网络文件夹：SFTP 远程目录作为文件标签打开，浏览 / 改名 / 删除 / 批量改名全功能复用
-- 文件传输：上传下载进度、暂停 / 继续、断点续传、任务队列
+- 远程终端（已完成 v1）：SSH 远程 Shell，窗口尺寸同步到远程 pty，行模式控制台 + 会话日志（参考 Xshell 会话日志），xterm.js 渲染待接入
+- 网络文件夹（已完成 v1）：SFTP 远程目录作为文件标签打开，浏览 / 改名 / 删除 / 批量改名全功能复用
+- 文件传输（已完成 v1）：SFTP 上传下载队列、64KB 分块、进度显示、暂停 / 继续、断点续传（参考 Xftp 传输队列）
 
 ### 任务管理
 - 任务看板：待办 / 进行中 / 已完成三列流转，本地持久化
@@ -87,7 +86,7 @@ src/
   TabTaskExplorer.Platform.Windows   # Windows 实现（回收站 / 性能计数器 / Win32 / ConPTY）
   TabTaskExplorer.Platform.Linux     # Linux 实现（/proc / PTY）
   TabTaskExplorer.Platform.MacOS     # macOS 实现（sysctl / PTY）
-  TabTaskExplorer.Protocol.Ssh       # SSH / SFTP 协议适配：远程终端与网络文件夹（规划中）
+  TabTaskExplorer.Protocol.Ssh       # SSH / SFTP 协议适配：远程终端 / 网络文件夹 / 传输队列
   TabTaskExplorer.Protocol.Ftp       # FTP 协议适配（规划中）
   TabTaskExplorer.App                # Avalonia UI 与应用层
   TabTaskExplorer.Tests              # 单元测试
@@ -99,10 +98,10 @@ src/
 
 ### 远程与终端
 - [x] M1 连接管理：主机配置、凭据加密存储（Windows DPAPI，其他平台留空降级）、导出导入
-- [ ] M2 远程终端：SSH Shell + xterm.js 渲染 + 尺寸同步
-- [ ] M3 网络文件夹：SFTP 文件提供者接入文件标签，传输队列
+- [x] M2 远程终端（v1）：SSH Shell + 行模式控制台 + 会话日志 + pty 尺寸同步（xterm.js 渲染待接入）
+- [x] M3 网络文件夹（v1）：SFTP 文件提供者接入文件标签，传输队列 + 断点续传
 - [ ] M4 本机终端：ConPTY / PTY 接入统一终端面板
-- [ ] M5 增强：FTP 协议、断点续传、密钥管理
+- [ ] M5 增强：FTP 协议、密钥管理、Xshell/Xftp 会话导入（.xshf/.xfpf 字段映射已完成，见 sshtools 参考模块分析报告）
 
 ### 界面与体验
 - [ ] 文件类型彩色图标与图片缩略图

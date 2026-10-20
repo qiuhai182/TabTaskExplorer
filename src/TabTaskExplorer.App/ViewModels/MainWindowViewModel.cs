@@ -5,6 +5,7 @@ using System.ComponentModel;
 using System.IO;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
+using Avalonia.Controls;
 using TabTaskExplorer.App.Services;
 using TabTaskExplorer.Kernel.Abstractions;
 using TabTaskExplorer.Kernel.Models;
@@ -44,6 +45,9 @@ public class MainWindowViewModel : INotifyPropertyChanged
 
     /// <summary>全部打开的标签页（可能是文件标签或任务看板）。</summary>
     public ObservableCollection<object> Tabs { get; } = new ObservableCollection<object>();
+
+    /// <summary>主窗口引用：供错误提示弹窗作为所有者使用。</summary>
+    public Window? OwnerWindow { get; set; }
 
     /// <summary>侧边栏：快捷访问（用户固定）。</summary>
     public ObservableCollection<QuickAccessItem> QuickAccessItems { get; } = new ObservableCollection<QuickAccessItem>();
@@ -197,13 +201,206 @@ public class MainWindowViewModel : INotifyPropertyChanged
         }
         ConnectionManagerViewModel newManager = new ConnectionManagerViewModel(
             this.services.GetRequiredService<Kernel.Services.ConnectionManager>());
+        newManager.Owner = this;
         this.Tabs.Add(newManager);
         this.SelectedTab = newManager;
+    }
+
+    /// <summary>各连接的传输服务缓存：同一连接复用同一个传输队列。</summary>
+    private readonly Dictionary<string, IRemoteTransferService> transferServices = new Dictionary<string, IRemoteTransferService>();
+
+    /// <summary>解密连接凭据；解密失败返回空文本。</summary>
+    private string ResolveSecret(RemoteConnectionProfile profile)
+    {
+        Kernel.Services.ConnectionManager manager = this.services.GetRequiredService<Kernel.Services.ConnectionManager>();
+        try
+        {
+            return manager.GetSecret(profile);
+        }
+        catch
+        {
+            return string.Empty;
+        }
+    }
+
+    /// <summary>打开远程终端标签页（同一连接只保留一个，连接在后台线程建立）。</summary>
+    public async void OpenTerminalTab(RemoteConnectionProfile profile)
+    {
+        if (profile == null)
+        {
+            return;
+        }
+        foreach (object tab in this.Tabs)
+        {
+            if (tab is TerminalTabViewModel terminal && terminal.AttachedProfileId == profile.Id)
+            {
+                this.SelectedTab = terminal;
+                return;
+            }
+        }
+
+        try
+        {
+            string secret = this.ResolveSecret(profile);
+            IRemoteSessionFactory factory = this.services.GetRequiredService<IRemoteSessionFactory>();
+            ITerminalSession session = await Task.Run(delegate
+            {
+                return factory.OpenTerminal(profile, secret, 120, 32);
+            });
+            TerminalTabViewModel newTerminal = new TerminalTabViewModel(session, profile.Name + " - 终端", 120, 32);
+            newTerminal.AttachedProfileId = profile.Id;
+            newTerminal.ReconnectRequested += this.OnTerminalReconnectRequested;
+            foreach (string command in this.Settings.RemoteQuickCommands)
+            {
+                newTerminal.QuickCommands.Add(command);
+            }
+            this.Tabs.Add(newTerminal);
+            this.SelectedTab = newTerminal;
+        }
+        catch (Exception ex)
+        {
+            Views.MessageDialog.Show(this.OwnerWindow, "连接失败", "无法连接 " + profile.Host + "：" + ex.Message);
+        }
+    }
+
+    /// <summary>把远程目录作为文件标签打开（复用本地文件标签的全部能力）。</summary>
+    public async void OpenRemoteFolderTab(RemoteConnectionProfile profile)
+    {
+        if (profile == null)
+        {
+            return;
+        }
+        foreach (object tab in this.Tabs)
+        {
+            if (tab is FileTabViewModel file && file.AttachedProfileId == profile.Id)
+            {
+                this.SelectedTab = file;
+                return;
+            }
+        }
+
+        try
+        {
+            string secret = this.ResolveSecret(profile);
+            IRemoteSessionFactory factory = this.services.GetRequiredService<IRemoteSessionFactory>();
+            IFileSystemProvider provider = await Task.Run(delegate
+            {
+                return factory.OpenFileSystem(profile, secret);
+            });
+            FileTabViewModel newTab = new FileTabViewModel(provider, this.Settings, "/");
+            newTab.AttachedProfileId = profile.Id;
+            newTab.PathChanged += this.OnTabPathChanged;
+            newTab.RemoteFileOpenRequested += this.OnRemoteFileOpenRequested;
+            this.Tabs.Add(newTab);
+            this.SelectedTab = newTab;
+        }
+        catch (Exception ex)
+        {
+            Views.MessageDialog.Show(this.OwnerWindow, "连接失败", "无法打开远程文件夹：" + ex.Message);
+        }
+    }
+
+    /// <summary>打开远程传输队列标签页（同一连接复用同一传输服务）。</summary>
+    public async void OpenTransfersTab(RemoteConnectionProfile profile)
+    {
+        if (profile == null)
+        {
+            return;
+        }
+        foreach (object tab in this.Tabs)
+        {
+            if (tab is RemoteTransferPanelViewModel transfers && transfers.AttachedProfileId == profile.Id)
+            {
+                this.SelectedTab = transfers;
+                return;
+            }
+        }
+
+        try
+        {
+            IRemoteTransferService service;
+            if (!this.transferServices.TryGetValue(profile.Id, out service))
+            {
+                string secret = this.ResolveSecret(profile);
+                IRemoteSessionFactory factory = this.services.GetRequiredService<IRemoteSessionFactory>();
+                service = await Task.Run(delegate
+                {
+                    return factory.OpenTransferService(profile, secret);
+                });
+                this.transferServices[profile.Id] = service;
+            }
+            RemoteTransferPanelViewModel newPanel = new RemoteTransferPanelViewModel(profile.Name, service);
+            newPanel.AttachedProfileId = profile.Id;
+            this.Tabs.Add(newPanel);
+            this.SelectedTab = newPanel;
+        }
+        catch (Exception ex)
+        {
+            Views.MessageDialog.Show(this.OwnerWindow, "连接失败", "无法建立传输服务：" + ex.Message);
+        }
+    }
+
+    /// <summary>终端断线重连请求：关闭旧终端标签并按连接配置重建。</summary>
+    private void OnTerminalReconnectRequested(object? sender, string profileId)
+    {
+        RemoteConnectionProfile? profile = this.services.GetRequiredService<Kernel.Services.ConnectionManager>().FindById(profileId);
+        if (sender is TerminalTabViewModel oldTerminal)
+        {
+            this.Tabs.Remove(oldTerminal);
+            oldTerminal.Dispose();
+        }
+        if (profile != null)
+        {
+            this.OpenTerminalTab(profile);
+        }
+    }
+
+    /// <summary>远程文件内容打开请求：在后台读取内容并打开编辑器标签。</summary>
+    private async void OnRemoteFileOpenRequested(object? sender, string remotePath)
+    {
+        FileTabViewModel? fileTab = sender as FileTabViewModel;
+        if (fileTab == null || fileTab.ContentAccess == null)
+        {
+            return;
+        }
+        IFileContentAccess contentAccess = fileTab.ContentAccess;
+        try
+        {
+            byte[] bytes = await Task.Run(delegate
+            {
+                return contentAccess.ReadAllBytes(remotePath);
+            });
+            if (bytes.Length > 2 * 1024 * 1024)
+            {
+                Views.MessageDialog.Show(this.OwnerWindow, "文件过大", "在线编辑仅支持 2MB 以内的文本文件，请使用传输队列下载后编辑。");
+                return;
+            }
+            string text = System.Text.Encoding.UTF8.GetString(bytes);
+            EditorTabViewModel editor = new EditorTabViewModel(contentAccess, remotePath, text, fileTab.AttachedProfileId);
+            editor.Saved += this.OnRemoteEditorSaved;
+            this.Tabs.Add(editor);
+            this.SelectedTab = editor;
+        }
+        catch (Exception ex)
+        {
+            Views.MessageDialog.Show(this.OwnerWindow, "打开失败", "无法读取远程文件：" + ex.Message);
+        }
+    }
+
+    /// <summary>远程文件保存完成提示。</summary>
+    private void OnRemoteEditorSaved(object? sender, string remotePath)
+    {
+        // 保存后由编辑器标签自行提示状态，无需额外处理
     }
 
     /// <summary>关闭标签页并选中相邻标签。</summary>
     public void CloseTab(object tab)
     {
+        // 终端标签页关闭时同步断开远程会话
+        if (tab is TerminalTabViewModel closingTerminal)
+        {
+            closingTerminal.Dispose();
+        }
         int index = this.Tabs.IndexOf(tab);
         if (index < 0)
         {
@@ -258,10 +455,47 @@ public class MainWindowViewModel : INotifyPropertyChanged
         }
     }
 
+    /// <summary>关闭除指定标签外的全部文件标签页。</summary>
+    public void CloseOtherTabs(FileTabViewModel keep)
+    {
+        List<object> snapshot = new List<object>(this.Tabs);
+        foreach (object tab in snapshot)
+        {
+            if (tab is FileTabViewModel file && !object.ReferenceEquals(file, keep))
+            {
+                this.CloseTab(tab);
+            }
+        }
+        this.SelectedTab = keep;
+    }
+
+    /// <summary>切换标签固定状态：固定后移动到标签条最前。</summary>
+    public void TogglePinTab(FileTabViewModel tab)
+    {
+        tab.IsPinned = !tab.IsPinned;
+        int index = this.Tabs.IndexOf(tab);
+        if (index >= 0)
+        {
+            if (tab.IsPinned)
+            {
+                this.Tabs.Move(index, 0);
+            }
+        }
+    }
+
     /// <summary>把当前文件标签页路径固定到快捷访问。</summary>
     public void PinCurrentTab()
     {
         string? path = this.SelectedFileTab?.CurrentPath;
+        if (!string.IsNullOrEmpty(path))
+        {
+            this.PinPath(path);
+        }
+    }
+
+    /// <summary>把指定路径固定到快捷访问（已存在时忽略）。</summary>
+    public void PinPath(string path)
+    {
         if (string.IsNullOrEmpty(path))
         {
             return;

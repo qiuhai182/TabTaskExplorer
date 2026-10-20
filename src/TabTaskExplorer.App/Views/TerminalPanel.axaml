@@ -1,0 +1,41 @@
+﻿<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="TabTaskExplorer.App.Views.TerminalPanel">
+
+  <Grid RowDefinitions="Auto,*,Auto" Margin="8">
+
+    <!-- 工具栏 -->
+    <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
+      <Button x:Name="SendButton" Content="发送" Click="OnSendClick" />
+      <Button x:Name="ClearButton" Content="清屏" Click="OnClearClick" />
+      <ToggleButton x:Name="LogToggle" Click="OnLogToggleClick">
+        <TextBlock Text="记录会话日志" />
+      </ToggleButton>
+      <ComboBox x:Name="QuickCommandBox" MinWidth="140" ItemsSource="{Binding QuickCommands}" />
+      <Button x:Name="QuickSendButton" Content="快捷命令" Click="OnQuickSendClick" ToolTip.Tip="一键发送选中的快捷命令" />
+      <TextBlock x:Name="LogPathText" VerticalAlignment="Center" FontSize="11" Opacity="0.6" />
+      <Button x:Name="ReconnectButton" Content="重连" Click="OnReconnectClick" ToolTip.Tip="断开后按连接配置重新建立会话" />
+      <Button x:Name="DisconnectButton" Content="断开" Click="OnDisconnectClick" />
+    </StackPanel>
+
+    <!-- 输出区 -->
+    <Border Grid.Row="1" Padding="8" BorderBrush="#40808080" BorderThickness="1" CornerRadius="8">
+      <TextBox x:Name="OutputBox"
+               Text="{Binding OutputText}"
+               IsReadOnly="True"
+               FontFamily="Consolas,monospace"
+               FontSize="13"
+               TextWrapping="NoWrap"
+               AcceptsReturn="True"
+               Background="Transparent"
+               BorderThickness="0" />
+    </Border>
+
+    <!-- 输入行 -->
+    <Grid Grid.Row="2" ColumnDefinitions="*,Auto" Margin="0,8,0,0">
+      <TextBox x:Name="InputBox" Text="{Binding InputText}" KeyDown="OnInputKeyDown" PlaceholderText="输入命令后回车发送" />
+      <Button Grid.Column="1" Content="回车" Click="OnSendClick" Margin="8,0,0,0" />
+    </Grid>
+
+  </Grid>
+</UserControl>

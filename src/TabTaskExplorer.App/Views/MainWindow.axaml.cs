@@ -2,6 +2,8 @@
 using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.ComponentModel;
+using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
@@ -58,6 +60,10 @@ public partial class MainWindow : Window
     /// <summary>DataContext 就绪后订阅视图模型变化，驱动标签条高亮。</summary>
     private void OnDataContextChanged(object? sender, EventArgs e)
     {
+        if (this.ViewModel != null)
+        {
+            this.ViewModel.OwnerWindow = this;
+        }
         MainWindowViewModel? viewModel = this.ViewModel;
         if (viewModel == null)
         {
@@ -501,9 +507,137 @@ public partial class MainWindow : Window
 
     // ======== 工具栏（TabX 同款按钮组） ========
 
-    private void OnToolbarViewClick(object? sender, RoutedEventArgs e)
+    /// <summary>查看菜单：切换到指定视图模式。</summary>
+    private void OnViewModeClick(object? sender, RoutedEventArgs e)
     {
-        this.ViewModel?.SelectedFileTab?.CycleViewMode();
+        if (sender is MenuItem item && item.Tag is string modeText
+            && Enum.TryParse(modeText, out FileViewMode mode))
+        {
+            FileTabViewModel? tab = this.ViewModel?.SelectedFileTab;
+            if (tab != null)
+            {
+                tab.SetViewMode(mode);
+            }
+        }
+    }
+
+    /// <summary>查看菜单：打开系统文件夹选项对话框。</summary>
+    private void OnFolderOptionsClick(object? sender, RoutedEventArgs e)
+    {
+        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("control.exe", "folders")
+        {
+            UseShellExecute = true,
+        });
+    }
+
+    /// <summary>复制菜单：按变体复制勾选条目（文件 / 所在路径 / 完整路径 / 名称 / 带扩展名名称）。</summary>
+    private async void OnCopyVariantClick(object? sender, RoutedEventArgs e)
+    {
+        FileTabViewModel? tab = this.ViewModel?.SelectedFileTab;
+        if (tab == null || sender is not MenuItem item || item.Tag is not string variant)
+        {
+            return;
+        }
+        List<FileRow> rows = tab.GetCheckedRows();
+        if (rows.Count == 0)
+        {
+            tab.ShowMessage("请先勾选要复制的条目");
+            return;
+        }
+        if (variant == "files")
+        {
+            this.ViewModel?.CopyPathsToClipboard(rows.Select(row => row.FullPath).ToList());
+            return;
+        }
+        IEnumerable<string> texts = rows.Select(row => variant switch
+        {
+            "dir" => Path.GetDirectoryName(row.FullPath) ?? string.Empty,
+            "full" => row.FullPath,
+            "name" => Path.GetFileNameWithoutExtension(row.FullPath),
+            "nameext" => Path.GetFileName(row.FullPath),
+            _ => row.FullPath,
+        });
+        string payload = string.Join(Environment.NewLine, texts);
+        if (this.Clipboard != null)
+        {
+            DataTransfer transfer = new DataTransfer();
+            transfer.Add(DataTransferItem.CreateText(payload));
+            await this.Clipboard.SetDataAsync(transfer);
+        }
+    }
+
+    /// <summary>工具栏剪切：剪切勾选条目。</summary>
+    private void OnToolbarCutClick(object? sender, RoutedEventArgs e)
+    {
+        FileTabViewModel? tab = this.ViewModel?.SelectedFileTab;
+        if (tab == null)
+        {
+            return;
+        }
+        List<FileRow> rows = tab.GetCheckedRows();
+        if (rows.Count == 0)
+        {
+            tab.ShowMessage("请先勾选要剪切的条目");
+            return;
+        }
+        this.ViewModel?.CutPathsToClipboard(rows.Select(row => row.FullPath).ToList());
+    }
+
+    /// <summary>工具栏粘贴：粘贴剪贴板内容到当前目录。</summary>
+    private void OnToolbarPasteClick(object? sender, RoutedEventArgs e)
+    {
+        this.ViewModel?.PasteFromClipboard();
+    }
+
+    /// <summary>标签右键菜单：新建标签。</summary>
+    private void OnTabMenuNewTab(object? sender, RoutedEventArgs e)
+    {
+        this.ViewModel?.AddTab(string.Empty);
+    }
+
+    /// <summary>标签右键菜单：复制当前标签（新标签打开同一目录）。</summary>
+    private void OnTabMenuDuplicate(object? sender, RoutedEventArgs e)
+    {
+        if (sender is MenuItem menuItem && menuItem.DataContext is FileTabViewModel tab)
+        {
+            this.ViewModel?.AddTab(tab.CurrentPath);
+        }
+    }
+
+    /// <summary>标签右键菜单：把该标签目录添加到书签栏。</summary>
+    private void OnTabMenuAddToBookmarks(object? sender, RoutedEventArgs e)
+    {
+        if (sender is MenuItem menuItem && menuItem.DataContext is FileTabViewModel tab)
+        {
+            this.ViewModel?.PinPath(tab.CurrentPath);
+        }
+    }
+
+    /// <summary>标签右键菜单：关闭该标签。</summary>
+    private void OnTabMenuClose(object? sender, RoutedEventArgs e)
+    {
+        if (sender is MenuItem menuItem && menuItem.DataContext is FileTabViewModel tab)
+        {
+            this.CloseCurrentTab(tab);
+        }
+    }
+
+    /// <summary>标签右键菜单：关闭其他全部文件标签。</summary>
+    private void OnTabMenuCloseOthers(object? sender, RoutedEventArgs e)
+    {
+        if (sender is MenuItem menuItem && menuItem.DataContext is FileTabViewModel tab)
+        {
+            this.ViewModel?.CloseOtherTabs(tab);
+        }
+    }
+
+    /// <summary>标签右键菜单：固定 / 取消固定该标签。</summary>
+    private void OnTabMenuTogglePin(object? sender, RoutedEventArgs e)
+    {
+        if (sender is MenuItem menuItem && menuItem.DataContext is FileTabViewModel tab)
+        {
+            this.ViewModel?.TogglePinTab(tab);
+        }
     }
 
     private void OnToolbarNewFolderClick(object? sender, RoutedEventArgs e)
@@ -600,11 +734,6 @@ public partial class MainWindow : Window
         ProcessWindow window = new ProcessWindow();
         window.DataContext = viewModel.CreateProcessPanel();
         window.Show();
-    }
-
-    private void OnViewModeClick(object? sender, RoutedEventArgs e)
-    {
-        this.ViewModel?.SelectedFileTab?.CycleViewMode();
     }
 
     private void OnInfoPaneClick(object? sender, RoutedEventArgs e)
