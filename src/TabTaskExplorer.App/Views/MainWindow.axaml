@@ -366,7 +366,7 @@
             </StackPanel>
             <Button Classes="nav" HorizontalAlignment="Stretch" Click="OnConnectionsClick">
               <StackPanel Orientation="Horizontal" Spacing="7">
-                <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE968;" Foreground="{DynamicResource AccentGlyphBrush}" FontSize="13" Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
+                <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE968;" Foreground="{DynamicResource AccentGlyphBrush}" FontSize="13" VerticalAlignment="Center" />
                 <TextBlock Text="连接管理" VerticalAlignment="Center" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}" />
               </StackPanel>
             </Button>
