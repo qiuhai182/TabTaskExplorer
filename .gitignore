@@ -206,8 +206,6 @@ references/
 tools/
 
 # ---------- 本地个人工具文件（不入库） ----------
-/config
-/convert_to_utf8.py
 
 # ---------- 构建发布产物 ----------
 output/

@@ -1,4 +1,6 @@
-﻿using System.Text.Json;
+﻿using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
 using TabTaskExplorer.Kernel.Services;
 
 namespace TabTaskExplorer.App.Services;
@@ -40,6 +42,15 @@ public class AppSettings
 
     /// <summary>网页端服务监听端口（仅本机回环地址，默认 15919）。</summary>
     public int WebServicePort { get; set; } = 15919;
+
+    /// <summary>
+    /// 网页端端口清单：每个端口独立配置，任意数量；同一权限方案可被多个端口共用。
+    /// 首次升级时由旧的单端口配置（EnableWebService / WebServicePort）自动迁移而来。
+    /// </summary>
+    public List<WebPortSetting> WebPorts { get; set; } = new List<WebPortSetting>();
+
+    /// <summary>网页端权限方案清单：描述来源 IP、可访问路径、读写与增删权限、是否需要账号密码。</summary>
+    public List<WebAccessProfile> WebAccessProfiles { get; set; } = new List<WebAccessProfile>();
 
     /// <summary>启动时是否恢复上次关闭的标签页。</summary>
     public bool RestoreLastTabs { get; set; } = false;
@@ -126,6 +137,7 @@ public class AppSettingsStore
                 {
                     EnsureDefaultHotkeys(settings);
                     EnsureFileOpenRules(settings);
+                    EnsureWebSettings(settings);
                     return settings;
                 }
             }
@@ -199,4 +211,169 @@ public class AppSettingsStore
             settings.FileOpenDefaultPriority = FileOpenPriority.Builtin;
         }
     }
+
+    /// <summary>
+    /// 补齐网页端配置：旧版本只有单端口配置，首次升级时迁移为一个端口方案；
+    /// 已有多端口配置时保持用户配置不变，只补齐缺失的权限方案引用。
+    /// </summary>
+    private static void EnsureWebSettings(AppSettings settings)
+    {
+        if (settings.WebAccessProfiles == null)
+        {
+            settings.WebAccessProfiles = new List<WebAccessProfile>();
+        }
+        if (settings.WebAccessProfiles.Count == 0)
+        {
+            settings.WebAccessProfiles.Add(WebAccessProfile.CreateDefault());
+        }
+        if (settings.WebPorts == null)
+        {
+            settings.WebPorts = new List<WebPortSetting>();
+        }
+        if (settings.WebPorts.Count == 0)
+        {
+            WebPortSetting migrated = new WebPortSetting();
+            migrated.Port = settings.WebServicePort > 0 ? settings.WebServicePort : 15919;
+            migrated.Enabled = settings.EnableWebService;
+            migrated.ProfileName = settings.WebAccessProfiles[0].Name;
+            settings.WebPorts.Add(migrated);
+        }
+        // 端口引用了不存在的方案时，回落到第一个方案，避免该端口无权限可用
+        foreach (WebPortSetting port in settings.WebPorts)
+        {
+            if (FindProfile(settings, port.ProfileName) == null)
+            {
+                port.ProfileName = settings.WebAccessProfiles[0].Name;
+            }
+        }
+    }
+
+    /// <summary>按名称查找权限方案；名称为空或不存在时返回 null。</summary>
+    public static WebAccessProfile? FindProfile(AppSettings settings, string profileName)
+    {
+        if (string.IsNullOrEmpty(profileName) || settings.WebAccessProfiles == null)
+        {
+            return null;
+        }
+        foreach (WebAccessProfile profile in settings.WebAccessProfiles)
+        {
+            if (string.Equals(profile.Name, profileName, StringComparison.Ordinal))
+            {
+                return profile;
+            }
+        }
+        return null;
+    }
+}
+
+/// <summary>
+/// 网页端权限方案：描述来源 IP 限制、可访问的目录与文件、修改与增删权限、是否需要账号密码。
+/// 多个端口可引用同一方案，实现权限配置的共用；也允许每个端口各自引用不同方案。
+/// </summary>
+public class WebAccessProfile
+{
+    /// <summary>方案名称（端口按名称引用，重名时以靠前的为准）。</summary>
+    public string Name { get; set; } = "默认方案";
+
+    /// <summary>是否放行修改文件内容（写入已有文件）。默认关闭。</summary>
+    public bool AllowModify { get; set; } = false;
+
+    /// <summary>是否放行新建与删除（新建文件夹、重命名、删除条目）。默认关闭。</summary>
+    public bool AllowCreateDelete { get; set; } = false;
+
+    /// <summary>
+    /// 允许访问的来源地址：支持单个 IPv4 / IPv6 地址与网段写法（如 192.168.1.0/24）。
+    /// 列表为空表示不限制来源，但仅在监听地址为本机回环时才有实际意义。
+    /// </summary>
+    public List<string> AllowedAddresses { get; set; } = new List<string> { "127.0.0.1", "::1" };
+
+    /// <summary>
+    /// 允许访问的目录与文件路径：目录按前缀匹配，文件按完整路径匹配。
+    /// 列表为空表示不限制路径（整个本机文件系统只读可浏览）。
+    /// </summary>
+    public List<string> AllowedPaths { get; set; } = new List<string>();
+
+    /// <summary>是否要求账号密码验证；关闭时直接按本方案的权限放行。</summary>
+    public bool RequirePassword { get; set; } = false;
+
+    /// <summary>验证账号；仅在要求密码验证时生效。</summary>
+    public string Account { get; set; } = "admin";
+
+    /// <summary>密码摘要（不保存明文）；由 SetPassword 写入，VerifyPassword 校验。</summary>
+    public string PasswordHash { get; set; } = string.Empty;
+
+    /// <summary>密码摘要使用的随机盐值。</summary>
+    public string PasswordSalt { get; set; } = string.Empty;
+
+    /// <summary>创建默认方案：仅本机回环访问，全盘只读浏览，不允许修改与增删，不要求密码。</summary>
+    public static WebAccessProfile CreateDefault()
+    {
+        return new WebAccessProfile();
+    }
+
+    /// <summary>设置密码：生成随机盐并保存加盐摘要，明文不落盘。</summary>
+    public void SetPassword(string password)
+    {
+        byte[] saltBytes = RandomNumberGenerator.GetBytes(16);
+        this.PasswordSalt = Convert.ToBase64String(saltBytes);
+        this.PasswordHash = WebAccessProfile.ComputeHash(password == null ? string.Empty : password, saltBytes);
+    }
+
+    /// <summary>校验密码：账号与密码都匹配才通过；未设置密码时一律不通过。</summary>
+    public bool VerifyPassword(string account, string password)
+    {
+        if (string.IsNullOrEmpty(this.PasswordHash) || string.IsNullOrEmpty(this.PasswordSalt))
+        {
+            return false;
+        }
+        if (!string.Equals(this.Account, account, StringComparison.Ordinal))
+        {
+            return false;
+        }
+        byte[] saltBytes = Convert.FromBase64String(this.PasswordSalt);
+        string computed = WebAccessProfile.ComputeHash(password == null ? string.Empty : password, saltBytes);
+        return string.Equals(this.PasswordHash, computed, StringComparison.Ordinal);
+    }
+
+    /// <summary>加盐 SHA-256 摘要（十六进制文本）。</summary>
+    private static string ComputeHash(string password, byte[] saltBytes)
+    {
+        byte[] passwordBytes = Encoding.UTF8.GetBytes(password);
+        byte[] combined = new byte[saltBytes.Length + passwordBytes.Length];
+        Array.Copy(saltBytes, 0, combined, 0, saltBytes.Length);
+        Array.Copy(passwordBytes, 0, combined, saltBytes.Length, passwordBytes.Length);
+        byte[] digest = SHA256.HashData(combined);
+        return Convert.ToHexString(digest);
+    }
+}
+
+/// <summary>
+/// 网页端端口配置：一个端口一个监听器，独立引用一个权限方案。
+/// 端口数量不受限制，可同时开启多个端口并分别应用不同权限。
+/// </summary>
+public class WebPortSetting
+{
+    /// <summary>监听端口号。</summary>
+    public int Port { get; set; } = 15919;
+
+    /// <summary>是否启用该端口。</summary>
+    public bool Enabled { get; set; } = true;
+
+    /// <summary>引用的权限方案名称（在 WebAccessProfiles 中按名称查找）。</summary>
+    public string ProfileName { get; set; } = "默认方案";
+
+    /// <summary>
+    /// 监听范围：Loopback（仅本机，默认）或 Any（同时监听局域网地址，需配合方案的来源地址限制）。
+    /// </summary>
+    public string BindAddress { get; set; } = WebBindScope.Loopback;
+}
+
+/// <summary>网页端监听范围常量。</summary>
+public static class WebBindScope
+{
+    /// <summary>仅监听本机回环地址。</summary>
+    public const string Loopback = "Loopback";
+
+    /// <summary>监听全部网络地址（含局域网），来源由权限方案的地址白名单控制。</summary>
+    public const string Any = "Any";
 }

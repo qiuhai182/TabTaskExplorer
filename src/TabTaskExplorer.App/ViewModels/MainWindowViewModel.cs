@@ -28,7 +28,7 @@ public class QuickAccessItem
 /// <summary>
 /// 主窗口视图模型：混合标签页（文件浏览 / 任务看板）、侧边栏、书签栏、剪贴板与设置。
 /// </summary>
-public class MainWindowViewModel : INotifyPropertyChanged
+public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
 {
     private readonly IServiceProvider services;
     private readonly AppSettingsStore settingsStore = new AppSettingsStore();
@@ -39,10 +39,11 @@ public class MainWindowViewModel : INotifyPropertyChanged
     private bool isIdeMode;
     private List<string>? clipboardPaths;
     private bool clipboardIsCut;
-    private DebugWebHost? debugWebHost;
+    private WebServiceHost? debugWebHost;
     private bool webServiceRunning;
     private int webServicePort;
     private string webServiceStatus = "网页端服务：未启动";
+    private readonly Dictionary<string, WebWorkspace> webWorkspaces = new Dictionary<string, WebWorkspace>();
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -107,7 +108,20 @@ public class MainWindowViewModel : INotifyPropertyChanged
         get { return this.selectedTab; }
         set
         {
+            object? previous = this.selectedTab;
             this.selectedTab = value;
+            if (!object.ReferenceEquals(previous, value))
+            {
+                // 磁盘视图只有在台前才扫描：切走立即停止，切入立即刷新为最新状态
+                if (previous is DiskViewPanelViewModel previousDiskView)
+                {
+                    previousDiskView.SetForeground(false);
+                }
+                if (value is DiskViewPanelViewModel newDiskView)
+                {
+                    newDiskView.SetForeground(true);
+                }
+            }
             this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SelectedTab)));
         }
     }
@@ -366,10 +380,60 @@ public class MainWindowViewModel : INotifyPropertyChanged
         }
 
         DiskViewPanelViewModel newDiskView = new DiskViewPanelViewModel(
-            this.services.GetRequiredService<IDiskUsageProvider>());
+            this.services.GetRequiredService<IDiskUsageProvider>(),
+            this.services.GetRequiredService<DiskScanService>());
         this.Tabs.Add(newDiskView);
         this.SelectedTab = newDiskView;
         UiLogger.Log("程序行为", "新建磁盘视图标签：标签总数=" + this.Tabs.Count);
+    }
+
+    /// <summary>跟随桌面：网页端请求打开桌面磁盘视图标签。</summary>
+    public void OpenDesktopDiskView()
+    {
+        this.OpenDiskViewTab();
+        UiLogger.Log("网页端服务", "跟随桌面打开磁盘视图标签：标签总数=" + this.Tabs.Count);
+    }
+
+    /// <summary>跟随桌面：网页端请求操作桌面磁盘视图；空路径回到根视图，其余路径原地展开或收起。</summary>
+    public void NavigateDesktopDisk(string path)
+    {
+        DiskViewPanelViewModel? diskView = this.SelectedTab as DiskViewPanelViewModel;
+        if (diskView == null)
+        {
+            UiLogger.Log("网页端服务", "跟随桌面磁盘视图操作忽略：当前选中的不是磁盘视图标签 当前标签="
+                + (this.SelectedTab == null ? "无" : this.SelectedTab.GetType().Name));
+            return;
+        }
+        string target = path == null ? string.Empty : path.Trim();
+        if (target.Length > 0 && !Directory.Exists(target))
+        {
+            UiLogger.Log("网页端服务", "跟随桌面磁盘视图操作忽略：目标不是目录 目标=" + target);
+            return;
+        }
+        diskView.ToggleRowByPath(target);
+        UiLogger.Log("网页端服务", "跟随桌面磁盘视图切换展开：目标=" + (target.Length == 0 ? "根视图" : target));
+    }
+
+    /// <summary>跟随桌面：当前标签返回上一级；文件标签与磁盘视图标签各自处理，其它标签忽略。</summary>
+    public void NavigateDesktopUp()
+    {
+        FileTabViewModel? fileTab = this.SelectedTab as FileTabViewModel;
+        if (fileTab != null)
+        {
+            fileTab.NavigateUp();
+            UiLogger.Log("网页端服务", "跟随桌面返回上一级：文件标签=" + fileTab.Title + " 新路径=" + fileTab.CurrentPath);
+            return;
+        }
+        DiskViewPanelViewModel? diskView = this.SelectedTab as DiskViewPanelViewModel;
+        if (diskView != null)
+        {
+            diskView.NavigateUp();
+            UiLogger.Log("网页端服务", "跟随桌面返回上一级：磁盘视图新根目录="
+                + (string.IsNullOrEmpty(diskView.RootPathInput) ? "此电脑" : diskView.RootPathInput));
+            return;
+        }
+        UiLogger.Log("网页端服务", "跟随桌面返回上一级忽略：当前标签不支持上一级导航 当前标签="
+            + (this.SelectedTab == null ? "无" : this.SelectedTab.GetType().Name));
     }
 
     /// <summary>各连接的传输服务缓存：同一连接复用同一个传输队列。</summary>
@@ -599,6 +663,11 @@ public class MainWindowViewModel : INotifyPropertyChanged
         if (tab is TerminalTabViewModel closingTerminal)
         {
             closingTerminal.Dispose();
+        }
+        // 磁盘视图标签关闭时停止台前探测并释放扫描订阅
+        if (tab is DiskViewPanelViewModel closingDiskView)
+        {
+            closingDiskView.Close();
         }
         int index = this.Tabs.IndexOf(tab);
         if (index < 0)
@@ -874,77 +943,518 @@ public class MainWindowViewModel : INotifyPropertyChanged
     }
 
     /// <summary>接入网页端服务并按当前设置决定是否随程序启动。</summary>
-    public void AttachDebugWebHost(DebugWebHost host)
+    public void AttachDebugWebHost(WebServiceHost host)
     {
         this.debugWebHost = host;
         this.ApplyWebServiceSettings();
     }
 
     /// <summary>
-    /// 按设置启动或停止网页端服务：开关关闭时停止，端口变化时按新端口重启，
-    /// 并在状态栏显示真实监听地址或未启动原因。设置发生变化后由 SaveSettingsAndApply 调用。
+    /// 按设置启动或停止网页端服务：逐个端口解析权限方案并监听，任意一个端口失败都不影响其他端口。
+    /// 状态栏显示全部监听地址，失败原因写入日志。设置变化后由 SaveSettingsAndApply 调用。
     /// </summary>
     public void ApplyWebServiceSettings()
     {
-        DebugWebHost? host = this.debugWebHost;
+        WebServiceHost? host = this.debugWebHost;
         if (host == null)
         {
             return;
         }
 
-        if (!this.Settings.EnableWebService)
+        List<WebPortRuntime> runtimes = new List<WebPortRuntime>();
+        this.CleanupWebWorkspaces();
+        foreach (WebPortSetting portSetting in this.Settings.WebPorts)
+        {
+            if (!portSetting.Enabled)
+            {
+                continue;
+            }
+            if (portSetting.Port < 1024 || portSetting.Port > 65535)
+            {
+                UiLogger.Log("网页端服务", "端口非法已跳过：配置端口=" + portSetting.Port + " 方案=" + portSetting.ProfileName);
+                continue;
+            }
+            WebAccessProfile? profile = AppSettingsStore.FindProfile(this.Settings, portSetting.ProfileName);
+            if (profile == null)
+            {
+                UiLogger.Log("网页端服务", "端口缺少可用权限方案已跳过：端口=" + portSetting.Port + " 方案=" + portSetting.ProfileName);
+                continue;
+            }
+            WebPortRuntime runtime = new WebPortRuntime();
+            runtime.Port = portSetting.Port;
+            runtime.BindScope = portSetting.BindAddress;
+            runtime.Profile = profile;
+            runtimes.Add(runtime);
+        }
+
+        if (runtimes.Count == 0)
         {
             if (this.webServiceRunning)
             {
                 host.Stop();
                 this.webServiceRunning = false;
-                UiLogger.Log("网页端服务", "停止：按设置关闭 原监听地址=" + host.ListenUrl + " 原端口=" + this.webServicePort);
             }
-            else
-            {
-                UiLogger.Log("网页端服务", "保持停止：设置中已关闭，服务未在运行");
-            }
+            UiLogger.Log("网页端服务", "保持停止：没有启用的端口配置");
             this.SetWebServiceStatus("网页端服务：未启动");
             return;
         }
 
-        int port = this.Settings.WebServicePort;
-        if (port < 1024 || port > 65535)
+        host.Start(runtimes, this, this.Settings);
+        this.webServiceRunning = host.ListenUrls.Count > 0;
+        this.webServicePort = runtimes[0].Port;
+
+        foreach (string failure in host.Failures)
         {
-            UiLogger.Log("网页端服务", "端口非法已回落默认值：配置端口=" + port + " 默认端口=" + DebugWebHost.DefaultPort);
-            port = DebugWebHost.DefaultPort;
-            this.Settings.WebServicePort = port;
+            UiLogger.Log("网页端服务", "启动失败：" + failure);
         }
-        if (this.webServiceRunning && this.webServicePort == port)
+        foreach (WebPortRuntime runtime in runtimes)
         {
-            return;
-        }
-        if (this.webServiceRunning)
-        {
-            host.Stop();
-            this.webServiceRunning = false;
-            UiLogger.Log("网页端服务", "停止：端口变化需重启 原端口=" + this.webServicePort + " 新端口=" + port);
+            UiLogger.Log("网页端服务", "端口配置：端口=" + runtime.Port + " 监听范围=" + runtime.BindScope
+                + " 权限方案=" + runtime.Profile.Name + " 允许修改=" + runtime.Profile.AllowModify
+                + " 允许增删=" + runtime.Profile.AllowCreateDelete + " 需要密码=" + runtime.Profile.RequirePassword
+                + " 来源白名单=" + this.DescribeList(runtime.Profile.AllowedAddresses)
+                + " 路径白名单=" + this.DescribeList(runtime.Profile.AllowedPaths));
         }
 
-        bool started = host.Start(
-            delegate { return this.DispatchDebugSnapshotAsync(); },
-            delegate(int index) { this.SelectDebugTabOnUiThread(index); },
-            delegate(string theme) { this.SetThemeOnUiThread(theme); },
-            delegate(string path) { this.OpenPathOnUiThread(path); },
-            port);
-
-        this.webServiceRunning = started;
-        this.webServicePort = port;
-        if (started)
+        if (host.ListenUrls.Count > 0)
         {
-            this.SetWebServiceStatus("网页端服务：" + host.ListenUrl);
-            UiLogger.Log("网页端服务", "启动成功：监听地址=" + host.ListenUrl + " 端口=" + port);
+            string joined = string.Join(" ", host.ListenUrls);
+            this.SetWebServiceStatus("网页端服务：" + joined);
+            UiLogger.Log("网页端服务", "启动成功：监听地址=" + joined + " 端口数量=" + host.ListenUrls.Count
+                + " 失败端口数=" + host.Failures.Count);
         }
         else
         {
-            this.SetWebServiceStatus("网页端服务：未启动（端口 " + port + " 不可用）");
-            UiLogger.Log("网页端服务", "启动失败：端口=" + port + " 不可用，可能已被其他程序占用");
+            this.SetWebServiceStatus("网页端服务：未启动（端口不可用）");
+            UiLogger.Log("网页端服务", "启动失败：全部端口均不可用 端口数量=" + runtimes.Count);
         }
+    }
+
+    /// <summary>把清单拼成日志文本；空清单写明“不限制”。</summary>
+    private string DescribeList(List<string> items)
+    {
+        if (items == null || items.Count == 0)
+        {
+            return "不限制";
+        }
+        return string.Join(",", items);
+    }
+
+    /// <summary>清理超过 30 分钟没有访问的独立工作区，避免长期占用内存。</summary>
+    private void CleanupWebWorkspaces()
+    {
+        DateTime deadline = DateTime.Now.AddMinutes(-30);
+        List<string> expired = new List<string>();
+        foreach (KeyValuePair<string, WebWorkspace> pair in this.webWorkspaces)
+        {
+            if (pair.Value.LastAccessTime < deadline)
+            {
+                expired.Add(pair.Key);
+            }
+        }
+        foreach (string id in expired)
+        {
+            // 回收前关闭工作区内的磁盘视图标签：退订扫描事件并停止台前探测
+            if (this.webWorkspaces.TryGetValue(id, out WebWorkspace? expiredWorkspace))
+            {
+                expiredWorkspace.ReleaseTabs();
+            }
+            this.webWorkspaces.Remove(id);
+            UiLogger.Log("网页端工作区", "回收闲置工作区：工作区=" + id);
+        }
+    }
+
+    /// <summary>读取跟随桌面模式的状态快照（跨线程安全）。</summary>
+    public Task<DebugUiState> GetDesktopStateAsync()
+    {
+        return this.DispatchDebugSnapshotAsync();
+    }
+
+    /// <summary>读取桌面 IDE 指定编辑器的当前文本（跨线程安全；返回格式：令牌 + 换行 + 文本）。</summary>
+    public string ReadDesktopIdeText(int index)
+    {
+        if (Avalonia.Threading.Dispatcher.UIThread.CheckAccess())
+        {
+            return this.IdeShell.ReadEditorText(index);
+        }
+        return Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(
+            new Func<string>(delegate { return this.IdeShell.ReadEditorText(index); }))
+            .GetTask().GetAwaiter().GetResult();
+    }
+
+    /// <summary>在桌面切换标签（跨线程安全）。</summary>
+    public void SelectDesktopTab(int index)
+    {
+        this.SelectDebugTabOnUiThread(index);
+    }
+
+    /// <summary>在桌面的文件标签中打开路径（跨线程安全）。</summary>
+    public void OpenDesktopPath(string path)
+    {
+        this.OpenPathOnUiThread(path);
+    }
+
+    /// <summary>应用界面主题（跨线程安全）。</summary>
+    public void ApplyTheme(string theme)
+    {
+        this.SetThemeOnUiThread(theme);
+    }
+
+    /// <summary>执行网页端动作（跨线程安全）：调度到 UI 线程执行，返回给页面的提示文字。</summary>
+    public string ExecuteDesktopAction(string action, string argument)
+    {
+        if (Avalonia.Threading.Dispatcher.UIThread.CheckAccess())
+        {
+            return this.ExecuteWebActionOnUiThread(action, argument);
+        }
+        return Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(
+            new Func<string>(delegate { return this.ExecuteWebActionOnUiThread(action, argument); }))
+            .GetTask().GetAwaiter().GetResult();
+    }
+
+    /// <summary>在桌面当前文件标签中新建文件夹（跨线程安全，网页端请求线程调用）。</summary>
+    public void CreateDesktopFolder(string folderName)
+    {
+        Avalonia.Threading.Dispatcher.UIThread.Post(delegate
+        {
+            FileTabViewModel? fileTab = this.SelectedFileTab;
+            if (fileTab != null)
+            {
+                fileTab.CreateFolder(folderName);
+            }
+        });
+    }
+
+    /// <summary>重命名桌面当前文件标签中指定路径的条目（跨线程安全，网页端请求线程调用）。</summary>
+    public void RenameDesktopEntry(string path, string newName)
+    {
+        Avalonia.Threading.Dispatcher.UIThread.Post(delegate
+        {
+            FileTabViewModel? fileTab = this.SelectedFileTab;
+            if (fileTab == null)
+            {
+                return;
+            }
+            foreach (FileRow row in fileTab.VisibleRows)
+            {
+                if (row.FullPath == path)
+                {
+                    fileTab.RenameRow(row, newName);
+                    return;
+                }
+            }
+        });
+    }
+
+    /// <summary>删除桌面当前文件标签中指定路径的条目（移入回收站，跨线程安全，网页端请求线程调用）。</summary>
+    public void DeleteDesktopEntry(string path)
+    {
+        Avalonia.Threading.Dispatcher.UIThread.Post(delegate
+        {
+            FileTabViewModel? fileTab = this.SelectedFileTab;
+            if (fileTab == null)
+            {
+                return;
+            }
+            foreach (FileRow row in fileTab.VisibleRows)
+            {
+                if (row.FullPath == path)
+                {
+                    fileTab.DeleteRow(row);
+                    return;
+                }
+            }
+        });
+    }
+
+    /// <summary>把网页端编辑器内容写入指定文件（跨线程安全，网页端请求线程调用）。</summary>
+    public void WriteDesktopFile(string path, byte[] content)
+    {
+        Avalonia.Threading.Dispatcher.UIThread.Post(delegate
+        {
+            try
+            {
+                FileTabViewModel? fileTab = this.SelectedFileTab;
+                IFileContentAccess? contentAccess = fileTab == null ? null : fileTab.ContentAccess;
+                if (contentAccess != null)
+                {
+                    contentAccess.WriteAllBytes(path, content);
+                }
+                else
+                {
+                    File.WriteAllBytes(path, content);
+                }
+                UiLogger.Log("网页端访问", "修改文件：模式=跟随桌面 目标=" + path + " 字节数=" + content.Length);
+            }
+            catch (Exception error)
+            {
+                UiLogger.Log("网页端访问", "修改文件失败：模式=跟随桌面 目标=" + path + " 原因=" + error.Message);
+            }
+        });
+    }
+
+    /// <summary>在 UI 线程执行网页端动作（必须在 UI 线程调用），返回给页面的提示文字，空文本表示无提示。</summary>
+    private string ExecuteWebActionOnUiThread(string action, string argument)
+    {
+        FileTabViewModel? fileTab = this.SelectedFileTab;
+        DiskViewPanelViewModel? diskTab = this.SelectedTab as DiskViewPanelViewModel;
+
+        if (action.StartsWith("ide", StringComparison.Ordinal))
+        {
+            if (action == "ide")
+            {
+                this.ToggleIdeMode();
+                return this.IsIdeMode ? "已切换到 IDE 模式" : "已切换到资源管理器模式";
+            }
+            return this.IdeShell.ExecuteIdeAction(action, argument);
+        }
+        if (action == "sort")
+        {
+            if (fileTab == null) { return "当前标签不是文件列表"; }
+            fileTab.SetSortField(argument);
+            return "已按 " + argument + (fileTab.SortAscending ? " 升序" : " 降序") + " 排列";
+        }
+        if (action == "back")
+        {
+            if (fileTab == null) { return "当前标签不是文件列表"; }
+            fileTab.GoBack();
+            return string.Empty;
+        }
+        if (action == "forward")
+        {
+            if (fileTab == null) { return "当前标签不是文件列表"; }
+            fileTab.GoForward();
+            return string.Empty;
+        }
+        if (action == "refresh")
+        {
+            if (fileTab != null)
+            {
+                fileTab.Refresh();
+                return "已刷新：" + (string.IsNullOrEmpty(fileTab.CurrentPath) ? "此电脑" : fileTab.CurrentPath);
+            }
+            if (diskTab != null)
+            {
+                diskTab.StartFullRefresh();
+                return "已完全重扫磁盘视图";
+            }
+            return "当前标签不支持刷新";
+        }
+        if (action == "search")
+        {
+            SearchTabViewModel? searchTab = this.SelectedTab as SearchTabViewModel;
+            if (searchTab != null)
+            {
+                searchTab.QueryText = argument;
+                searchTab.ExecuteSearch();
+                return "全局搜索关键字=" + argument;
+            }
+            if (fileTab == null) { return "当前标签不是文件列表"; }
+            fileTab.SearchText = argument;
+            return string.IsNullOrEmpty(argument) ? "已清空搜索" : "搜索关键字=" + argument;
+        }
+        if (action == "viewmode")
+        {
+            if (fileTab == null) { return "当前标签不是文件列表"; }
+            FileViewMode mode;
+            if (!Enum.TryParse(argument, out mode))
+            {
+                return "无法识别的视图模式：" + argument;
+            }
+            fileTab.SetViewMode(mode);
+            return "视图模式=" + argument;
+        }
+        if (action == "infopane")
+        {
+            if (fileTab == null) { return "当前标签不是文件列表"; }
+            fileTab.ShowInfoPane = argument == "1";
+            return string.Empty;
+        }
+        if (action == "checkset")
+        {
+            if (fileTab == null) { return "当前标签不是文件列表"; }
+            List<string> checkedPaths = MainWindowViewModel.SplitPathLines(argument);
+            fileTab.SetCheckedPaths(checkedPaths);
+            return "已勾选 " + checkedPaths.Count + " 项";
+        }
+        if (action == "checkall")
+        {
+            if (fileTab == null) { return "当前标签不是文件列表"; }
+            fileTab.SelectAll();
+            return "已全选 " + fileTab.VisibleRows.Count + " 项";
+        }
+        if (action == "checkclear")
+        {
+            if (fileTab == null) { return "当前标签不是文件列表"; }
+            fileTab.ClearChecked();
+            return "已取消全部勾选";
+        }
+        if (action == "copy")
+        {
+            if (fileTab == null) { return "当前标签不是文件列表"; }
+            List<string> copyPaths = fileTab.GetCheckedPaths();
+            if (copyPaths.Count == 0) { return "请先勾选要复制的条目"; }
+            this.CopyPathsToClipboard(copyPaths);
+            return "已复制 " + copyPaths.Count + " 项";
+        }
+        if (action == "cut")
+        {
+            if (fileTab == null) { return "当前标签不是文件列表"; }
+            List<string> cutPaths = fileTab.GetCheckedPaths();
+            if (cutPaths.Count == 0) { return "请先勾选要剪切的条目"; }
+            this.CutPathsToClipboard(cutPaths);
+            return "已剪切 " + cutPaths.Count + " 项";
+        }
+        if (action == "paste")
+        {
+            if (fileTab == null) { return "当前标签不是文件列表"; }
+            this.PasteFromClipboard();
+            return string.Empty;
+        }
+        if (action == "deletechecked")
+        {
+            if (fileTab == null) { return "当前标签不是文件列表"; }
+            if (fileTab.GetCheckedRows().Count == 0) { return "请先勾选要删除的条目"; }
+            fileTab.DeleteChecked();
+            return "已把勾选条目移入回收站";
+        }
+        if (action == "batchrename")
+        {
+            if (fileTab == null) { return "当前标签不是文件列表"; }
+            List<string[]> renamePlan = MainWindowViewModel.ParseRenamePlan(argument);
+            if (renamePlan.Count == 0) { return "没有需要改名的条目"; }
+            fileTab.ApplyBatchRenames(renamePlan);
+            return "批量改名已提交，计划条目数=" + renamePlan.Count;
+        }
+        if (action == "chmod")
+        {
+            if (fileTab == null) { return "当前标签不是文件列表"; }
+            int lineSplit = argument.IndexOf('\n');
+            if (lineSplit <= 0 || lineSplit >= argument.Length - 1) { return "缺少目标路径或权限值"; }
+            string targetPath = argument.Substring(0, lineSplit);
+            string modeText = argument.Substring(lineSplit + 1).Trim();
+            IRemotePermissionChanger? changer = fileTab.PermissionChanger;
+            if (changer == null) { return "当前标签不是远程连接，无法修改权限"; }
+            int octalMode;
+            if (!WebWorkspace.TryParseOctalMode(modeText, out octalMode)) { return "权限格式无效（0~777 八进制）"; }
+            try
+            {
+                Task.Run(delegate { changer.ChangePermissions(targetPath, octalMode); }).GetAwaiter().GetResult();
+                return "权限已修改：" + modeText;
+            }
+            catch (Exception error)
+            {
+                return "权限修改失败：" + error.Message;
+            }
+        }
+        if (action == "togglehidden")
+        {
+            this.Settings.ShowHiddenFiles = !this.Settings.ShowHiddenFiles;
+            this.SaveSettingsAndApply();
+            return "显示隐藏条目=" + (this.Settings.ShowHiddenFiles ? "开" : "关");
+        }
+        if (action == "toggleextensions")
+        {
+            this.Settings.ShowFileExtensions = !this.Settings.ShowFileExtensions;
+            this.SaveSettingsAndApply();
+            return "显示文件扩展名=" + (this.Settings.ShowFileExtensions ? "开" : "关");
+        }
+        if (action == "pin")
+        {
+            if (string.IsNullOrEmpty(argument))
+            {
+                this.PinCurrentTab();
+            }
+            else
+            {
+                this.PinPath(argument);
+            }
+            return "已加入书签";
+        }
+        if (action == "unpin")
+        {
+            this.Unpin(argument);
+            return "已从书签移除";
+        }
+        if (action == "openboard")
+        {
+            this.OpenTaskBoardTab();
+            return string.Empty;
+        }
+        if (action == "opensearch")
+        {
+            this.OpenSearchTab();
+            return string.Empty;
+        }
+        if (action == "openconnections")
+        {
+            this.OpenConnectionsTab();
+            return string.Empty;
+        }
+        if (action == "opendisk")
+        {
+            this.OpenDiskViewTab();
+            return string.Empty;
+        }
+        return "未知动作：" + action;
+    }
+
+    /// <summary>把"每行一个路径"的文本拆成路径列表（去掉空行与行尾回车）。</summary>
+    private static List<string> SplitPathLines(string text)
+    {
+        List<string> paths = new List<string>();
+        foreach (string line in text.Split('\n'))
+        {
+            string path = line.TrimEnd('\r').Trim();
+            if (path.Length > 0)
+            {
+                paths.Add(path);
+            }
+        }
+        return paths;
+    }
+
+    /// <summary>解析批量改名计划：每行"旧路径[TAB]新名称"。</summary>
+    private static List<string[]> ParseRenamePlan(string text)
+    {
+        List<string[]> plan = new List<string[]>();
+        foreach (string line in text.Split('\n'))
+        {
+            string cleanLine = line.TrimEnd('\r');
+            int tab = cleanLine.IndexOf('\t');
+            if (tab <= 0 || tab >= cleanLine.Length - 1)
+            {
+                continue;
+            }
+            plan.Add(new string[] { cleanLine.Substring(0, tab), cleanLine.Substring(tab + 1) });
+        }
+        return plan;
+    }
+
+    /// <summary>创建一个新的网页端独立工作区。</summary>
+    public WebWorkspace CreateWorkspace()
+    {
+        WebWorkspace workspace = new WebWorkspace(this.services, this.Settings);
+        this.webWorkspaces[workspace.Id] = workspace;
+        return workspace;
+    }
+
+    /// <summary>按编号查找独立工作区；不存在时返回 null。</summary>
+    public WebWorkspace? FindWorkspace(string id)
+    {
+        WebWorkspace? workspace;
+        if (this.webWorkspaces.TryGetValue(id, out workspace))
+        {
+            workspace.LastAccessTime = DateTime.Now;
+            return workspace;
+        }
+        return null;
+    }
+
+    /// <summary>销毁指定独立工作区。</summary>
+    public void RemoveWorkspace(string id)
+    {
+        this.webWorkspaces.Remove(id);
     }
 
     /// <summary>更新网页端服务的状态文字（状态栏展示）。</summary>
@@ -1014,12 +1524,28 @@ public class MainWindowViewModel : INotifyPropertyChanged
         }
     }
 
+    /// <summary>取标签标题：各标签视图模型都公开 Title属性，取不到时回退为"标签页"。</summary>
+    private static string DescribeTabTitle(object tab)
+    {
+        System.Reflection.PropertyInfo? property = tab.GetType().GetProperty("Title");
+        if (property != null && property.PropertyType == typeof(string))
+        {
+            string? title = property.GetValue(tab) as string;
+            if (!string.IsNullOrEmpty(title))
+            {
+                return title;
+            }
+        }
+        return "标签页";
+    }
+
     /// <summary>构建界面状态快照（必须在 UI 线程调用）。</summary>
     public DebugUiState BuildDebugState()
     {
         DebugUiState state = new DebugUiState();
         state.GeneratedTime = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
         state.Theme = this.Settings.Theme;
+        state.TabCount = this.Tabs.Count;
         int index = 0;
         foreach (object tab in this.Tabs)
         {
@@ -1029,18 +1555,34 @@ public class MainWindowViewModel : INotifyPropertyChanged
             FileTabViewModel? fileTab = tab as FileTabViewModel;
             TaskBoardViewModel? board = tab as TaskBoardViewModel;
             ConnectionManagerViewModel? connections = tab as ConnectionManagerViewModel;
+            DiskViewPanelViewModel? diskViewTab = tab as DiskViewPanelViewModel;
+            SearchTabViewModel? searchTab = tab as SearchTabViewModel;
             if (fileTab != null)
             {
                 tabState.TabType = "file";
                 tabState.Title = fileTab.Title;
                 tabState.CurrentPath = fileTab.CurrentPath;
+                tabState.SortField = fileTab.SortField;
+                tabState.SortAscending = fileTab.SortAscending;
+                tabState.SearchText = fileTab.SearchText;
+                tabState.ViewMode = fileTab.ViewMode.ToString();
+                tabState.ShowInfoPane = fileTab.ShowInfoPane;
+                tabState.CanGoBack = fileTab.CanGoBack;
+                tabState.CanGoForward = fileTab.CanGoForward;
+                tabState.CheckedCount = fileTab.GetCheckedRows().Count;
+                tabState.SummaryText = fileTab.SummaryText;
                 foreach (FileRow row in fileTab.VisibleRows)
                 {
                     DebugFileRow mirror = new DebugFileRow();
                     mirror.Name = row.DisplayName;
+                    mirror.IsDirectory = row.IsDirectory;
+                    mirror.FullPath = row.FullPath;
                     mirror.Type = row.TypeText;
                     mirror.Size = row.SizeText;
                     mirror.Modified = row.ModifiedText;
+                    mirror.IsSelected = row.IsSelected;
+                    mirror.IconGlyph = row.IconGlyph;
+                    mirror.IconColor = row.IconColor;
                     tabState.Rows.Add(mirror);
                 }
             }
@@ -1071,10 +1613,59 @@ public class MainWindowViewModel : INotifyPropertyChanged
                 }
                 tabState.SelectedConnection = connections.SelectedConnection != null ? connections.SelectedConnection.Name : string.Empty;
             }
+            else if (diskViewTab != null)
+            {
+                tabState.TabType = "disk";
+                tabState.Title = diskViewTab.Title;
+                tabState.CurrentPath = diskViewTab.RootPathInput;
+                tabState.SummaryText = diskViewTab.SummaryText;
+                tabState.TotalRows = diskViewTab.Rows.Count;
+                foreach (DiskRow row in diskViewTab.Rows)
+                {
+                    DebugFileRow mirror = new DebugFileRow();
+                    mirror.Name = row.Name;
+                    mirror.IsDirectory = row.IsDirectory;
+                    mirror.FullPath = row.FullPath;
+                    mirror.Type = row.EntryTypeText;
+                    mirror.Size = row.SizeText;
+                    mirror.Free = row.FreeText;
+                    mirror.Usage = row.UsageText;
+                    mirror.FileSystem = row.FileSystemText;
+                    mirror.Level = row.Level;
+                    mirror.Expanded = row.IsExpanded;
+                    tabState.Rows.Add(mirror);
+                }
+            }
+            else if (searchTab != null)
+            {
+                // 全局搜索标签：结果行与文件列表同构，网页端按同一套表格展示
+                tabState.TabType = "search";
+                tabState.Title = searchTab.Title;
+                tabState.SearchText = searchTab.QueryText;
+                tabState.SummaryText = searchTab.StatusText;
+                tabState.TotalRows = searchTab.Results.Count;
+                int searchLimit = tabState.TotalRows > 1000 ? 1000 : tabState.TotalRows;
+                for (int resultIndex = 0; resultIndex < searchLimit; resultIndex++)
+                {
+                    FileRow row = searchTab.Results[resultIndex];
+                    DebugFileRow mirror = new DebugFileRow();
+                    mirror.Name = row.DisplayName;
+                    mirror.IsDirectory = row.IsDirectory;
+                    mirror.FullPath = row.FullPath;
+                    mirror.Type = row.TypeText;
+                    mirror.Size = row.SizeText;
+                    mirror.Modified = row.ModifiedText;
+                    mirror.IsSelected = row.IsSelected;
+                    mirror.IconGlyph = row.IconGlyph;
+                    mirror.IconColor = row.IconColor;
+                    tabState.Rows.Add(mirror);
+                }
+            }
             else
             {
+                // 终端、传输、编辑器等标签：网页端不渲染内容，但标题要与桌面标签条一致
                 tabState.TabType = "unknown";
-                tabState.Title = "标签页";
+                tabState.Title = MainWindowViewModel.DescribeTabTitle(tab);
             }
             state.Tabs.Add(tabState);
             index++;
@@ -1089,6 +1680,7 @@ public class MainWindowViewModel : INotifyPropertyChanged
                 Name = item.Name,
                 Path = item.Path,
                 Selected = object.ReferenceEquals(item, navMatch),
+                IconGlyph = item.IconGlyph,
             });
         }
         foreach (QuickAccessItem item in this.ThisPcItems)
@@ -1098,7 +1690,23 @@ public class MainWindowViewModel : INotifyPropertyChanged
                 Name = item.Name,
                 Path = item.Path,
                 Selected = object.ReferenceEquals(item, navMatch),
+                IconGlyph = item.IconGlyph,
             });
+        }
+
+        // 视图开关与最近访问（与桌面设置、地址栏"最近"列表同构）
+        state.ShowHiddenFiles = this.Settings.ShowHiddenFiles;
+        state.ShowFileExtensions = this.Settings.ShowFileExtensions;
+        foreach (string recentPath in this.RecentPaths)
+        {
+            state.RecentPaths.Add(recentPath);
+        }
+
+        // IDE 模式镜像（与桌面 IDE 外壳同构：资源树 + 编辑器标签 + 查找面板）
+        state.IsIdeMode = this.IsIdeMode;
+        if (this.IsIdeMode)
+        {
+            state.Ide = this.IdeShell.BuildMirrorState();
         }
         return state;
     }

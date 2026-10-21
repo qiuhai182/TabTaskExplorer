@@ -5,7 +5,7 @@ using TabTaskExplorer.App.ViewModels;
 
 namespace TabTaskExplorer.App.Views;
 
-/// <summary>磁盘视图面板：展示目录占用统计，双击条目进入子目录。</summary>
+/// <summary>磁盘视图面板：展示目录占用统计，单击文件夹原地展开或收起（不进入下一级）。</summary>
 public partial class DiskViewPanel : UserControl
 {
     public DiskViewPanel()
@@ -13,16 +13,16 @@ public partial class DiskViewPanel : UserControl
         this.InitializeComponent();
     }
 
-    /// <summary>刷新按钮：按当前路径重新扫描。</summary>
+    /// <summary>刷新按钮：完全重扫当前路径（忽略快照）。</summary>
     private void OnRefreshClick(object? sender, RoutedEventArgs e)
     {
         if (this.DataContext is DiskViewPanelViewModel viewModel)
         {
-            viewModel.StartRefresh();
+            viewModel.StartFullRefresh();
         }
     }
 
-    /// <summary>打开按钮：按输入新路径扫描。</summary>
+    /// <summary>打开按钮：按输入框路径增量扫描。</summary>
     private void OnOpenClick(object? sender, RoutedEventArgs e)
     {
         if (this.DataContext is DiskViewPanelViewModel viewModel)
@@ -40,13 +40,13 @@ public partial class DiskViewPanel : UserControl
         }
     }
 
-    /// <summary>双击列表条目：目录则进入，文件则打开所在目录。</summary>
-    private void OnRowDoubleTapped(object? sender, TappedEventArgs e)
+    /// <summary>单击列表条目：文件夹原地展开或收起，文件忽略。</summary>
+    private void OnRowTapped(object? sender, TappedEventArgs e)
     {
-        if (this.DataContext is DiskViewPanelViewModel viewModel && sender is ListBox listBox)
+        if (this.DataContext is DiskViewPanelViewModel viewModel && e.Source is Control control)
         {
-            DiskRow? row = listBox.SelectedItem as DiskRow;
-            viewModel.Open(row);
+            DiskRow? row = control.DataContext as DiskRow;
+            viewModel.ToggleRow(row);
         }
     }
 }

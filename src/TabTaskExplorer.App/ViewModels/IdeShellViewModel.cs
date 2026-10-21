@@ -908,6 +908,312 @@ public class IdeShellViewModel : INotifyPropertyChanged
         this.OpenFile(item.FilePath, this.workspaceContentAccess, this.workspaceConnectionName);
     }
 
+    // ======== 网页端镜像（IDE 模式状态、编辑器文本与动作执行） ========
+
+    /// <summary>构建网页端 IDE 模式镜像状态（资源树、编辑器、查找与快速打开）。</summary>
+    public DebugIdeState BuildMirrorState()
+    {
+        DebugIdeState mirror = new DebugIdeState();
+        mirror.WorkspaceRootText = this.WorkspaceRootText;
+        mirror.SolutionStatusText = this.solutionStatusText;
+        mirror.IsWorkspaceLoading = this.isWorkspaceLoading;
+        mirror.ShowFindPanel = this.showFindPanel;
+        mirror.FindText = this.findText;
+        mirror.ReplaceText = this.replaceText;
+        mirror.FindStatusText = this.findStatusText;
+        mirror.FindSelectionStart = this.FindSelectionStart;
+        mirror.FindSelectionLength = this.FindSelectionLength;
+        mirror.ShowQuickOpen = this.showQuickOpen;
+        mirror.QuickOpenText = this.quickOpenText;
+        foreach (FileTreeItemViewModel item in this.RootItems)
+        {
+            IdeShellViewModel.AppendTreeItem(mirror.Tree, item, 0);
+        }
+        int editorIndex = 0;
+        foreach (IdeEditorTabViewModel editor in this.Editors)
+        {
+            DebugIdeEditor editorMirror = new DebugIdeEditor();
+            editorMirror.Index = editorIndex;
+            editorMirror.DisplayTitle = editor.DisplayTitle;
+            editorMirror.ToolTipText = editor.ToolTipText;
+            editorMirror.IsDirty = editor.IsDirty;
+            mirror.Editors.Add(editorMirror);
+            if (object.ReferenceEquals(editor, this.selectedEditor))
+            {
+                mirror.ActiveEditorIndex = editorIndex;
+                mirror.ActiveTextToken = DebugIdeState.ComputeTextToken(editor.Text);
+                mirror.ActiveIsReadOnly = editor.IsReadOnly;
+                mirror.ActiveEncoding = editor.EncodingName;
+                mirror.ActiveLocation = editor.LocationText;
+                mirror.ActiveLineCount = editor.LineCount;
+            }
+            editorIndex++;
+        }
+        foreach (QuickOpenItem item in this.QuickOpenItems)
+        {
+            DebugIdeQuickOpen openMirror = new DebugIdeQuickOpen();
+            openMirror.FileName = item.FileName;
+            openMirror.FilePath = item.FilePath;
+            openMirror.DirectoryText = item.DirectoryText;
+            mirror.QuickOpenItems.Add(openMirror);
+        }
+        foreach (FindResultItem item in this.FindResults)
+        {
+            DebugIdeFindResult resultMirror = new DebugIdeFindResult();
+            resultMirror.Summary = item.Summary;
+            resultMirror.LineText = item.LineText;
+            resultMirror.FilePath = item.FilePath;
+            resultMirror.LineNumber = item.LineNumber;
+            mirror.FindResults.Add(resultMirror);
+        }
+        return mirror;
+    }
+
+    /// <summary>把资源树节点（含已展开的子节点）按可见顺序拍平。</summary>
+    private static void AppendTreeItem(List<DebugIdeTreeNode> target, FileTreeItemViewModel item, int depth)
+    {
+        DebugIdeTreeNode node = new DebugIdeTreeNode();
+        node.Depth = depth;
+        node.Name = item.Name;
+        node.FullPath = item.FullPath;
+        node.IsDirectory = item.IsDirectory;
+        node.IsExpanded = item.IsExpanded;
+        node.IsPlaceholder = item.IsPlaceholder;
+        node.IconGlyph = item.IconGlyph;
+        node.IconColor = item.IconColor;
+        target.Add(node);
+        if (item.IsDirectory && item.IsExpanded)
+        {
+            foreach (FileTreeItemViewModel child in item.Children)
+            {
+                IdeShellViewModel.AppendTreeItem(target, child, depth + 1);
+            }
+        }
+    }
+
+    /// <summary>按编辑器下标读取当前文本，返回格式：令牌 + 换行 + 文本；下标非法返回空文本。</summary>
+    public string ReadEditorText(int index)
+    {
+        if (index < 0 || index >= this.Editors.Count)
+        {
+            return string.Empty;
+        }
+        IdeEditorTabViewModel editor = this.Editors[index];
+        return DebugIdeState.ComputeTextToken(editor.Text) + "\n" + editor.Text;
+    }
+
+    /// <summary>写入指定编辑器的文本（网页端输入回传，只读编辑器忽略）；返回新令牌，下标非法返回空文本。</summary>
+    public string SetEditorText(int index, string text)
+    {
+        if (index < 0 || index >= this.Editors.Count)
+        {
+            return string.Empty;
+        }
+        IdeEditorTabViewModel editor = this.Editors[index];
+        if (editor.IsReadOnly)
+        {
+            return DebugIdeState.ComputeTextToken(editor.Text);
+        }
+        editor.Text = text;
+        return DebugIdeState.ComputeTextToken(editor.Text);
+    }
+
+    /// <summary>执行网页端 IDE 动作，返回给页面的提示文字，空文本表示无提示。</summary>
+    public string ExecuteIdeAction(string action, string argument)
+    {
+        if (action == "ideopen")
+        {
+            this.OpenFile(argument, this.workspaceContentAccess, this.workspaceConnectionName);
+            return string.Empty;
+        }
+        if (action == "idetree")
+        {
+            FileTreeItemViewModel? treeNode = this.FindTreeNode(this.RootItems, argument);
+            if (treeNode == null || !treeNode.IsDirectory || treeNode.IsPlaceholder)
+            {
+                return "未找到可展开的目录：" + argument;
+            }
+            treeNode.IsExpanded = !treeNode.IsExpanded;
+            return string.Empty;
+        }
+        if (action == "ideclose")
+        {
+            int closeIndex;
+            if (!int.TryParse(argument, out closeIndex) || closeIndex < 0 || closeIndex >= this.Editors.Count)
+            {
+                return "要关闭的编辑器不存在";
+            }
+            IdeEditorTabViewModel closing = this.Editors[closeIndex];
+            this.CloseEditor(closing);
+            return "已关闭 " + closing.Title;
+        }
+        if (action == "ideselect")
+        {
+            int selectIndex;
+            if (!int.TryParse(argument, out selectIndex) || selectIndex < 0 || selectIndex >= this.Editors.Count)
+            {
+                return "要切换的编辑器不存在";
+            }
+            this.SelectedEditor = this.Editors[selectIndex];
+            return string.Empty;
+        }
+        if (action == "idetext")
+        {
+            int split = argument.IndexOf('\n');
+            if (split <= 0) { return "缺少编辑器下标"; }
+            int textIndex;
+            if (!int.TryParse(argument.Substring(0, split), out textIndex)) { return "编辑器下标无效"; }
+            this.SetEditorText(textIndex, argument.Substring(split + 1));
+            return string.Empty;
+        }
+        if (action == "idesave")
+        {
+            IdeEditorTabViewModel? active = this.selectedEditor;
+            // 网页端关闭指定标签时可带编辑器下标：按下标保存，不带下标则保存当前激活编辑器
+            int saveIndex;
+            if (int.TryParse(argument, out saveIndex) && saveIndex >= 0 && saveIndex < this.Editors.Count)
+            {
+                active = this.Editors[saveIndex];
+            }
+            if (active == null) { return "没有打开的编辑器"; }
+            if (active.IsReadOnly) { return "该文件为只读，无法保存"; }
+            if (!active.IsDirty) { return "没有未保存的更改"; }
+            active.Save();
+            return "正在保存 " + active.Title + "……";
+        }
+        if (action == "idesaveall")
+        {
+            int dirtyCount = 0;
+            foreach (IdeEditorTabViewModel editor in this.Editors)
+            {
+                if (editor.IsDirty && !editor.IsReadOnly)
+                {
+                    dirtyCount++;
+                    editor.Save();
+                }
+            }
+            return dirtyCount == 0 ? "没有未保存的更改" : "正在保存 " + dirtyCount + " 个文件……";
+        }
+        if (action == "idefindpanel")
+        {
+            this.ShowFindPanel = argument != "0";
+            return string.Empty;
+        }
+        if (action == "idefindtext")
+        {
+            this.FindText = argument;
+            return string.Empty;
+        }
+        if (action == "idereplacetext")
+        {
+            this.ReplaceText = argument;
+            return string.Empty;
+        }
+        if (action == "idefindnext")
+        {
+            bool found = this.FindNext(argument != "0");
+            if (found)
+            {
+                this.RequestApplyFindSelection();
+            }
+            return this.findStatusText;
+        }
+        if (action == "idereplace")
+        {
+            if (this.selectedEditor == null) { return "没有打开的编辑器"; }
+            if (this.selectedEditor.IsReadOnly) { return "该文件为只读，无法替换"; }
+            this.ReplaceCurrent();
+            return this.findStatusText;
+        }
+        if (action == "idereplaceall")
+        {
+            if (this.selectedEditor == null) { return "没有打开的编辑器"; }
+            if (this.selectedEditor.IsReadOnly) { return "该文件为只读，无法替换"; }
+            this.ReplaceAll();
+            return this.findStatusText;
+        }
+        if (action == "idesearchws")
+        {
+            this.SearchWorkspace();
+            return string.Empty;
+        }
+        if (action == "idequickopen")
+        {
+            this.OpenQuickOpen();
+            return string.Empty;
+        }
+        if (action == "idequicktext")
+        {
+            this.QuickOpenText = argument;
+            return string.Empty;
+        }
+        if (action == "idequickclose")
+        {
+            this.ShowQuickOpen = false;
+            return string.Empty;
+        }
+        if (action == "idequickcommit")
+        {
+            foreach (QuickOpenItem item in this.QuickOpenItems)
+            {
+                if (string.Equals(item.FilePath, argument, StringComparison.OrdinalIgnoreCase))
+                {
+                    this.CommitQuickOpen(item);
+                    return string.Empty;
+                }
+            }
+            this.ShowQuickOpen = false;
+            this.OpenFile(argument, this.workspaceContentAccess, this.workspaceConnectionName);
+            return string.Empty;
+        }
+        if (action == "iderefresh")
+        {
+            this.ReloadWorkspace();
+            return "正在重新加载工作区……";
+        }
+        if (action == "idefindresult")
+        {
+            int lineSplit = argument.IndexOf('\n');
+            if (lineSplit <= 0) { return "缺少结果路径"; }
+            string resultPath = argument.Substring(0, lineSplit);
+            int resultLine;
+            if (!int.TryParse(argument.Substring(lineSplit + 1), out resultLine)) { resultLine = 0; }
+            foreach (FindResultItem item in this.FindResults)
+            {
+                if (string.Equals(item.FilePath, resultPath, StringComparison.OrdinalIgnoreCase) && item.LineNumber == resultLine)
+                {
+                    this.OpenFindResult(item);
+                    return this.findStatusText;
+                }
+            }
+            this.OpenFile(resultPath, this.workspaceContentAccess, this.workspaceConnectionName);
+            this.PendingCaretLine = resultLine;
+            return "已打开 " + resultPath;
+        }
+        return "未知动作：" + action;
+    }
+
+    /// <summary>在资源树中按完整路径查找节点（含子节点）。</summary>
+    private FileTreeItemViewModel? FindTreeNode(IEnumerable<FileTreeItemViewModel> items, string path)
+    {
+        foreach (FileTreeItemViewModel item in items)
+        {
+            if (string.Equals(item.FullPath, path, StringComparison.OrdinalIgnoreCase))
+            {
+                return item;
+            }
+            if (item.IsDirectory && item.IsExpanded)
+            {
+                FileTreeItemViewModel? child = this.FindTreeNode(item.Children, path);
+                if (child != null)
+                {
+                    return child;
+                }
+            }
+        }
+        return null;
+    }
+
     /// <summary>触发属性变更通知。</summary>
     private void RaisePropertyChanged(string propertyName)
     {

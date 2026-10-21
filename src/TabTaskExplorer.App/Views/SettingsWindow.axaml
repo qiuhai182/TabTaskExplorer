@@ -12,6 +12,7 @@
         <ListBoxItem Content="文件/文件夹" />
         <ListBoxItem Content="编辑器" />
         <ListBoxItem Content="打开方式" />
+        <ListBoxItem Content="网页端" />
         <ListBoxItem Content="关于" />
       </ListBox>
       <ScrollViewer Grid.Column="1" Margin="16">
@@ -23,13 +24,8 @@
             <CheckBox Content="默认用本程序打开文件夹（Windows，仅当前用户，可随时关闭恢复）" IsChecked="{Binding DefaultFileManager, Mode=TwoWay}" />
             <TextBlock Text="启动设置" FontWeight="Medium" Margin="0,8,0,0" />
             <CheckBox Content="启动时打开上次关闭的标签" IsChecked="{Binding RestoreLastTabs, Mode=TwoWay}" />
-            <CheckBox Content="随程序启动网页端服务（浏览器打开本机镜像页面，仅本机可访问）" IsChecked="{Binding EnableWebService, Mode=TwoWay}" />
-            <StackPanel Orientation="Horizontal" Spacing="8">
-              <TextBlock Text="网页端服务端口" VerticalAlignment="Center" />
-              <TextBox x:Name="WebServicePortBox" Width="90" />
-            </StackPanel>
             <TextBlock TextWrapping="Wrap" Opacity="0.7"
-                       Text="说明：端口取 1024 至 65535，默认 15919；改动点确定后按新端口重启网页端服务，端口被占用时状态栏会提示未启动。" />
+                       Text="说明：网页端服务的端口、来源 IP、可访问目录与读写权限，统一在左侧「网页端」分页配置。" />
             <TextBlock Text="页面设置" FontWeight="Medium" Margin="0,8,0,0" />
             <CheckBox Content="显示工具栏" IsChecked="{Binding ShowToolbar, Mode=TwoWay}" />
             <CheckBox Content="显示书签栏" IsChecked="{Binding ShowBookmarkBar, Mode=TwoWay}" />
@@ -121,6 +117,61 @@
             </ListBox>
             <TextBlock TextWrapping="Wrap" Opacity="0.7"
                        Text="说明：扩展名填 * 表示全部类型；同类型只会采用精确匹配的那条规则，修改后点确定生效。" />
+          </StackPanel>
+          <StackPanel x:Name="WebPage" Spacing="10" IsVisible="False">
+            <TextBlock Text="网页端端口（每个端口独立配置，可添加任意数量）" FontWeight="Medium" />
+            <ListBox x:Name="WebPortList" Height="120" BorderThickness="1" SelectionChanged="OnWebPortSelected" />
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Button Content="新增端口" Click="OnAddWebPortClick" />
+              <Button Content="删除端口" Click="OnRemoveWebPortClick" />
+            </StackPanel>
+            <Grid ColumnDefinitions="110,*" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="6">
+              <TextBlock Grid.Row="0" Grid.Column="0" Text="端口号" VerticalAlignment="Center" />
+              <TextBox Grid.Row="0" Grid.Column="1" x:Name="WebPortBox" Width="120" HorizontalAlignment="Left" />
+              <TextBlock Grid.Row="1" Grid.Column="0" Text="启用" VerticalAlignment="Center" />
+              <CheckBox Grid.Row="1" Grid.Column="1" x:Name="WebPortEnabledBox" Content="启用该端口" />
+              <TextBlock Grid.Row="2" Grid.Column="0" Text="监听范围" VerticalAlignment="Center" />
+              <ComboBox Grid.Row="2" Grid.Column="1" x:Name="WebBindScopeBox" Width="220" HorizontalAlignment="Left">
+                <ComboBoxItem Content="仅本机（127.0.0.1）" />
+                <ComboBoxItem Content="局域网（0.0.0.0，需配合来源 IP 白名单）" />
+              </ComboBox>
+              <TextBlock Grid.Row="3" Grid.Column="0" Text="权限方案" VerticalAlignment="Center" />
+              <ComboBox Grid.Row="3" Grid.Column="1" x:Name="WebProfileBox" Width="220" HorizontalAlignment="Left" SelectionChanged="OnWebProfileSelectionChanged" />
+            </Grid>
+
+            <TextBlock Text="权限方案（可被任意多个端口共用）" FontWeight="Medium" Margin="0,8,0,0" />
+            <ListBox x:Name="WebProfileList" Height="96" BorderThickness="1" SelectionChanged="OnWebProfileSelected" />
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Button Content="新增方案" Click="OnAddWebProfileClick" />
+              <Button Content="删除方案" Click="OnRemoveWebProfileClick" />
+            </StackPanel>
+            <Grid ColumnDefinitions="110,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="6">
+              <TextBlock Grid.Row="0" Grid.Column="0" Text="方案名称" VerticalAlignment="Center" />
+              <TextBox Grid.Row="0" Grid.Column="1" x:Name="WebProfileNameBox" Width="220" HorizontalAlignment="Left" />
+              <TextBlock Grid.Row="1" Grid.Column="0" Text="操作权限" VerticalAlignment="Center" />
+              <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Spacing="16">
+                <CheckBox x:Name="WebAllowModifyBox" Content="放行修改文件内容" />
+                <CheckBox x:Name="WebAllowCreateDeleteBox" Content="放行新建与删除" />
+              </StackPanel>
+              <TextBlock Grid.Row="2" Grid.Column="0" Text="账号密码" VerticalAlignment="Center" />
+              <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                <CheckBox x:Name="WebRequirePasswordBox" Content="需要验证" />
+                <TextBlock Text="账号" VerticalAlignment="Center" />
+                <TextBox x:Name="WebAccountBox" Width="110" />
+                <TextBlock Text="密码" VerticalAlignment="Center" />
+                <TextBox x:Name="WebPasswordBox" Width="120" PasswordChar="*" />
+              </StackPanel>
+              <TextBlock Grid.Row="3" Grid.Column="0" Text="来源地址" VerticalAlignment="Top" Margin="0,6,0,0" />
+              <TextBox Grid.Row="3" Grid.Column="1" x:Name="WebAllowedAddressBox" Height="52" AcceptsReturn="True" TextWrapping="Wrap" />
+              <TextBlock Grid.Row="4" Grid.Column="0" Text="允许路径" VerticalAlignment="Top" Margin="0,6,0,0" />
+              <TextBox Grid.Row="4" Grid.Column="1" x:Name="WebAllowedPathBox" Height="52" AcceptsReturn="True" TextWrapping="Wrap" />
+              <TextBlock Grid.Row="5" Grid.Column="0" />
+              <TextBlock Grid.Row="5" Grid.Column="1" TextWrapping="Wrap" Opacity="0.7"
+                         Text="来源地址每行一条，支持 192.168.1.0/24 网段写法；留空表示不限制。允许路径每行一条，目录按前缀匹配；留空表示整个文件系统只读可浏览。" />
+              <TextBlock Grid.Row="6" Grid.Column="0" />
+              <TextBlock Grid.Row="6" Grid.Column="1" TextWrapping="Wrap" Opacity="0.7"
+                         Text="密码只保存加盐摘要，不落盘明文；修改后才能生效，原密码无法找回。默认方案为只读：可浏览、可打开只读编辑器，不可修改与增删。" />
+            </Grid>
           </StackPanel>
           <StackPanel x:Name="AboutPage" Spacing="12" IsVisible="False">
             <TextBlock Text="TabTaskExplorer v0.1" FontWeight="Medium" />

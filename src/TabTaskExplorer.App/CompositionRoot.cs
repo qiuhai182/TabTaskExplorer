@@ -55,7 +55,7 @@ public static class CompositionRoot
         }
 
         // 网页端服务：仅绑定本机回环地址，页面与程序界面实时同构
-        services.AddSingleton<Services.DebugWebHost>();
+        services.AddSingleton<Services.WebServiceHost>();
 
         // 平台专用实现：文件系统、进程枚举与系统资源采样
         if (OperatingSystem.IsWindows())
@@ -90,6 +90,9 @@ public static class CompositionRoot
                 services.AddSingleton<ISystemMetricsProvider, MacSystemMetricsProvider>();
             }
         }
+
+        // 磁盘扫描服务：共享增量快照与同路径单飞调度，桌面与全部网页工作区共用一个实例
+        services.AddSingleton<Services.DiskScanService>();
 
         return services.BuildServiceProvider();
     }

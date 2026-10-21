@@ -120,7 +120,7 @@ public partial class FileListPanel : UserControl
             {
                 return;
             }
-            if (!int.TryParse(modeText.Trim(), System.Globalization.NumberStyles.Integer, null, out int octalMode) || octalMode < 0 || octalMode > 511)
+            if (!TabTaskExplorer.App.Services.WebWorkspace.TryParseOctalMode(modeText.Trim(), out int octalMode))
             {
                 viewModel.ShowMessage("权限格式无效（0~777 八进制）");
                 return;
@@ -130,7 +130,7 @@ public partial class FileListPanel : UserControl
             {
                 await System.Threading.Tasks.Task.Run(delegate
                 {
-                    viewModel.PermissionChanger.ChangePermissions(targetPath, Convert.ToInt32(octalMode.ToString(), 8));
+                    viewModel.PermissionChanger.ChangePermissions(targetPath, octalMode);
                 });
                 viewModel.ShowMessage("权限已修改：" + row.DisplayName + " → " + modeText.Trim());
             }

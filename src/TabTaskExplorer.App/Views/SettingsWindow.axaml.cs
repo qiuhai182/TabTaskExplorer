@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
@@ -12,11 +13,25 @@ public partial class SettingsWindow : Window
 {
     private readonly ObservableCollection<FileOpenRule> openRules = new ObservableCollection<FileOpenRule>();
 
+    // 网页端配置的编辑副本：窗口内改动只作用于副本，点击确定后才写回共享设置
+    private List<WebPortSetting> webPorts = new List<WebPortSetting>();
+    private List<WebAccessProfile> webProfiles = new List<WebAccessProfile>();
+    private readonly ObservableCollection<string> webPortLabels = new ObservableCollection<string>();
+    private readonly ObservableCollection<string> webProfileLabels = new ObservableCollection<string>();
+    private readonly ObservableCollection<string> webProfileChoices = new ObservableCollection<string>();
+    private int selectedPortIndex = -1;
+    private int selectedProfileIndex = -1;
+    private bool suppressWebSelection;
+    private bool loadingWebFields;
+
     public SettingsWindow()
     {
         this.InitializeComponent();
         UiLogger.AttachWindow(this);
         this.OpenRuleList.ItemsSource = this.openRules;
+        this.WebPortList.ItemsSource = this.webPortLabels;
+        this.WebProfileList.ItemsSource = this.webProfileLabels;
+        this.WebProfileBox.ItemsSource = this.webProfileChoices;
         // 选中第一项必须在 XAML 初始化完成后进行：初始化阶段各分页容器尚未创建，此时触发分页切换会取到空引用
         this.SectionList.SelectedIndex = 0;
     }
@@ -25,7 +40,6 @@ public partial class SettingsWindow : Window
     public SettingsWindow(AppSettings settings) : this()
     {
         this.DataContext = settings;
-        this.WebServicePortBox.Text = settings.WebServicePort.ToString();
         this.EditorFontSizeBox.Text = settings.EditorFontSize.ToString();
         this.EditorTabWidthBox.Text = settings.EditorTabWidth.ToString();
         this.DefaultOpenModeBox.SelectedIndex = settings.DefaultOpenMode == "Ide" ? 1 : 0;
@@ -40,6 +54,7 @@ public partial class SettingsWindow : Window
                 }
             }
         }
+        this.InitializeWebSettings(settings);
     }
 
     private void OnSectionChanged(object? sender, SelectionChangedEventArgs e)
@@ -47,7 +62,8 @@ public partial class SettingsWindow : Window
         int index = this.SectionList.SelectedIndex;
         // XAML 初始化时 ListBox 会因第一项 IsSelected="True" 触发本事件，此时各分页容器尚未创建，直接跳过
         if (this.BasicPage == null || this.MousePage == null || this.FilePage == null
-            || this.EditorPage == null || this.OpenWithPage == null || this.AboutPage == null)
+            || this.EditorPage == null || this.OpenWithPage == null
+            || this.WebPage == null || this.AboutPage == null)
         {
             UiLogger.Log("设置窗口", "分页切换：初始化阶段分页容器尚未创建，跳过 index=" + index);
             return;
@@ -58,7 +74,8 @@ public partial class SettingsWindow : Window
         this.FilePage.IsVisible = index == 2;
         this.EditorPage.IsVisible = index == 3;
         this.OpenWithPage.IsVisible = index == 4;
-        this.AboutPage.IsVisible = index == 5;
+        this.WebPage.IsVisible = index == 5;
+        this.AboutPage.IsVisible = index == 6;
     }
 
     /// <summary>新增一条按类型打开规则，并选中等待填写扩展名。</summary>
@@ -96,19 +113,35 @@ public partial class SettingsWindow : Window
 
     private void OnOkClick(object? sender, RoutedEventArgs e)
     {
-        this.CommitWebServicePort();
+        this.CommitWebSettings();
         this.CommitEditorSettings();
         this.CommitOpenRules();
         AppSettings? settings = this.DataContext as AppSettings;
         if (settings != null)
         {
-            UiLogger.Log("配置更改", "设置窗口确定：网页端服务端口=" + settings.WebServicePort
+            UiLogger.Log("配置更改", "设置窗口确定：网页端端口数=" + settings.WebPorts.Count
+                + " 网页端权限方案数=" + settings.WebAccessProfiles.Count
                 + " 编辑器字号=" + settings.EditorFontSize
                 + " 编辑器Tab宽度=" + settings.EditorTabWidth
                 + " 默认打开模式=" + settings.DefaultOpenMode
                 + " 打开方式默认优先级=" + settings.FileOpenDefaultPriority
                 + " 打开方式规则数=" + (settings.FileOpenRules != null ? settings.FileOpenRules.Count : 0)
                 + " 快捷键条数=" + settings.Hotkeys.Count);
+            foreach (WebPortSetting port in settings.WebPorts)
+            {
+                UiLogger.Log("配置更改", "网页端端口：端口号=" + port.Port + " 是否启用=" + port.Enabled
+                    + " 监听范围=" + port.BindAddress + " 权限方案=" + port.ProfileName);
+            }
+            foreach (WebAccessProfile profile in settings.WebAccessProfiles)
+            {
+                UiLogger.Log("配置更改", "网页端权限方案：方案名称=" + profile.Name
+                    + " 允许修改文件=" + profile.AllowModify
+                    + " 允许新建删除=" + profile.AllowCreateDelete
+                    + " 需要密码=" + profile.RequirePassword
+                    + " 验证账号=" + profile.Account
+                    + " 来源地址条数=" + profile.AllowedAddresses.Count
+                    + " 允许路径条数=" + profile.AllowedPaths.Count);
+            }
         }
         UiLogger.Log("设置窗口", "点击确定：提交设置并关闭");
         this.Close(true);
@@ -184,21 +217,518 @@ public partial class SettingsWindow : Window
         settings.DefaultOpenMode = this.DefaultOpenModeBox.SelectedIndex == 1 ? "Ide" : "Explorer";
     }
 
-    /// <summary>提交网页端服务端口：只接受 1024 至 65535，非法输入保持原值并还原显示。</summary>
-    private void CommitWebServicePort()
+    /// <summary>把设置里的网页端端口与权限方案复制到窗口内的编辑副本，并选中第一项。</summary>
+    private void InitializeWebSettings(AppSettings settings)
+    {
+        this.webPorts.Clear();
+        this.webProfiles.Clear();
+        if (settings.WebAccessProfiles != null)
+        {
+            foreach (WebAccessProfile profile in settings.WebAccessProfiles)
+            {
+                if (profile != null)
+                {
+                    this.webProfiles.Add(CopyProfile(profile));
+                }
+            }
+        }
+        if (this.webProfiles.Count == 0)
+        {
+            this.webProfiles.Add(WebAccessProfile.CreateDefault());
+        }
+        if (settings.WebPorts != null)
+        {
+            foreach (WebPortSetting port in settings.WebPorts)
+            {
+                if (port != null)
+                {
+                    this.webPorts.Add(CopyPort(port));
+                }
+            }
+        }
+        if (this.webPorts.Count == 0)
+        {
+            WebPortSetting port = new WebPortSetting();
+            port.ProfileName = this.webProfiles[0].Name;
+            this.webPorts.Add(port);
+        }
+        foreach (WebPortSetting port in this.webPorts)
+        {
+            if (this.FindProfileByName(port.ProfileName) == null)
+            {
+                port.ProfileName = this.webProfiles[0].Name;
+            }
+        }
+        this.selectedPortIndex = 0;
+        this.selectedProfileIndex = 0;
+        this.RefreshWebLists();
+        this.LoadSelectedWebPort();
+        this.LoadSelectedWebProfile();
+        UiLogger.Log("设置窗口", "网页端配置初始化：端口数量=" + this.webPorts.Count + " 权限方案数量=" + this.webProfiles.Count);
+    }
+
+    /// <summary>刷新两个列表的显示文字与权限方案下拉项，期间屏蔽选中事件避免误提交。</summary>
+    private void RefreshWebLists()
+    {
+        this.suppressWebSelection = true;
+        this.webPortLabels.Clear();
+        foreach (WebPortSetting port in this.webPorts)
+        {
+            this.webPortLabels.Add("端口 " + port.Port
+                + (port.Enabled ? "（已启用）" : "（未启用）")
+                + " · " + port.ProfileName
+                + (port.BindAddress == WebBindScope.Any ? " · 局域网" : " · 仅本机"));
+        }
+        this.WebPortList.SelectedIndex = this.selectedPortIndex;
+        this.webProfileLabels.Clear();
+        foreach (WebAccessProfile profile in this.webProfiles)
+        {
+            this.webProfileLabels.Add(profile.Name
+                + (profile.AllowModify ? " · 可修改文件" : " · 只读")
+                + (profile.RequirePassword ? " · 需密码" : string.Empty));
+        }
+        this.WebProfileList.SelectedIndex = this.selectedProfileIndex;
+        this.webProfileChoices.Clear();
+        foreach (WebAccessProfile profile in this.webProfiles)
+        {
+            this.webProfileChoices.Add(profile.Name);
+        }
+        this.suppressWebSelection = false;
+        this.SyncProfileChoiceToSelectedPort();
+    }
+
+    /// <summary>把权限方案下拉框对齐到当前选中端口的引用方案。</summary>
+    private void SyncProfileChoiceToSelectedPort()
+    {
+        this.loadingWebFields = true;
+        if (this.selectedPortIndex >= 0 && this.selectedPortIndex < this.webPorts.Count)
+        {
+            this.WebProfileBox.SelectedItem = this.webPorts[this.selectedPortIndex].ProfileName;
+        }
+        else
+        {
+            this.WebProfileBox.SelectedItem = null;
+        }
+        this.loadingWebFields = false;
+    }
+
+    /// <summary>把当前选中端口的配置显示到编辑区。</summary>
+    private void LoadSelectedWebPort()
+    {
+        this.loadingWebFields = true;
+        if (this.selectedPortIndex >= 0 && this.selectedPortIndex < this.webPorts.Count)
+        {
+            WebPortSetting port = this.webPorts[this.selectedPortIndex];
+            this.WebPortBox.Text = port.Port.ToString();
+            this.WebPortEnabledBox.IsChecked = port.Enabled;
+            this.WebBindScopeBox.SelectedIndex = port.BindAddress == WebBindScope.Any ? 1 : 0;
+            this.WebProfileBox.SelectedItem = port.ProfileName;
+        }
+        else
+        {
+            this.WebPortBox.Text = string.Empty;
+            this.WebPortEnabledBox.IsChecked = false;
+            this.WebBindScopeBox.SelectedIndex = 0;
+            this.WebProfileBox.SelectedItem = null;
+        }
+        this.loadingWebFields = false;
+    }
+
+    /// <summary>把当前选中权限方案的配置显示到编辑区；密码框始终留空，避免回显明文。</summary>
+    private void LoadSelectedWebProfile()
+    {
+        this.loadingWebFields = true;
+        if (this.selectedProfileIndex >= 0 && this.selectedProfileIndex < this.webProfiles.Count)
+        {
+            WebAccessProfile profile = this.webProfiles[this.selectedProfileIndex];
+            this.WebProfileNameBox.Text = profile.Name;
+            this.WebAllowModifyBox.IsChecked = profile.AllowModify;
+            this.WebAllowCreateDeleteBox.IsChecked = profile.AllowCreateDelete;
+            this.WebRequirePasswordBox.IsChecked = profile.RequirePassword;
+            this.WebAccountBox.Text = profile.Account;
+            this.WebPasswordBox.Text = string.Empty;
+            this.WebPasswordBox.PlaceholderText = profile.PasswordHash.Length > 0 ? "已设置，留空表示不修改" : "尚未设置密码";
+            this.WebAllowedAddressBox.Text = JoinLines(profile.AllowedAddresses);
+            this.WebAllowedPathBox.Text = JoinLines(profile.AllowedPaths);
+        }
+        else
+        {
+            this.WebProfileNameBox.Text = string.Empty;
+            this.WebAllowModifyBox.IsChecked = false;
+            this.WebAllowCreateDeleteBox.IsChecked = false;
+            this.WebRequirePasswordBox.IsChecked = false;
+            this.WebAccountBox.Text = string.Empty;
+            this.WebPasswordBox.Text = string.Empty;
+            this.WebPasswordBox.PlaceholderText = string.Empty;
+            this.WebAllowedAddressBox.Text = string.Empty;
+            this.WebAllowedPathBox.Text = string.Empty;
+        }
+        this.loadingWebFields = false;
+    }
+
+    private void OnWebPortSelected(object? sender, SelectionChangedEventArgs e)
+    {
+        if (this.suppressWebSelection)
+        {
+            return;
+        }
+        this.CommitSelectedWebPort();
+        this.selectedPortIndex = this.WebPortList.SelectedIndex;
+        this.LoadSelectedWebPort();
+        UiLogger.Log("设置窗口", "选中网页端端口：列表序号=" + this.selectedPortIndex);
+    }
+
+    private void OnWebProfileSelected(object? sender, SelectionChangedEventArgs e)
+    {
+        if (this.suppressWebSelection)
+        {
+            return;
+        }
+        this.CommitSelectedWebProfile();
+        this.selectedProfileIndex = this.WebProfileList.SelectedIndex;
+        this.LoadSelectedWebProfile();
+        UiLogger.Log("设置窗口", "选中网页端权限方案：列表序号=" + this.selectedProfileIndex);
+    }
+
+    /// <summary>端口切换引用方案时立即写回当前端口，并刷新端口列表的显示文字。</summary>
+    private void OnWebProfileSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (this.loadingWebFields)
+        {
+            return;
+        }
+        string? profileName = this.WebProfileBox.SelectedItem as string;
+        if (string.IsNullOrEmpty(profileName))
+        {
+            return;
+        }
+        if (this.selectedPortIndex < 0 || this.selectedPortIndex >= this.webPorts.Count)
+        {
+            return;
+        }
+        this.webPorts[this.selectedPortIndex].ProfileName = profileName;
+        this.RefreshWebLists();
+    }
+
+    /// <summary>新增端口：自动挑选一个未被占用的端口号，默认引用第一个权限方案。</summary>
+    private void OnAddWebPortClick(object? sender, RoutedEventArgs e)
+    {
+        this.CommitSelectedWebPort();
+        WebPortSetting port = new WebPortSetting();
+        port.Port = this.SuggestNextPort();
+        port.ProfileName = this.webProfiles[0].Name;
+        this.webPorts.Add(port);
+        this.selectedPortIndex = this.webPorts.Count - 1;
+        this.RefreshWebLists();
+        this.LoadSelectedWebPort();
+        UiLogger.Log("设置窗口", "新增网页端端口：端口号=" + port.Port + " 权限方案=" + port.ProfileName);
+    }
+
+    private void OnRemoveWebPortClick(object? sender, RoutedEventArgs e)
+    {
+        if (this.selectedPortIndex < 0 || this.selectedPortIndex >= this.webPorts.Count)
+        {
+            return;
+        }
+        int removedPort = this.webPorts[this.selectedPortIndex].Port;
+        this.webPorts.RemoveAt(this.selectedPortIndex);
+        if (this.selectedPortIndex >= this.webPorts.Count)
+        {
+            this.selectedPortIndex = this.webPorts.Count - 1;
+        }
+        this.RefreshWebLists();
+        this.LoadSelectedWebPort();
+        UiLogger.Log("设置窗口", "删除网页端端口：端口号=" + removedPort + " 剩余端口数量=" + this.webPorts.Count);
+    }
+
+    /// <summary>新增权限方案：默认只读，名称自动避开重名。</summary>
+    private void OnAddWebProfileClick(object? sender, RoutedEventArgs e)
+    {
+        this.CommitSelectedWebProfile();
+        WebAccessProfile profile = WebAccessProfile.CreateDefault();
+        profile.Name = this.SuggestProfileName();
+        this.webProfiles.Add(profile);
+        this.selectedProfileIndex = this.webProfiles.Count - 1;
+        this.RefreshWebLists();
+        this.LoadSelectedWebProfile();
+        UiLogger.Log("设置窗口", "新增网页端权限方案：方案名称=" + profile.Name);
+    }
+
+    /// <summary>删除权限方案：至少保留一个；被删除方案的端口自动改引用第一个方案。</summary>
+    private void OnRemoveWebProfileClick(object? sender, RoutedEventArgs e)
+    {
+        if (this.selectedProfileIndex < 0 || this.selectedProfileIndex >= this.webProfiles.Count)
+        {
+            return;
+        }
+        if (this.webProfiles.Count <= 1)
+        {
+            UiLogger.Log("设置窗口", "删除网页端权限方案被拒绝：至少需要保留一个权限方案");
+            return;
+        }
+        this.CommitSelectedWebProfile();
+        string removedName = this.webProfiles[this.selectedProfileIndex].Name;
+        this.webProfiles.RemoveAt(this.selectedProfileIndex);
+        if (this.selectedProfileIndex >= this.webProfiles.Count)
+        {
+            this.selectedProfileIndex = this.webProfiles.Count - 1;
+        }
+        foreach (WebPortSetting port in this.webPorts)
+        {
+            if (string.Equals(port.ProfileName, removedName, StringComparison.Ordinal))
+            {
+                port.ProfileName = this.webProfiles[0].Name;
+            }
+        }
+        this.RefreshWebLists();
+        this.LoadSelectedWebProfile();
+        this.LoadSelectedWebPort();
+        UiLogger.Log("设置窗口", "删除网页端权限方案：方案名称=" + removedName + " 剩余方案数量=" + this.webProfiles.Count);
+    }
+
+    /// <summary>把编辑区的端口配置写回当前选中端口。</summary>
+    private void CommitSelectedWebPort()
+    {
+        if (this.selectedPortIndex < 0 || this.selectedPortIndex >= this.webPorts.Count)
+        {
+            return;
+        }
+        WebPortSetting port = this.webPorts[this.selectedPortIndex];
+        int portNumber;
+        if (int.TryParse(this.WebPortBox.Text, out portNumber) && portNumber >= 1024 && portNumber <= 65535)
+        {
+            port.Port = portNumber;
+        }
+        else
+        {
+            this.WebPortBox.Text = port.Port.ToString();
+        }
+        port.Enabled = this.WebPortEnabledBox.IsChecked == true;
+        port.BindAddress = this.WebBindScopeBox.SelectedIndex == 1 ? WebBindScope.Any : WebBindScope.Loopback;
+        string? profileName = this.WebProfileBox.SelectedItem as string;
+        if (!string.IsNullOrEmpty(profileName))
+        {
+            port.ProfileName = profileName;
+        }
+    }
+
+    /// <summary>把编辑区的权限方案写回当前选中方案；改名时同步更新引用该方案的端口。</summary>
+    private void CommitSelectedWebProfile()
+    {
+        if (this.selectedProfileIndex < 0 || this.selectedProfileIndex >= this.webProfiles.Count)
+        {
+            return;
+        }
+        WebAccessProfile profile = this.webProfiles[this.selectedProfileIndex];
+        string oldName = profile.Name;
+        string newName = this.WebProfileNameBox.Text == null ? string.Empty : this.WebProfileNameBox.Text.Trim();
+        if (newName.Length == 0)
+        {
+            newName = oldName;
+        }
+        profile.Name = newName;
+        if (!string.Equals(oldName, newName, StringComparison.Ordinal))
+        {
+            foreach (WebPortSetting port in this.webPorts)
+            {
+                if (string.Equals(port.ProfileName, oldName, StringComparison.Ordinal))
+                {
+                    port.ProfileName = newName;
+                }
+            }
+        }
+        profile.AllowModify = this.WebAllowModifyBox.IsChecked == true;
+        profile.AllowCreateDelete = this.WebAllowCreateDeleteBox.IsChecked == true;
+        string account = this.WebAccountBox.Text == null ? string.Empty : this.WebAccountBox.Text.Trim();
+        profile.Account = account.Length == 0 ? "admin" : account;
+
+        bool requirePassword = this.WebRequirePasswordBox.IsChecked == true;
+        if (!string.IsNullOrEmpty(this.WebPasswordBox.Text))
+        {
+            profile.SetPassword(this.WebPasswordBox.Text);
+            this.WebPasswordBox.Text = string.Empty;
+            this.WebPasswordBox.PlaceholderText = "已设置，留空表示不修改";
+        }
+        if (requirePassword && string.IsNullOrEmpty(profile.PasswordHash))
+        {
+            requirePassword = false;
+            UiLogger.Log("设置窗口", "网页端权限方案未设置密码：方案名称=" + profile.Name + "，已自动关闭密码验证");
+        }
+        profile.RequirePassword = requirePassword;
+        profile.AllowedAddresses = SplitLines(this.WebAllowedAddressBox.Text);
+        profile.AllowedPaths = SplitLines(this.WebAllowedPathBox.Text);
+    }
+
+    /// <summary>提交网页端配置：写回共享设置并同步旧的单端口字段，供启动日志与旧版本读取路径使用。</summary>
+    private void CommitWebSettings()
     {
         AppSettings? settings = this.DataContext as AppSettings;
         if (settings == null)
         {
             return;
         }
-        int port;
-        if (int.TryParse(this.WebServicePortBox.Text, out port) && port >= 1024 && port <= 65535)
+        this.CommitSelectedWebPort();
+        this.CommitSelectedWebProfile();
+
+        for (int first = 0; first < this.webPorts.Count; first++)
         {
-            settings.WebServicePort = port;
-            return;
+            for (int second = first + 1; second < this.webPorts.Count; second++)
+            {
+                if (this.webPorts[first].Enabled && this.webPorts[second].Enabled
+                    && this.webPorts[first].Port == this.webPorts[second].Port)
+                {
+                    UiLogger.Log("设置窗口", "网页端端口重复：端口号=" + this.webPorts[first].Port
+                        + "，重复端口只有先绑定成功的那个生效，失败原因会写入运行日志");
+                }
+            }
         }
-        this.WebServicePortBox.Text = settings.WebServicePort.ToString();
+
+        settings.WebPorts = new List<WebPortSetting>(this.webPorts);
+        settings.WebAccessProfiles = new List<WebAccessProfile>(this.webProfiles);
+
+        settings.EnableWebService = false;
+        foreach (WebPortSetting port in this.webPorts)
+        {
+            if (port.Enabled)
+            {
+                settings.EnableWebService = true;
+                settings.WebServicePort = port.Port;
+                break;
+            }
+        }
+        this.RefreshWebLists();
+    }
+
+    /// <summary>挑选一个未被占用的端口号，从默认端口开始逐个尝试。</summary>
+    private int SuggestNextPort()
+    {
+        int candidate = WebServiceHost.DefaultPort;
+        while (this.IsPortUsed(candidate))
+        {
+            candidate = candidate + 1;
+            if (candidate > 65535)
+            {
+                candidate = 1024;
+            }
+        }
+        return candidate;
+    }
+
+    private bool IsPortUsed(int portNumber)
+    {
+        foreach (WebPortSetting port in this.webPorts)
+        {
+            if (port.Port == portNumber)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>生成不重名的权限方案名称。</summary>
+    private string SuggestProfileName()
+    {
+        int index = this.webProfiles.Count + 1;
+        while (true)
+        {
+            string candidate = "方案 " + index;
+            if (this.FindProfileByName(candidate) == null)
+            {
+                return candidate;
+            }
+            index = index + 1;
+        }
+    }
+
+    private WebAccessProfile? FindProfileByName(string profileName)
+    {
+        if (string.IsNullOrEmpty(profileName))
+        {
+            return null;
+        }
+        foreach (WebAccessProfile profile in this.webProfiles)
+        {
+            if (string.Equals(profile.Name, profileName, StringComparison.Ordinal))
+            {
+                return profile;
+            }
+        }
+        return null;
+    }
+
+    private static WebPortSetting CopyPort(WebPortSetting source)
+    {
+        WebPortSetting copy = new WebPortSetting();
+        copy.Port = source.Port;
+        copy.Enabled = source.Enabled;
+        copy.ProfileName = source.ProfileName;
+        copy.BindAddress = source.BindAddress;
+        return copy;
+    }
+
+    private static WebAccessProfile CopyProfile(WebAccessProfile source)
+    {
+        WebAccessProfile copy = new WebAccessProfile();
+        copy.Name = source.Name;
+        copy.AllowModify = source.AllowModify;
+        copy.AllowCreateDelete = source.AllowCreateDelete;
+        copy.RequirePassword = source.RequirePassword;
+        copy.Account = source.Account;
+        copy.PasswordHash = source.PasswordHash;
+        copy.PasswordSalt = source.PasswordSalt;
+        copy.AllowedAddresses = new List<string>();
+        if (source.AllowedAddresses != null)
+        {
+            foreach (string address in source.AllowedAddresses)
+            {
+                if (address != null)
+                {
+                    copy.AllowedAddresses.Add(address);
+                }
+            }
+        }
+        copy.AllowedPaths = new List<string>();
+        if (source.AllowedPaths != null)
+        {
+            foreach (string path in source.AllowedPaths)
+            {
+                if (path != null)
+                {
+                    copy.AllowedPaths.Add(path);
+                }
+            }
+        }
+        return copy;
+    }
+
+    /// <summary>多行文本框拆成清单：每行一条，忽略空行与首尾空白。</summary>
+    private static List<string> SplitLines(string? text)
+    {
+        List<string> values = new List<string>();
+        if (string.IsNullOrEmpty(text))
+        {
+            return values;
+        }
+        string[] lines = text.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
+        foreach (string line in lines)
+        {
+            string trimmed = line.Trim();
+            if (trimmed.Length > 0)
+            {
+                values.Add(trimmed);
+            }
+        }
+        return values;
+    }
+
+    private static string JoinLines(List<string> values)
+    {
+        if (values == null || values.Count == 0)
+        {
+            return string.Empty;
+        }
+        return string.Join(Environment.NewLine, values);
     }
 
     private void OnCancelClick(object? sender, RoutedEventArgs e)

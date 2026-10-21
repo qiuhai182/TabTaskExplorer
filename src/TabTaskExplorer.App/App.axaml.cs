@@ -38,7 +38,7 @@ public class App : Application
 
             // 网页端服务：界面同构实时同步，浏览器打开后访问本机回环地址查看；是否启动由设置决定
             MainWindowViewModel mainViewModel = (MainWindowViewModel)desktop.MainWindow.DataContext;
-            mainViewModel.AttachDebugWebHost(services.GetRequiredService<Services.DebugWebHost>());
+            mainViewModel.AttachDebugWebHost(services.GetRequiredService<Services.WebServiceHost>());
 
             // 开机自启：以配置为准重新写入系统注册并校验结果，保证设置与系统真实状态一致
             this.ReconcileAutoStart(mainViewModel);
@@ -87,7 +87,7 @@ public class App : Application
     /// <summary>UI 线程未处理异常：记录到网页端服务，并尽量保持程序运行。</summary>
     private void OnUiUnhandledException(object? sender, Avalonia.Threading.DispatcherUnhandledExceptionEventArgs e)
     {
-        Services.DebugWebHost.RecordDiagnostic("UI线程", e.Exception);
+        Services.WebServiceHost.RecordDiagnostic("UI线程", e.Exception);
         Services.UiLogger.LogError("界面异常", "UI 线程未处理异常，已拦截并保持运行", e.Exception);
         e.Handled = true;
     }
@@ -97,7 +97,7 @@ public class App : Application
     {
         if (e.ExceptionObject is Exception error)
         {
-            Services.DebugWebHost.RecordDiagnostic("AppDomain", error);
+            Services.WebServiceHost.RecordDiagnostic("AppDomain", error);
             Services.UiLogger.LogError("崩溃", "AppDomain 未处理异常，是否终止进程=" + e.IsTerminating, error);
             return;
         }
@@ -108,7 +108,7 @@ public class App : Application
     /// <summary>后台任务未观察异常：不终止进程，记录后标记为已观察，避免进程被升级终止。</summary>
     private void OnUnobservedTaskException(object? sender, System.Threading.Tasks.UnobservedTaskExceptionEventArgs e)
     {
-        Services.DebugWebHost.RecordDiagnostic("后台任务", e.Exception);
+        Services.WebServiceHost.RecordDiagnostic("后台任务", e.Exception);
         Services.UiLogger.LogError("界面异常", "后台任务未观察异常（不影响界面，已标记为已观察）", e.Exception);
         e.SetObserved();
     }
@@ -156,6 +156,10 @@ public class App : Application
         NativeMenuItem showItem = new NativeMenuItem("显示主窗口");
         showItem.Click += this.OnTrayShowClick;
         menu.Add(showItem);
+
+        NativeMenuItem openWebItem = new NativeMenuItem("打开网页");
+        openWebItem.Click += this.OnTrayOpenWebClick;
+        menu.Add(openWebItem);
 
         NativeMenuItem autoStartItem = new NativeMenuItem("开机自启：关");
         autoStartItem.Click += this.OnTrayAutoStartClick;
@@ -237,6 +241,37 @@ public class App : Application
         this.ShowMainWindow();
     }
 
+    /// <summary>托盘菜单：用系统默认浏览器打开本机网页端服务页面。</summary>
+    public void OnTrayOpenWebClick(object? sender, EventArgs e)
+    {
+        Services.WebServiceHost? webHost = null;
+        if (this.appServices != null)
+        {
+            webHost = this.appServices.GetService<Services.WebServiceHost>();
+        }
+        string address = webHost != null && webHost.ListenUrls.Count > 0 ? webHost.ListenUrls[0] : string.Empty;
+        if (string.IsNullOrEmpty(address))
+        {
+            Services.UiLogger.Log("网页端服务", "托盘打开网页失败：网页端服务未启动");
+            MessageDialog.Show(this.CurrentMainWindow, "网页端未启动",
+                "网页端服务当前未启动。请在设置中心开启「随程序启动网页端服务」，或检查配置的端口是否被占用。");
+            return;
+        }
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(address)
+            {
+                UseShellExecute = true,
+            });
+            Services.UiLogger.Log("网页端服务", "托盘打开网页：" + address);
+        }
+        catch (Exception error)
+        {
+            Services.UiLogger.LogError("网页端服务", "托盘打开网页失败：" + address, error);
+            MessageDialog.Show(this.CurrentMainWindow, "打开失败", "无法用系统默认浏览器打开网页端地址：" + address);
+        }
+    }
+
     /// <summary>
     /// 启动时校正开机自启：以配置为准用当前可执行文件路径重新写入系统注册，
     /// 注册失败时把配置回写为关，避免配置与系统真实状态长期不一致。
@@ -251,7 +286,7 @@ public class App : Application
             settings.AutoStart = false;
             viewModel.SaveSettingsAndApply();
             Services.UiLogger.Log("配置更改", "开机自启：系统写入未生效，配置已回写为关闭");
-            Services.DebugWebHost.RecordDiagnostic("开机自启", new InvalidOperationException("开机自启注册未生效，已把配置回写为关闭"));
+            Services.WebServiceHost.RecordDiagnostic("开机自启", new InvalidOperationException("开机自启注册未生效，已把配置回写为关闭"));
         }
         this.SyncTrayAutoStartState();
     }

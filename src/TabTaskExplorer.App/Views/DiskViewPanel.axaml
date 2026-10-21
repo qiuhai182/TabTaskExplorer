@@ -16,18 +16,27 @@
 
     <!-- 行 2：表头与占用列表 -->
     <Grid Grid.Row="2" RowDefinitions="Auto,*">
-      <Grid Grid.Row="0" ColumnDefinitions="3*,110,2*" Margin="0,0,0,4">
+      <Grid Grid.Row="0" ColumnDefinitions="2.6*,100,1.7*,120,80,90" Margin="0,0,0,4">
         <TextBlock Grid.Column="0" Text="名称" FontWeight="Medium" />
         <TextBlock Grid.Column="1" Text="类型" FontWeight="Medium" />
         <TextBlock Grid.Column="2" Text="大小" FontWeight="Medium" />
+        <TextBlock Grid.Column="3" Text="剩余" FontWeight="Medium" />
+        <TextBlock Grid.Column="4" Text="使用率" FontWeight="Medium" />
+        <TextBlock Grid.Column="5" Text="文件系统" FontWeight="Medium" />
       </Grid>
-      <ListBox Grid.Row="1" ItemsSource="{Binding Rows}" DoubleTapped="OnRowDoubleTapped">
+      <ListBox Grid.Row="1" ItemsSource="{Binding Rows}" Tapped="OnRowTapped">
         <ListBox.ItemTemplate>
           <DataTemplate>
-            <Grid ColumnDefinitions="3*,110,2*">
-              <TextBlock Grid.Column="0" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+            <Grid ColumnDefinitions="2.6*,100,1.7*,120,80,90">
+              <Grid Grid.Column="0" Margin="{Binding IndentMargin}" ColumnDefinitions="16,*">
+                <TextBlock Grid.Column="0" Text="{Binding ExpandGlyph}" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="1" Text="{Binding Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+              </Grid>
               <TextBlock Grid.Column="1" Text="{Binding EntryTypeText}" />
               <TextBlock Grid.Column="2" Text="{Binding SizeText}" />
+              <TextBlock Grid.Column="3" Text="{Binding FreeText}" />
+              <TextBlock Grid.Column="4" Text="{Binding UsageText}" />
+              <TextBlock Grid.Column="5" Text="{Binding FileSystemText}" />
             </Grid>
           </DataTemplate>
         </ListBox.ItemTemplate>

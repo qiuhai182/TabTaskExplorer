@@ -111,6 +111,18 @@ public class FileTabViewModel : INotifyPropertyChanged
         }
     }
 
+    /// <summary>当前排序字段：Name / Modified / Type / Size（供网页端快照与列头高亮）。</summary>
+    public string SortField
+    {
+        get { return this.sortField; }
+    }
+
+    /// <summary>排序是否为升序（供网页端快照与列头箭头方向）。</summary>
+    public bool SortAscending
+    {
+        get { return this.sortAscending; }
+    }
+
     /// <summary>是否可以后退。</summary>
     public bool CanGoBack
     {
@@ -625,6 +637,16 @@ public class FileTabViewModel : INotifyPropertyChanged
         foreach (FileRow row in this.allRows)
         {
             row.IsSelected = false;
+        }
+    }
+
+    /// <summary>把勾选状态设置为指定路径集合（网页端多选回传用，路径比较不区分大小写）。</summary>
+    public void SetCheckedPaths(IReadOnlyCollection<string> paths)
+    {
+        HashSet<string> lookup = new HashSet<string>(paths, StringComparer.OrdinalIgnoreCase);
+        foreach (FileRow row in this.allRows)
+        {
+            row.IsSelected = lookup.Contains(row.FullPath);
         }
     }
 
