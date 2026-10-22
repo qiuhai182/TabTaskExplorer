@@ -428,7 +428,7 @@ public class WebServiceHost
                 {
                     UiLogger.Log("网页端访问", "拒绝：该权限方案限定了可访问目录，跟随桌面模式不能打开新路径 端口=" + this.runtime.Port
                         + " 来源=" + request.RemoteAddress + " 方案=" + profile.Name);
-                    this.WriteText(stream, "该权限方案限定了可访问目录，请在独立工作区中浏览", 403);
+                    this.WriteText(stream, "该权限方案限定了可访问目录，请在独立新页面中浏览", 403);
                     return;
                 }
                 bridge.OpenDesktopPath(request.GetQuery("p"));
@@ -441,7 +441,7 @@ public class WebServiceHost
                 {
                     UiLogger.Log("网页端访问", "拒绝：该权限方案限定了可访问目录，跟随桌面模式不能新建标签 端口=" + this.runtime.Port
                         + " 来源=" + request.RemoteAddress + " 方案=" + profile.Name);
-                    this.WriteText(stream, "该权限方案限定了可访问目录，请在独立工作区中浏览", 403);
+                    this.WriteText(stream, "该权限方案限定了可访问目录，请在独立新页面中浏览", 403);
                     return;
                 }
                 bridge.OpenDesktopPath(request.GetQuery("p"));

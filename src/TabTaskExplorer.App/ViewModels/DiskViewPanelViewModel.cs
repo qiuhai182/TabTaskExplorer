@@ -315,18 +315,21 @@ public class DiskViewPanelViewModel : INotifyPropertyChanged
         string root = this.CurrentRoot();
         if (root.Length == 0)
         {
+            // 此电脑视图：先原地刷新驱动器容量，再继续探测已展开驱动器与其子行
             this.UpdateDriveRows();
-            return;
         }
-        List<string> rootPath = new List<string>();
-        rootPath.Add(root);
-        if (this.scanService.NeedsRefresh(rootPath))
+        else
         {
-            UiLogger.Log("磁盘视图", "台前探测到根目录一级变化，请求增量扫描：根目录=" + root);
-            this.SummaryText = "检测到目录有变化，正在增量刷新 ……";
-            this.subscribedRoot = root;
-            this.scanService.RequestScan(root, this.ownerId, false, false);
-            return;
+            List<string> rootPath = new List<string>();
+            rootPath.Add(root);
+            if (this.scanService.NeedsRefresh(rootPath))
+            {
+                UiLogger.Log("磁盘视图", "台前探测到根目录一级变化，请求增量扫描：根目录=" + root);
+                this.SummaryText = "检测到目录有变化，正在增量刷新 ……";
+                this.subscribedRoot = root;
+                this.scanService.RequestScan(root, this.ownerId, false, false);
+                return;
+            }
         }
         List<DiskRow> candidates = new List<DiskRow>();
         foreach (DiskRow row in this.Rows)
@@ -355,6 +358,12 @@ public class DiskViewPanelViewModel : INotifyPropertyChanged
             }
             if (!this.Rows.Contains(row))
             {
+                continue;
+            }
+            if (row.IsPendingSize)
+            {
+                // 回填曾在切后台时被中断：重新进入台前后按原样继续补齐该行大小
+                this.StartRowBackfill(row);
                 continue;
             }
             List<string> onePath = new List<string>();
@@ -597,6 +606,8 @@ public class DiskViewPanelViewModel : INotifyPropertyChanged
         {
             this.ReorderChildrenGroup(anchor);
         }
+        // 回填完成后把新记录的目录大小与修改时间持久化，下次启动可直接复用
+        this.scanService.SaveSnapshot();
     }
 
     /// <summary>
@@ -687,10 +698,17 @@ public class DiskViewPanelViewModel : INotifyPropertyChanged
         {
             return;
         }
-        this.Rows.Clear();
-        foreach (DiskRow row in rows)
+        if (this.Rows.Count == 0)
         {
-            this.Rows.Add(row);
+            foreach (DiskRow row in rows)
+            {
+                this.Rows.Add(row);
+            }
+        }
+        else
+        {
+            // 重新进入台前后：只合并刷新驱动器容量，保留已展开的树与子行，不重建列表
+            this.MergeDriveRows(rows);
         }
         this.SummaryText = summary;
     }
@@ -704,54 +722,67 @@ public class DiskViewPanelViewModel : INotifyPropertyChanged
         }
         try
         {
+            List<DiskRow> freshRows = new List<DiskRow>();
             DriveInfo[] drives = DriveInfo.GetDrives();
-            HashSet<string> seen = new HashSet<string>();
             foreach (DriveInfo drive in drives)
             {
-                seen.Add(drive.Name);
-                DiskRow? existing = null;
-                foreach (DiskRow row in this.Rows)
-                {
-                    if (row.Parent == null && row.FullPath == drive.Name)
-                    {
-                        existing = row;
-                        break;
-                    }
-                }
-                if (existing != null)
-                {
-                    DiskRow fresh = DiskViewPanelViewModel.BuildDriveRow(drive);
-                    existing.SizeBytes = fresh.SizeBytes;
-                    existing.SizeText = fresh.SizeText;
-                    existing.FreeText = fresh.FreeText;
-                    existing.UsageText = fresh.UsageText;
-                    existing.FileSystemText = fresh.FileSystemText;
-                    this.RecordDriveMtime(existing);
-                }
-                else
-                {
-                    DiskRow added = DiskViewPanelViewModel.BuildDriveRow(drive);
-                    this.RecordDriveMtime(added);
-                    this.Rows.Add(added);
-                }
+                freshRows.Add(DiskViewPanelViewModel.BuildDriveRow(drive));
             }
-            for (int index = this.Rows.Count - 1; index >= 0; index--)
-            {
-                DiskRow row = this.Rows[index];
-                if (row.Parent == null && row.EntryTypeText == "驱动器" && !seen.Contains(row.FullPath))
-                {
-                    int descendants = this.CountDescendants(index);
-                    for (int count = 0; count < descendants; count++)
-                    {
-                        this.Rows.RemoveAt(index + 1);
-                    }
-                    this.Rows.RemoveAt(index);
-                }
-            }
+            this.MergeDriveRows(freshRows);
         }
         catch (Exception exception)
         {
             UiLogger.LogError("磁盘视图", "刷新驱动器容量失败", exception);
+        }
+    }
+
+    /// <summary>
+    /// 把新的驱动器行合并进当前列表：按路径原地更新容量等字段、追加新出现的盘、
+    /// 移除消失的盘及其子行；已存在的驱动器行保留展开状态与子行。
+    /// </summary>
+    /// <param name="freshRows">后台新构建的驱动器行。</param>
+    private void MergeDriveRows(List<DiskRow> freshRows)
+    {
+        HashSet<string> seen = new HashSet<string>();
+        foreach (DiskRow fresh in freshRows)
+        {
+            seen.Add(fresh.FullPath);
+            DiskRow? existing = null;
+            foreach (DiskRow row in this.Rows)
+            {
+                if (row.Parent == null && row.FullPath == fresh.FullPath)
+                {
+                    existing = row;
+                    break;
+                }
+            }
+            if (existing != null)
+            {
+                existing.SizeBytes = fresh.SizeBytes;
+                existing.SizeText = fresh.SizeText;
+                existing.FreeText = fresh.FreeText;
+                existing.UsageText = fresh.UsageText;
+                existing.FileSystemText = fresh.FileSystemText;
+                this.RecordDriveMtime(existing);
+            }
+            else
+            {
+                this.RecordDriveMtime(fresh);
+                this.Rows.Add(fresh);
+            }
+        }
+        for (int index = this.Rows.Count - 1; index >= 0; index--)
+        {
+            DiskRow row = this.Rows[index];
+            if (row.Parent == null && row.EntryTypeText == "驱动器" && !seen.Contains(row.FullPath))
+            {
+                int descendants = this.CountDescendants(index);
+                for (int count = 0; count < descendants; count++)
+                {
+                    this.Rows.RemoveAt(index + 1);
+                }
+                this.Rows.RemoveAt(index);
+            }
         }
     }
 
@@ -955,7 +986,6 @@ public class DiskViewPanelViewModel : INotifyPropertyChanged
         private readonly long[] sizes;
         private readonly bool[] completed;
         private readonly bool[] failed;
-        private DiskUsageSnapshot? snapshot;
 
         public BackfillRequest(DiskViewPanelViewModel owner, List<DiskRow> rows, List<DiskRow> anchors, CancellationToken token)
         {
@@ -1009,7 +1039,6 @@ public class DiskViewPanelViewModel : INotifyPropertyChanged
         {
             try
             {
-                this.snapshot = this.owner.scanService.GetSnapshot();
                 ParallelOptions options = new ParallelOptions();
                 options.MaxDegreeOfParallelism = Environment.ProcessorCount;
                 options.CancellationToken = this.token;
@@ -1029,14 +1058,14 @@ public class DiskViewPanelViewModel : INotifyPropertyChanged
             }
         }
 
-        /// <summary>统计单个目录的大小：带增量快照，未变化的子树直接复用。</summary>
+        /// <summary>统计单个目录的大小：经共享服务单飞，同路径并发回填只实际扫描一次。</summary>
         /// <param name="index">行序号。</param>
         private void ComputeOne(int index)
         {
             DiskRow row = this.rows[index];
             try
             {
-                long sizeBytes = this.owner.diskUsageProvider.ComputeSize(row.FullPath, this.token, null, this.snapshot, false);
+                long sizeBytes = this.owner.scanService.ComputeSizeShared(row.FullPath, this.token);
                 this.sizes[index] = sizeBytes;
                 this.completed[index] = true;
             }

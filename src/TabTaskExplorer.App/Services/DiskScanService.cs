@@ -27,6 +27,8 @@ public class DiskScanService
     private readonly object scanLock = new object();
     private readonly Dictionary<string, ScanRun> runningScans = new Dictionary<string, ScanRun>(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, DiskScanResult> recentResults = new Dictionary<string, DiskScanResult>(StringComparer.OrdinalIgnoreCase);
+    private readonly object computeLock = new object();
+    private readonly Dictionary<string, ComputeRun> runningComputes = new Dictionary<string, ComputeRun>(StringComparer.OrdinalIgnoreCase);
     private readonly object snapshotLock = new object();
     private readonly object snapshotFileLock = new object();
     private readonly string snapshotFilePath;
@@ -272,6 +274,166 @@ public class DiskScanService
                 this.snapshot = loaded;
             }
             return this.snapshot;
+        }
+    }
+
+    /// <summary>
+    /// 计算单个目录大小（任意数量标签页、网页与程序界面共用的单飞）：
+    /// 同一路径已有计算在进行时直接加入，同路径并发回填只实际扫描一次；
+    /// 全部订阅者都取消后才取消底层计算，任一订阅者仍在等待则计算继续。
+    /// 结果通过共享任务返回，加入方与发起方拿到同一份结果。
+    /// </summary>
+    /// <param name="directoryPath">要计算大小的目录路径。</param>
+    /// <param name="subscriberToken">本订阅者的取消令牌：取消只让自己退出等待，不影响其他订阅者。</param>
+    /// <returns>目录总大小（字节）；本订阅者取消或底层计算失败时以异常结束。</returns>
+    public long ComputeSizeShared(string directoryPath, CancellationToken subscriberToken)
+    {
+        ComputeRun run;
+        lock (this.computeLock)
+        {
+            ComputeRun? existing;
+            if (this.runningComputes.TryGetValue(directoryPath, out existing))
+            {
+                run = existing;
+                run.SubscriberCount = run.SubscriberCount + 1;
+                UiLogger.Log("磁盘扫描服务", "加入进行中的目录计算：路径=" + directoryPath
+                    + " 订阅者数=" + run.SubscriberCount);
+            }
+            else
+            {
+                run = new ComputeRun(directoryPath, this);
+                run.SubscriberCount = 1;
+                this.runningComputes[directoryPath] = run;
+                UiLogger.Log("磁盘扫描服务", "开始目录计算：路径=" + directoryPath);
+                Task.Run(run.Execute);
+            }
+        }
+        CancellationTokenRegistration registration = subscriberToken.Register(delegate
+        {
+            this.OnComputeSubscriberGone(run);
+        });
+        try
+        {
+            // 等待共享计算结果：本订阅者取消时抛出操作取消异常，底层计算是否继续由订阅者计数决定
+            run.Completion.Task.Wait(subscriberToken);
+            return run.Completion.Task.Result;
+        }
+        finally
+        {
+            registration.Dispose();
+        }
+    }
+
+    /// <summary>一个订阅者退出（取消或结束等待）：计数清零后取消不再有人等待的底层计算。</summary>
+    /// <param name="run">对应的目录计算运行。</param>
+    private void OnComputeSubscriberGone(ComputeRun run)
+    {
+        bool cancelRun = false;
+        lock (this.computeLock)
+        {
+            if (run.Finished)
+            {
+                return;
+            }
+            run.SubscriberCount = run.SubscriberCount - 1;
+            if (run.SubscriberCount <= 0)
+            {
+                run.Finished = true;
+                ComputeRun? current;
+                if (this.runningComputes.TryGetValue(run.Path, out current) && object.ReferenceEquals(current, run))
+                {
+                    this.runningComputes.Remove(run.Path);
+                }
+                cancelRun = true;
+            }
+        }
+        if (cancelRun)
+        {
+            UiLogger.Log("磁盘扫描服务", "目录计算已取消（已无等待者）：路径=" + run.Path);
+            run.Cancellation.Cancel();
+        }
+    }
+
+    /// <summary>执行一次目录计算：调用平台统计，完成后唤醒全部等待者并注销运行。</summary>
+    private void ExecuteComputeJob(ComputeRun run)
+    {
+        try
+        {
+            DiskUsageSnapshot computeSnapshot = this.GetSnapshot();
+            long sizeBytes = this.diskUsageProvider.ComputeSize(run.Path, run.Cancellation.Token, null, computeSnapshot, false);
+            this.FinishComputeRun(run, true, sizeBytes, null);
+        }
+        catch (OperationCanceledException)
+        {
+            this.FinishComputeRun(run, false, 0, null);
+        }
+        catch (Exception exception)
+        {
+            UiLogger.LogError("磁盘扫描服务", "目录计算失败：路径=" + run.Path, exception);
+            this.FinishComputeRun(run, false, 0, exception);
+        }
+    }
+
+    /// <summary>结束一次目录计算：从运行表注销并唤醒全部等待者。</summary>
+    /// <param name="run">本次运行。</param>
+    /// <param name="succeeded">是否计算成功。</param>
+    /// <param name="sizeBytes">成功时的目录总大小。</param>
+    /// <param name="error">失败时的异常。</param>
+    private void FinishComputeRun(ComputeRun run, bool succeeded, long sizeBytes, Exception? error)
+    {
+        lock (this.computeLock)
+        {
+            run.Finished = true;
+            ComputeRun? current;
+            if (this.runningComputes.TryGetValue(run.Path, out current) && object.ReferenceEquals(current, run))
+            {
+                this.runningComputes.Remove(run.Path);
+            }
+        }
+        if (succeeded)
+        {
+            run.Completion.TrySetResult(sizeBytes);
+        }
+        else if (error != null)
+        {
+            run.Completion.TrySetException(error);
+        }
+        else
+        {
+            run.Completion.TrySetCanceled();
+        }
+    }
+
+    /// <summary>一次目录计算运行：共享任务、订阅者计数与取消源。</summary>
+    private sealed class ComputeRun
+    {
+        private readonly DiskScanService owner;
+
+        public ComputeRun(string path, DiskScanService owner)
+        {
+            this.Path = path;
+            this.owner = owner;
+        }
+
+        /// <summary>计算的目录路径。</summary>
+        public string Path { get; }
+
+        /// <summary>仍在等待结果的订阅者数量，降到零表示没有视图再需要该结果。</summary>
+        public int SubscriberCount;
+
+        /// <summary>底层计算的取消源：全部订阅者退出后才取消。</summary>
+        public readonly CancellationTokenSource Cancellation = new CancellationTokenSource();
+
+        /// <summary>共享计算结果：全部订阅者从这里取同一份大小。</summary>
+        public readonly TaskCompletionSource<long> Completion = new TaskCompletionSource<long>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        /// <summary>是否已结束（成功、失败或取消），结束后不再处理订阅者退出。</summary>
+        public bool Finished;
+
+        /// <summary>后台执行计算（Task.Run 入口，方法组形式）。</summary>
+        public void Execute()
+        {
+            this.owner.ExecuteComputeJob(this);
         }
     }
 

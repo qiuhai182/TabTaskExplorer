@@ -252,7 +252,7 @@ public static class WebPageHtml
     <span class="iconBtn" id="ideIconBtn" title="IDE 模式 / 资源管理器模式" onclick="toggleIdeMode()">&#xE943;</span>
     <div class="spacer"></div>
     <span class="iconBtn" title="切换深浅色主题" onclick="toggleTheme()">&#xE706;</span>
-    <button class="modeBtn" id="modeBtn" onclick="toggleMode()">独立工作区</button>
+    <button class="modeBtn" id="modeBtn" title="默认使用独立新页面" onclick="toggleMode()">当前网页内容：独立新页面</button>
   </div>
 
   <!-- 书签栏：桌面快捷访问固定项 -->
@@ -548,10 +548,17 @@ function toggleTheme() {
   fetch(url('/api/theme', { t: next }), { method: 'POST' }).then(refresh).catch(refresh);
 }
 
+// 按当前模式刷新标题栏按钮文字与提示：跟随桌面=镜像主界面，独立=独立新页面
+function updateModeButton(followDesktop) {
+  const button = document.getElementById('modeBtn');
+  button.textContent = '当前网页内容：' + (followDesktop ? '镜像主界面' : '独立新页面');
+  button.title = '默认使用独立新页面';
+}
+
 async function toggleMode() {
   if (workspaceId) {
     workspaceId = '';
-    document.getElementById('modeBtn').textContent = '独立工作区';
+    updateModeButton(true);
     await refresh();
     return;
   }
@@ -559,9 +566,23 @@ async function toggleMode() {
     const response = await fetch('/api/mode?m=independent', { method: 'POST' });
     const data = await response.json();
     workspaceId = data.workspaceId || '';
-    document.getElementById('modeBtn').textContent = '跟随桌面';
-  } catch (error) { /* 创建失败保持跟随桌面 */ }
+    updateModeButton(false);
+  } catch (error) { /* 创建失败保持镜像主界面 */ }
   await refresh();
+}
+
+// 首次加载默认进入独立新页面；失败时回落镜像主界面（仅首载执行一次，手动切回后不再自动切回）
+async function initMode() {
+  try {
+    const response = await fetch('/api/mode?m=independent', { method: 'POST' });
+    const data = await response.json();
+    if (data.workspaceId) {
+      workspaceId = data.workspaceId;
+      updateModeButton(false);
+      return;
+    }
+  } catch (error) { /* 创建失败回落镜像主界面 */ }
+  updateModeButton(true);
 }
 
 async function refresh() {
@@ -569,16 +590,16 @@ async function refresh() {
     const response = await fetch(url('/api/state'));
     if (response.status === 410) {
       workspaceId = '';
-      document.getElementById('modeBtn').textContent = '独立工作区';
+      updateModeButton(true);
       return;
     }
     if (response.status === 403 && !workspaceId) {
-      // 权限方案限定了可访问目录，跟随桌面快照不可用：自动切到独立工作区，由路径白名单限定浏览范围
+      // 权限方案限定了可访问目录，镜像主界面不可用：自动切到独立新页面，由路径白名单限定浏览范围
       const modeResponse = await fetch('/api/mode?m=independent', { method: 'POST' });
       const modeData = await modeResponse.json();
       workspaceId = modeData.workspaceId || '';
-      document.getElementById('modeBtn').textContent = '跟随桌面';
-      flash('当前权限方案限定了可访问目录，已自动切换到独立工作区');
+      updateModeButton(false);
+      flash('当前权限方案限定了可访问目录，已自动切换到独立新页面');
       return;
     }
     state = await response.json();
@@ -639,7 +660,7 @@ function diskNav(target) { return post('/api/disk/nav', { p: target || '' }); }
 function render() {
   if (!state) { return; }
   document.body.className = (state.theme === 'Light') ? '' : 'dark';
-  document.getElementById('modeBtn').textContent = state.followDesktop ? '跟随桌面' : '独立工作区';
+  updateModeButton(state.followDesktop);
   renderTabs();
   applyIdeLayout(!!state.isIdeMode);
   if (state.isIdeMode) {
@@ -1008,7 +1029,7 @@ function renderStatus() {
   // 状态栏左侧与桌面一致：仅显示项目数 / 标签名，提示语走内容区底部瞬时提示
   document.getElementById('statusLeft').textContent = left;
   document.getElementById('statusRight').textContent = PORT_LABEL + ' · '
-    + (state.followDesktop ? '跟随桌面' : '独立工作区') + ' · 方案 ' + permissions.profile
+    + (state.followDesktop ? '镜像主界面' : '独立新页面') + ' · 方案 ' + permissions.profile
     + ' · 快照 ' + state.generatedTime;
 
   const flashLine = document.getElementById('flashLine');
@@ -2124,7 +2145,7 @@ document.getElementById('ideText').addEventListener('keydown', function (event) 
   }
 });
 
-loadPermissions().then(refresh);
+loadPermissions().then(initMode).then(refresh);
 pollTimer = setInterval(refresh, 1500);
 </script>
 </body>
