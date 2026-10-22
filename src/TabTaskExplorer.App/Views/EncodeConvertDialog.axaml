@@ -1,0 +1,42 @@
+﻿<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="TabTaskExplorer.App.Views.EncodeConvertDialog"
+        Title="编码转换" Width="760" Height="600" CanResize="False"
+        WindowStartupLocation="CenterOwner">
+  <Grid RowDefinitions="Auto,Auto,*,Auto" Margin="16">
+
+    <StackPanel Grid.Row="0" Spacing="8">
+      <Grid ColumnDefinitions="90,*,90,*">
+        <TextBlock Grid.Column="0" Text="源编码：" VerticalAlignment="Center" />
+        <ComboBox Grid.Column="1" x:Name="FromBox" MinWidth="150" SelectionChanged="OnOptionChanged" Margin="0,0,12,0" />
+        <TextBlock Grid.Column="2" Text="目标编码：" VerticalAlignment="Center" />
+        <ComboBox Grid.Column="3" x:Name="ToBox" MinWidth="150" SelectionChanged="OnOptionChanged" />
+      </Grid>
+      <StackPanel Orientation="Horizontal" Spacing="8">
+        <CheckBox x:Name="RecursiveCheck" Content="递归处理选中文件夹的全部子项" Click="OnOptionChanged" VerticalAlignment="Center" />
+      </StackPanel>
+      <TextBlock Text="源编码 = 名字当前被误解的编码；目标编码 = 想要的正确编码。只转换文件名与文件夹名，不转换文件内容。"
+                 Opacity="0.7" TextWrapping="Wrap" />
+    </StackPanel>
+
+    <TextBlock Grid.Row="1" Text="预览（旧路径 → 新名称）：" Margin="0,12,0,4" FontWeight="Medium" />
+    <ListBox Grid.Row="2" x:Name="PreviewList">
+      <ListBox.ItemTemplate>
+        <DataTemplate>
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <TextBlock Text="{Binding OldText}" Opacity="0.7" />
+            <TextBlock Text="→" />
+            <TextBlock Text="{Binding NewText}" FontWeight="Medium" />
+            <TextBlock Text="{Binding Reason}" Foreground="OrangeRed" />
+          </StackPanel>
+        </DataTemplate>
+      </ListBox.ItemTemplate>
+    </ListBox>
+
+    <Grid Grid.Row="3" ColumnDefinitions="*,Auto,Auto" Margin="0,12,0,0">
+      <TextBlock Grid.Column="0" x:Name="SummaryText" VerticalAlignment="Center" Opacity="0.8" />
+      <Button Grid.Column="1" Content="执行转换" Click="OnApplyClick" Margin="0,0,8,0" />
+      <Button Grid.Column="2" Content="取消" Click="OnCancelClick" />
+    </Grid>
+  </Grid>
+</Window>

@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
@@ -30,8 +31,16 @@ public class App : Application
             IServiceProvider services = CompositionRoot.BuildServices();
             this.appServices = services;
 
+            // 多窗口：最后一个窗口关闭才退出程序（关闭中间窗口只关该窗口本身）
+            desktop.ShutdownMode = ShutdownMode.OnLastWindowClose;
+
             desktop.MainWindow = new MainWindow();
             desktop.MainWindow.DataContext = new MainWindowViewModel(services);
+
+            // 多窗口注册表：主窗口登记在册，窗口真正关闭后由 Closed 事件注销
+            WindowRegistry.Init(services);
+            WindowRegistry.Register((MainWindow)desktop.MainWindow);
+            desktop.MainWindow.Closed += this.OnAnyMainWindowClosed;
 
             // 扩展客户区下隐藏系统绘制的窗口图标与程序名（与 TabX 一致，只留自绘徽标）
             desktop.MainWindow.Opened += this.OnMainWindowOpened;
@@ -39,6 +48,23 @@ public class App : Application
             // 网页端服务：界面同构实时同步，浏览器打开后访问本机回环地址查看；是否启动由设置决定
             MainWindowViewModel mainViewModel = (MainWindowViewModel)desktop.MainWindow.DataContext;
             mainViewModel.AttachDebugWebHost(services.GetRequiredService<Services.WebServiceHost>());
+
+            // 单实例命令管道：第二实例把系统唤起的路径转发到这里（UI 线程处理）
+            SingleInstanceService.StartServer(new Action<string>(this.HandleExternalCommand));
+
+            // 程序启动参数：系统唤起直接拉起本进程时带入的文件夹路径，走系统唤起去重打开流程
+            string[]? startupArgs = desktop.Args;
+            if (startupArgs != null)
+            {
+                foreach (string arg in startupArgs)
+                {
+                    if (!string.IsNullOrWhiteSpace(arg))
+                    {
+                        Services.UiLogger.Log("程序行为", "收到系统唤起转发的路径：来源=程序启动参数 路径=" + arg);
+                        mainViewModel.OpenPathFromSystem(arg.Trim(), "程序启动参数");
+                    }
+                }
+            }
 
             // 开机自启：以配置为准重新写入系统注册并校验结果，保证设置与系统真实状态一致
             this.ReconcileAutoStart(mainViewModel);
@@ -81,6 +107,72 @@ public class App : Application
             {
                 this.appServices.GetRequiredService<IWindowCaptionHider>().HideCaption(handle.Value);
             }
+        }
+    }
+
+    /// <summary>
+    /// 外部命令统一入口（单实例管道消息，UI 线程执行）：
+    /// FOCUS = 激活主窗口；OPEN = 逐行路径交给系统唤起去重打开流程。
+    /// </summary>
+    private void HandleExternalCommand(string message)
+    {
+        string[] lines = message.Split('\n');
+        if (lines.Length == 0)
+        {
+            return;
+        }
+        string command = lines[0].Trim();
+        Services.UiLogger.Log("程序行为", "收到外部命令并解析：来源=单实例命令管道 命令类型=" + command
+            + " 命令总行数=" + lines.Length + " 命令内容=" + message.Replace("\n", " | "));
+        if (string.Equals(command, "FOCUS", StringComparison.Ordinal))
+        {
+            Services.UiLogger.Log("程序行为", "收到外部聚焦请求：来源=单实例命令管道，开始激活主窗口");
+            this.ShowMainWindow();
+            return;
+        }
+        if (string.Equals(command, "OPEN", StringComparison.Ordinal))
+        {
+            int pathCount = 0;
+            for (int i = 1; i < lines.Length; i++)
+            {
+                if (lines[i].Trim().Length > 0)
+                {
+                    pathCount++;
+                }
+            }
+            MainWindow? targetWindow = this.CurrentMainWindow;
+            MainWindowViewModel? target = targetWindow?.DataContext as MainWindowViewModel;
+            if (target == null)
+            {
+                Services.UiLogger.Log("程序行为", "收到系统唤起路径但当前无可用窗口，已忽略：来源=单实例命令管道"
+                    + " 待打开路径条数=" + pathCount + " 已登记窗口数=" + WindowRegistry.GetAllWindows().Count);
+                return;
+            }
+            Services.UiLogger.Log("程序行为", "外部打开命令已受理：来源=单实例命令管道 待打开路径条数=" + pathCount
+                + " 承接窗口序号=" + WindowRegistry.GetWindowIndex(targetWindow)
+                + " 承接窗口状态=" + targetWindow!.WindowState
+                + " 承接窗口标签总数=" + target.Tabs.Count);
+            for (int i = 1; i < lines.Length; i++)
+            {
+                string path = lines[i].Trim();
+                if (path.Length == 0)
+                {
+                    continue;
+                }
+                Services.UiLogger.Log("程序行为", "收到系统唤起转发的路径：来源=单实例命令管道 路径=" + path);
+                target.OpenPathFromSystem(path, "单实例命令管道");
+            }
+            return;
+        }
+        Services.UiLogger.Log("程序行为", "收到无法识别的外部命令，已忽略：命令内容=" + message.Replace("\n", " | "));
+    }
+
+    /// <summary>窗口真正关闭（CloseToTray 取消关闭时不会触发）：从多窗口注册表注销。</summary>
+    private void OnAnyMainWindowClosed(object? sender, EventArgs e)
+    {
+        if (sender is MainWindow window)
+        {
+            WindowRegistry.Unregister(window);
         }
     }
 
@@ -185,29 +277,32 @@ public class App : Application
         TrayIcon.SetIcons(Application.Current!, new TrayIcons { this.trayIcon });
     }
 
-    /// <summary>当前主窗口视图模型。</summary>
+    /// <summary>当前主窗口视图模型（生命周期主窗口不可用时回退到注册表窗口）。</summary>
     private MainWindowViewModel? MainViewModel
     {
         get
         {
-            if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
-            {
-                return desktop.MainWindow?.DataContext as MainWindowViewModel;
-            }
-            return null;
+            return this.CurrentMainWindow?.DataContext as MainWindowViewModel;
         }
     }
 
-    /// <summary>当前主窗口。</summary>
+    /// <summary>当前主窗口：优先生命周期主窗口，其次多窗口注册表中首个可见窗口，最后注册表首个窗口。</summary>
     private MainWindow? CurrentMainWindow
     {
         get
         {
-            if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+            if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop && desktop.MainWindow is MainWindow main && main.IsVisible)
             {
-                return desktop.MainWindow as MainWindow;
+                return main;
             }
-            return null;
+            foreach (MainWindow window in WindowRegistry.GetAllWindows())
+            {
+                if (window.IsVisible)
+                {
+                    return window;
+                }
+            }
+            return WindowRegistry.Primary;
         }
     }
 
@@ -310,23 +405,31 @@ public class App : Application
         this.SyncTrayAutoStartState();
     }
 
-    /// <summary>托盘菜单：真正退出并保存会话。</summary>
+    /// <summary>托盘菜单：真正退出并保存会话（多窗口时逐个强制关闭）。</summary>
     public void OnTrayExitClick(object? sender, EventArgs e)
     {
-        Services.UiLogger.Log("程序退出", "托盘菜单选择退出：保存会话后关闭主窗口");
-        this.CurrentMainWindow?.ForceClose();
+        List<MainWindow> openWindows = new List<MainWindow>(WindowRegistry.GetAllWindows());
+        Services.UiLogger.Log("程序退出", "托盘菜单选择退出：保存会话后关闭全部窗口 窗口总数=" + openWindows.Count);
+        foreach (MainWindow window in openWindows)
+        {
+            window.ForceClose();
+        }
     }
 
-    /// <summary>显示并激活主窗口。</summary>
+    /// <summary>显示并激活主窗口（多窗口时优先注册表中的主窗口，托盘常驻隐藏后由此唤起）。</summary>
     private void ShowMainWindow()
     {
-        MainWindow? window = this.CurrentMainWindow;
+        MainWindow? window = WindowRegistry.Primary;
         if (window == null)
         {
+            Services.UiLogger.Log("程序行为", "外部聚焦请求执行结果：已登记窗口数=0，无可聚焦窗口");
             return;
         }
         window.Show();
         window.WindowState = WindowState.Normal;
         window.Activate();
+        Services.UiLogger.Log("程序行为", "外部聚焦请求执行结果：聚焦窗口序号=" + WindowRegistry.GetWindowIndex(window)
+            + " 窗口状态=" + window.WindowState + " 窗口可见=" + window.IsVisible
+            + " 窗口标签总数=" + ((window.DataContext as MainWindowViewModel)?.Tabs.Count ?? 0));
     }
 }

@@ -261,8 +261,38 @@ public class DebugTabState
     /// <summary>标签底部摘要文字（操作结果提示，例如"粘贴完成：成功 3 项"）。</summary>
     public string SummaryText { get; set; } = string.Empty;
 
+    /// <summary>进程监控：顶部资源摘要（处理器占用、内存占用与进程数量，其余标签为空）。</summary>
+    public string ResourceText { get; set; } = string.Empty;
+
+    /// <summary>进程监控：选中进程的详情文本（可执行文件、命令行、启动时间等，其余标签为空）。</summary>
+    public string DetailText { get; set; } = string.Empty;
+
+    /// <summary>进程监控：CPU 亲和性输入框内容（如"0,1,2"，其余标签为空）。</summary>
+    public string AffinityInput { get; set; } = string.Empty;
+
+    /// <summary>进程监控：优先级下拉框当前索引（0 到 5，-1 表示未选中，其余标签为 2）。</summary>
+    public int PriorityIndex { get; set; } = 2;
+
+    /// <summary>进程监控：优先级与亲和性调节是否可用（Windows 平台为真，其余平台为假并整体灰化）。</summary>
+    public bool DetailSupported { get; set; }
+
+    /// <summary>进程监控：系统处理器占用走势图（最近 60 次采样，0 到 100，其余标签为空）。</summary>
+    public List<double> SystemCpuTrend { get; } = new List<double>();
+
+    /// <summary>进程监控：系统内存占用走势图（最近 60 次采样，0 到 100，其余标签为空）。</summary>
+    public List<double> SystemMemoryTrend { get; } = new List<double>();
+
+    /// <summary>进程监控：选中进程处理器占用走势图（最近 60 次采样，0 到 100，其余标签为空）。</summary>
+    public List<double> SelectedCpuTrend { get; } = new List<double>();
+
+    /// <summary>进程监控：走势图数据更新令牌（每次采样变化时更新，网页端据此判断是否重绘）。</summary>
+    public long TrendVersion { get; set; }
+
     /// <summary>文件标签：可见条目（与桌面列表同构）。</summary>
     public List<DebugFileRow> Rows { get; } = new List<DebugFileRow>();
+
+    /// <summary>进程监控：进程列表（与桌面进程面板同构）。</summary>
+    public List<DebugProcessRow> ProcessRows { get; } = new List<DebugProcessRow>();
 
     /// <summary>任务看板：待办标题。</summary>
     public List<string> Todo { get; } = new List<string>();
@@ -278,6 +308,31 @@ public class DebugTabState
 
     /// <summary>连接管理：当前选中的连接名称。</summary>
     public string SelectedConnection { get; set; } = string.Empty;
+}
+
+/// <summary>进程监控镜像行。</summary>
+public class DebugProcessRow
+{
+    /// <summary>进程编号。</summary>
+    public int ProcessId { get; set; }
+
+    /// <summary>进程树缩进前缀（全角空格，层级越多越长，根层为空字符串）。</summary>
+    public string IndentText { get; set; } = string.Empty;
+
+    /// <summary>进程名称。</summary>
+    public string Name { get; set; } = string.Empty;
+
+    /// <summary>本进程处理器占用的显示文字（如"3.2%"，首轮采样为"—"）。</summary>
+    public string CpuText { get; set; } = "—";
+
+    /// <summary>内存占用的显示文字。</summary>
+    public string MemoryText { get; set; } = string.Empty;
+
+    /// <summary>主窗口标题，无窗口的进程为空字符串。</summary>
+    public string WindowTitle { get; set; } = string.Empty;
+
+    /// <summary>是否被选中（与桌面单击选中同步）。</summary>
+    public bool IsSelected { get; set; }
 }
 
 /// <summary>文件列表镜像行。</summary>

@@ -86,16 +86,24 @@ public partial class SettingsWindow : Window
         rule.Priority = FileOpenPriority.Builtin;
         this.openRules.Add(rule);
         this.OpenRuleList.SelectedItem = rule;
+        UiLogger.Log("设置窗口", "点击添加类型：已新增一条待填写扩展名的规则"
+            + " 当前规则条数=" + this.openRules.Count
+            + " 结果=成功");
     }
 
     /// <summary>删除选中的打开方式规则。</summary>
     private void OnRemoveOpenRuleClick(object? sender, RoutedEventArgs e)
     {
         FileOpenRule? rule = this.OpenRuleList.SelectedItem as FileOpenRule;
-        if (rule != null)
+        if (rule == null)
         {
-            this.openRules.Remove(rule);
+            UiLogger.Log("设置窗口", "点击删除选中规则被拒绝：未选中任何规则 结果=失败");
+            return;
         }
+        this.openRules.Remove(rule);
+        UiLogger.Log("设置窗口", "点击删除选中规则：扩展名=" + rule.Extension
+            + " 当前规则条数=" + this.openRules.Count
+            + " 结果=成功");
     }
 
     /// <summary>把快捷键配置恢复为默认值。</summary>
@@ -108,6 +116,13 @@ public partial class SettingsWindow : Window
             {
                 settings.Hotkeys.Add(setting);
             }
+            UiLogger.Log("设置窗口", "点击恢复默认快捷键：已重建默认快捷键"
+                + " 快捷键条数=" + settings.Hotkeys.Count
+                + " 结果=成功");
+        }
+        else
+        {
+            UiLogger.Log("设置窗口", "点击恢复默认快捷键失败：设置数据未绑定 结果=失败");
         }
     }
 
@@ -400,14 +415,20 @@ public partial class SettingsWindow : Window
         string? profileName = this.WebProfileBox.SelectedItem as string;
         if (string.IsNullOrEmpty(profileName))
         {
+            UiLogger.Log("设置窗口", "更改端口引用的权限方案被拒绝：未选择权限方案 结果=失败");
             return;
         }
         if (this.selectedPortIndex < 0 || this.selectedPortIndex >= this.webPorts.Count)
         {
+            UiLogger.Log("设置窗口", "更改端口引用的权限方案被拒绝：未选中任何端口 结果=失败");
             return;
         }
+        int portNumber = this.webPorts[this.selectedPortIndex].Port;
         this.webPorts[this.selectedPortIndex].ProfileName = profileName;
         this.RefreshWebLists();
+        UiLogger.Log("设置窗口", "更改端口引用的权限方案：端口号=" + portNumber
+            + " 权限方案=" + profileName
+            + " 结果=成功");
     }
 
     /// <summary>新增端口：自动挑选一个未被占用的端口号，默认引用第一个权限方案。</summary>
@@ -428,6 +449,7 @@ public partial class SettingsWindow : Window
     {
         if (this.selectedPortIndex < 0 || this.selectedPortIndex >= this.webPorts.Count)
         {
+            UiLogger.Log("设置窗口", "点击删除网页端端口被拒绝：未选中任何端口 结果=失败");
             return;
         }
         int removedPort = this.webPorts[this.selectedPortIndex].Port;
@@ -459,6 +481,7 @@ public partial class SettingsWindow : Window
     {
         if (this.selectedProfileIndex < 0 || this.selectedProfileIndex >= this.webProfiles.Count)
         {
+            UiLogger.Log("设置窗口", "点击删除网页端权限方案被拒绝：未选中任何方案 结果=失败");
             return;
         }
         if (this.webProfiles.Count <= 1)

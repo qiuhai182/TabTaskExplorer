@@ -2,7 +2,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              x:Class="TabTaskExplorer.App.Views.SearchPanel">
 
-  <Grid RowDefinitions="Auto,*,Auto" Margin="8">
+  <Grid RowDefinitions="Auto,Auto,*,Auto" Margin="8">
 
     <!-- 搜索行：关键字输入框 + 搜索按钮 -->
     <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
@@ -12,27 +12,59 @@
               IsEnabled="{Binding !IsSearching}" ToolTip.Tip="执行全局搜索" />
     </StackPanel>
 
+    <!-- 表头：与结果行同列结构，点击按该列排序 -->
+    <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto,Auto" Margin="2,0,2,4">
+      <TextBlock Grid.Column="0" Width="21" FontSize="13" Margin="0,0,8,0" />
+      <Button Grid.Column="1" Tag="Name" Click="OnSortClick" FontWeight="Medium" HorizontalAlignment="Left" Background="Transparent" Foreground="{DynamicResource TextMutedBrush}">
+        <StackPanel Orientation="Horizontal">
+          <TextBlock Text="名称" />
+          <TextBlock x:Name="ArrowName" Margin="4,0,0,0" />
+        </StackPanel>
+      </Button>
+      <Button Grid.Column="2" Tag="Modified" Click="OnSortClick" FontWeight="Medium" HorizontalAlignment="Left" Background="Transparent" Foreground="{DynamicResource TextMutedBrush}" Margin="12,0">
+        <StackPanel Orientation="Horizontal">
+          <TextBlock Text="修改日期" />
+          <TextBlock x:Name="ArrowModified" Margin="4,0,0,0" />
+        </StackPanel>
+      </Button>
+      <Button Grid.Column="3" Tag="Size" Click="OnSortClick" FontWeight="Medium" HorizontalAlignment="Right" Background="Transparent" Foreground="{DynamicResource TextMutedBrush}" MinWidth="70">
+        <StackPanel Orientation="Horizontal">
+          <TextBlock Text="大小" />
+          <TextBlock x:Name="ArrowSize" Margin="4,0,0,0" />
+        </StackPanel>
+      </Button>
+    </Grid>
+
     <!-- 搜索结果列表（ListBox 自带虚拟化） -->
-    <ListBox Grid.Row="1" ItemsSource="{Binding Results}">
+    <ListBox Grid.Row="2" ItemsSource="{Binding Results}">
       <ListBox.ItemTemplate>
         <DataTemplate>
-          <Grid ColumnDefinitions="Auto,*,Auto,Auto" Margin="2,3" ToolTip.Tip="{Binding FullPath}">
-            <TextBlock Grid.Column="0" FontFamily="Segoe MDL2 Assets, Segoe Fluent Icons"
-                       Text="{Binding IconGlyph}" Foreground="{Binding IconColor}"
-                       FontSize="13" VerticalAlignment="Center" Margin="0,0,8,0" />
-            <TextBlock Grid.Column="1" Text="{Binding DisplayName}" VerticalAlignment="Center"
-                       TextTrimming="CharacterEllipsis" />
-            <TextBlock Grid.Column="2" Text="{Binding ModifiedText}" VerticalAlignment="Center"
-                       Margin="12,0" Foreground="#90808080" FontSize="11" />
-            <TextBlock Grid.Column="3" Text="{Binding SizeText}" VerticalAlignment="Center"
-                       HorizontalAlignment="Right" MinWidth="70" TextAlignment="Right" FontSize="11" />
-          </Grid>
+          <Border Background="Transparent">
+            <Border.ContextMenu>
+              <ContextMenu>
+                <MenuItem Header="打开" Click="OnMenuOpenClick" />
+                <MenuItem Header="在新标签打开" Click="OnMenuOpenInNewTabClick" />
+                <MenuItem Header="复制路径" Click="OnMenuCopyPathClick" />
+              </ContextMenu>
+            </Border.ContextMenu>
+            <Grid ColumnDefinitions="Auto,*,Auto,Auto" Margin="2,3" ToolTip.Tip="{Binding FullPath}">
+              <TextBlock Grid.Column="0" FontFamily="Segoe MDL2 Assets, Segoe Fluent Icons"
+                         Text="{Binding IconGlyph}" Foreground="{Binding IconColor}"
+                         FontSize="13" VerticalAlignment="Center" Margin="0,0,8,0" />
+              <TextBlock Grid.Column="1" Text="{Binding DisplayName}" VerticalAlignment="Center"
+                         TextTrimming="CharacterEllipsis" />
+              <TextBlock Grid.Column="2" Text="{Binding ModifiedText}" VerticalAlignment="Center"
+                         Margin="12,0" Foreground="#90808080" FontSize="11" />
+              <TextBlock Grid.Column="3" Text="{Binding SizeText}" VerticalAlignment="Center"
+                         HorizontalAlignment="Right" MinWidth="70" TextAlignment="Right" FontSize="11" />
+            </Grid>
+          </Border>
         </DataTemplate>
       </ListBox.ItemTemplate>
     </ListBox>
 
     <!-- 状态栏：搜索引擎名称、进度与结果数量 -->
-    <Border Grid.Row="2" Margin="0,8,0,0" Padding="8,4" CornerRadius="6" Background="#20808080">
+    <Border Grid.Row="3" Margin="0,8,0,0" Padding="8,4" CornerRadius="6" Background="#20808080">
       <TextBlock Text="{Binding StatusText}" TextWrapping="Wrap" FontSize="12" />
     </Border>
   </Grid>

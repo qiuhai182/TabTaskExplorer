@@ -30,6 +30,18 @@ public static class CompositionRoot
         // 本机文本文件服务：IDE 模式本地文件读写与编码探测（跨平台）
         services.AddSingleton<ITextFileService, DefaultTextFileService>();
 
+        // 压缩包服务：服务本体为内核跨平台实现（tar 原始字节引擎 + SharpCompress），桌面与网页端共用；
+        // 路径访问 Linux 走平台层原始字节透传，其余平台用内核跨平台字符串实现
+        if (OperatingSystem.IsLinux())
+        {
+            services.AddSingleton<IArchivePathAccess, LinuxArchivePathAccess>();
+        }
+        else
+        {
+            services.AddSingleton<IArchivePathAccess, DefaultArchivePathAccess>();
+        }
+        services.AddSingleton<IArchiveService, ArchiveService>();
+
         // 凭据加密：Windows 使用 DPAPI 当前用户作用域；其他平台此能力留空，降级为明文保存
         if (OperatingSystem.IsWindows())
         {
@@ -70,6 +82,9 @@ public static class CompositionRoot
             // 全盘搜索：内核遍历实现作为兜底，Windows 上优先走 Everything 消息接口
             services.AddSingleton<FileSystemWalkSearchService>();
             services.AddSingleton<IFileSearchService, EverythingIpcSearchService>();
+
+            // 进程详情与调节（优先级、CPU 亲和性）：Windows 平台实现
+            services.AddSingleton<IProcessDetailService, WindowsProcessDetailService>();
         }
         else
         {
@@ -79,6 +94,8 @@ public static class CompositionRoot
             services.AddSingleton<IDiskUsageProvider, DefaultDiskUsageProvider>();
             services.AddSingleton<FileSystemWalkSearchService>();
             services.AddSingleton<IFileSearchService, FileSystemWalkSearchService>();
+            // 进程详情与调节是 Windows 特有能力，其他平台此能力留空
+            services.AddSingleton<IProcessDetailService, NullProcessDetailService>();
             if (OperatingSystem.IsLinux())
             {
                 services.AddSingleton<IProcessProvider, LinuxProcessProvider>();
@@ -93,6 +110,9 @@ public static class CompositionRoot
 
         // 磁盘扫描服务：共享增量快照与同路径单飞调度，桌面与全部网页工作区共用一个实例
         services.AddSingleton<Services.DiskScanService>();
+
+        // 进程采样服务：共享的进程读取记录与单飞调度，新开标签先复用记录不重新读取
+        services.AddSingleton<Services.ProcessSampleService>();
 
         return services.BuildServiceProvider();
     }

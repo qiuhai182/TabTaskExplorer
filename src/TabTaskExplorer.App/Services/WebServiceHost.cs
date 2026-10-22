@@ -8,6 +8,8 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using TabTaskExplorer.Kernel.Abstractions;
+using TabTaskExplorer.Kernel.Services;
 
 namespace TabTaskExplorer.App.Services;
 
@@ -27,8 +29,15 @@ public class WebServiceHost
     };
 
     private readonly List<WebEndpoint> endpoints = new List<WebEndpoint>();
+    private readonly IArchiveService archiveService;
     private IWebWorkspaceBridge? bridge;
     private AppSettings? settings;
+
+    /// <summary>构造网页端服务宿主；压缩服务用于读取压缩包内的文件内容。</summary>
+    public WebServiceHost(IArchiveService archiveService)
+    {
+        this.archiveService = archiveService;
+    }
 
     /// <summary>实际监听成功的地址清单（启动成功后可读）。</summary>
     public List<string> ListenUrls { get; private set; } = new List<string>();
@@ -388,9 +397,11 @@ public class WebServiceHost
         /// <summary>按动作判定所需权限：增删类要放行新建与删除，改配置与写文件类要放行修改。</summary>
         private bool CheckActionPermission(NetworkStream stream, WebAccessProfile profile, HttpRequest request, string action)
         {
-            bool needCreateDelete = action == "cut" || action == "paste" || action == "deletechecked" || action == "batchrename";
+            bool needCreateDelete = action == "cut" || action == "paste" || action == "deletechecked"
+                || action == "batchrename" || action == "encodepreview" || action == "encodeapply";
             bool needModify = action == "togglehidden" || action == "toggleextensions" || action == "pin" || action == "unpin" || action == "chmod"
-                || action == "idetext" || action == "idesave" || action == "idesaveall" || action == "idereplace" || action == "idereplaceall";
+                || action == "idetext" || action == "idesave" || action == "idesaveall" || action == "idereplace" || action == "idereplaceall"
+                || action == "processkill" || action == "processpriority" || action == "processaffinity";
             if (needCreateDelete && !profile.AllowCreateDelete)
             {
                 UiLogger.Log("网页端访问", "拒绝：" + action + " 未放行新建与删除权限 端口=" + this.runtime.Port
@@ -676,17 +687,26 @@ public class WebServiceHost
             {
                 return;
             }
+            // 压缩包内的文件：先解出到临时文件再按普通文件读取，读完清理临时目录
+            string? archiveTempFile = this.TryExtractArchiveFile(target);
             try
             {
                 string text;
-                WebWorkspace? workspace = string.IsNullOrEmpty(workspaceId) ? null : bridge.FindWorkspace(workspaceId);
-                if (workspace != null)
+                if (archiveTempFile != null)
                 {
-                    text = workspace.ReadFileText(target);
+                    text = WebWorkspace.ReadFileTextLocal(archiveTempFile);
                 }
                 else
                 {
-                    text = WebWorkspace.ReadFileTextLocal(target);
+                    WebWorkspace? workspace = string.IsNullOrEmpty(workspaceId) ? null : bridge.FindWorkspace(workspaceId);
+                    if (workspace != null)
+                    {
+                        text = workspace.ReadFileText(target);
+                    }
+                    else
+                    {
+                        text = WebWorkspace.ReadFileTextLocal(target);
+                    }
                 }
                 UiLogger.Log("网页端访问", "只读打开文件：端口=" + this.runtime.Port + " 来源=" + request.RemoteAddress
                     + " 目标=" + target + " 字符数=" + text.Length);
@@ -697,6 +717,46 @@ public class WebServiceHost
             {
                 UiLogger.LogError("网页端访问", "读取文件失败：端口=" + this.runtime.Port + " 目标=" + target, error);
                 this.WriteText(stream, "读取失败：" + error.Message, 500);
+            }
+            finally
+            {
+                this.DeleteArchiveTempFile(archiveTempFile);
+            }
+        }
+
+        /// <summary>
+        /// 路径位于压缩包内时解出到临时文件并返回其路径；不是压缩包内路径时返回 null。
+        /// </summary>
+        private string? TryExtractArchiveFile(string target)
+        {
+            if (!ArchiveFileSystemProvider.TryCreate(this.host.archiveService, target, out ArchiveFileSystemProvider? provider)
+                || provider == null || !provider.OwnsPath(target) || provider.IsRoot(target))
+            {
+                return null;
+            }
+            return provider.ExtractFileToTemp(target);
+        }
+
+        /// <summary>删除压缩包解出的临时文件及其所在目录；失败时忽略（临时目录会被系统回收）。</summary>
+        private void DeleteArchiveTempFile(string? archiveTempFile)
+        {
+            if (string.IsNullOrEmpty(archiveTempFile))
+            {
+                return;
+            }
+            try
+            {
+                string? tempDirectory = Path.GetDirectoryName(archiveTempFile);
+                if (!string.IsNullOrEmpty(tempDirectory))
+                {
+                    Directory.Delete(tempDirectory, true);
+                }
+            }
+            catch (IOException)
+            {
+            }
+            catch (UnauthorizedAccessException)
+            {
             }
         }
 

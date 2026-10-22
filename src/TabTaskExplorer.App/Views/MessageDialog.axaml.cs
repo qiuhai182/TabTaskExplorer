@@ -70,24 +70,32 @@ public partial class MessageDialog : Window
     /// <summary>点击确定关闭。</summary>
     private void OnOkClick(object? sender, RoutedEventArgs e)
     {
+        UiLogger.Log("程序行为", "消息提示窗点击确定：标题=" + this.Title
+            + " 结果=成功，已确认提示并关闭对话框");
         this.Close();
     }
 
     private void OnSaveChoiceClick(object? sender, RoutedEventArgs e)
     {
         this.choice = SavePromptChoice.Save;
+        UiLogger.Log("程序行为", "未保存更改处理点击保存：标题=" + this.Title
+            + " 结果=成功，选择保存后关闭，未保存的更改将写入文件");
         this.Close();
     }
 
     private void OnDontSaveChoiceClick(object? sender, RoutedEventArgs e)
     {
         this.choice = SavePromptChoice.DontSave;
+        UiLogger.Log("程序行为", "未保存更改处理点击不保存：标题=" + this.Title
+            + " 结果=成功，选择不保存直接关闭，未保存的更改被丢弃");
         this.Close();
     }
 
     private void OnCancelChoiceClick(object? sender, RoutedEventArgs e)
     {
         this.choice = SavePromptChoice.Cancel;
+        UiLogger.Log("程序行为", "未保存更改处理点击取消：标题=" + this.Title
+            + " 结果=成功，已取消关闭操作，未保存的更改保持原样");
         this.Close();
     }
 }

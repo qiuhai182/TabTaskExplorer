@@ -17,27 +17,66 @@
     <!-- 行 2：表头与占用列表 -->
     <Grid Grid.Row="2" RowDefinitions="Auto,*">
       <Grid Grid.Row="0" ColumnDefinitions="2.6*,100,1.7*,120,80,90" Margin="0,0,0,4">
-        <TextBlock Grid.Column="0" Text="名称" FontWeight="Medium" />
-        <TextBlock Grid.Column="1" Text="类型" FontWeight="Medium" />
-        <TextBlock Grid.Column="2" Text="大小" FontWeight="Medium" />
-        <TextBlock Grid.Column="3" Text="剩余" FontWeight="Medium" />
-        <TextBlock Grid.Column="4" Text="使用率" FontWeight="Medium" />
-        <TextBlock Grid.Column="5" Text="文件系统" FontWeight="Medium" />
+        <Button Grid.Column="0" Tag="Name" Click="OnSortClick" FontWeight="Medium" HorizontalAlignment="Left" Background="Transparent" Foreground="{DynamicResource TextMutedBrush}">
+          <StackPanel Orientation="Horizontal">
+            <TextBlock Text="名称" />
+            <TextBlock x:Name="ArrowName" Margin="4,0,0,0" />
+          </StackPanel>
+        </Button>
+        <Button Grid.Column="1" Tag="Type" Click="OnSortClick" FontWeight="Medium" HorizontalAlignment="Left" Background="Transparent" Foreground="{DynamicResource TextMutedBrush}">
+          <StackPanel Orientation="Horizontal">
+            <TextBlock Text="类型" />
+            <TextBlock x:Name="ArrowType" Margin="4,0,0,0" />
+          </StackPanel>
+        </Button>
+        <Button Grid.Column="2" Tag="Size" Click="OnSortClick" FontWeight="Medium" HorizontalAlignment="Left" Background="Transparent" Foreground="{DynamicResource TextMutedBrush}">
+          <StackPanel Orientation="Horizontal">
+            <TextBlock Text="大小" />
+            <TextBlock x:Name="ArrowSize" Margin="4,0,0,0" />
+          </StackPanel>
+        </Button>
+        <Button Grid.Column="3" Tag="Free" Click="OnSortClick" FontWeight="Medium" HorizontalAlignment="Left" Background="Transparent" Foreground="{DynamicResource TextMutedBrush}">
+          <StackPanel Orientation="Horizontal">
+            <TextBlock Text="剩余" />
+            <TextBlock x:Name="ArrowFree" Margin="4,0,0,0" />
+          </StackPanel>
+        </Button>
+        <Button Grid.Column="4" Tag="Usage" Click="OnSortClick" FontWeight="Medium" HorizontalAlignment="Left" Background="Transparent" Foreground="{DynamicResource TextMutedBrush}">
+          <StackPanel Orientation="Horizontal">
+            <TextBlock Text="使用率" />
+            <TextBlock x:Name="ArrowUsage" Margin="4,0,0,0" />
+          </StackPanel>
+        </Button>
+        <Button Grid.Column="5" Tag="FileSystem" Click="OnSortClick" FontWeight="Medium" HorizontalAlignment="Left" Background="Transparent" Foreground="{DynamicResource TextMutedBrush}">
+          <StackPanel Orientation="Horizontal">
+            <TextBlock Text="文件系统" />
+            <TextBlock x:Name="ArrowFileSystem" Margin="4,0,0,0" />
+          </StackPanel>
+        </Button>
       </Grid>
       <ListBox Grid.Row="1" ItemsSource="{Binding Rows}" Tapped="OnRowTapped">
         <ListBox.ItemTemplate>
           <DataTemplate>
-            <Grid ColumnDefinitions="2.6*,100,1.7*,120,80,90">
-              <Grid Grid.Column="0" Margin="{Binding IndentMargin}" ColumnDefinitions="16,*">
-                <TextBlock Grid.Column="0" Text="{Binding ExpandGlyph}" VerticalAlignment="Center" />
-                <TextBlock Grid.Column="1" Text="{Binding Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+            <Border Background="Transparent">
+              <Border.ContextMenu>
+                <ContextMenu>
+                  <MenuItem Header="打开" Click="OnMenuOpenClick" />
+                  <MenuItem Header="在新标签打开" Click="OnMenuOpenInNewTabClick" />
+                  <MenuItem Header="复制路径" Click="OnMenuCopyPathClick" />
+                </ContextMenu>
+              </Border.ContextMenu>
+              <Grid ColumnDefinitions="2.6*,100,1.7*,120,80,90">
+                <Grid Grid.Column="0" Margin="{Binding IndentMargin}" ColumnDefinitions="16,*">
+                  <TextBlock Grid.Column="0" Text="{Binding ExpandGlyph}" VerticalAlignment="Center" />
+                  <TextBlock Grid.Column="1" Text="{Binding Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                </Grid>
+                <TextBlock Grid.Column="1" Text="{Binding EntryTypeText}" />
+                <TextBlock Grid.Column="2" Text="{Binding SizeText}" />
+                <TextBlock Grid.Column="3" Text="{Binding FreeText}" />
+                <TextBlock Grid.Column="4" Text="{Binding UsageText}" />
+                <TextBlock Grid.Column="5" Text="{Binding FileSystemText}" />
               </Grid>
-              <TextBlock Grid.Column="1" Text="{Binding EntryTypeText}" />
-              <TextBlock Grid.Column="2" Text="{Binding SizeText}" />
-              <TextBlock Grid.Column="3" Text="{Binding FreeText}" />
-              <TextBlock Grid.Column="4" Text="{Binding UsageText}" />
-              <TextBlock Grid.Column="5" Text="{Binding FileSystemText}" />
-            </Grid>
+            </Border>
           </DataTemplate>
         </ListBox.ItemTemplate>
       </ListBox>

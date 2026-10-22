@@ -121,6 +121,19 @@ public static class WebPageHtml
   .tile .ttick { position:absolute; left:4px; top:4px; }
   .hint { color:#808080; margin:6px 0; }
 
+  /* ===== 进程监控（与桌面 ProcessPanel 同构：调节行 + 走势图 + 详情区） ===== */
+  .procCtrl { display:flex; align-items:center; gap:6px; flex-wrap:wrap; padding:6px 0; font-size:13px; }
+  .procCtrl select, .procCtrl input { border:1px solid #D5D5D5; border-radius:3px; padding:3px 6px; font:13px 'Segoe UI','Microsoft YaHei'; outline:none; color:inherit; background:#fff; }
+  .procCtrl select:disabled, .procCtrl input:disabled { color:#B0B0B0; background:#F5F5F5; }
+  .procCtrl input { width:160px; }
+  .trendLegend { display:flex; gap:16px; font-size:11px; color:#808080; padding:6px 0 2px; }
+  .trendLegend i { display:inline-block; width:12px; height:4px; border-radius:2px; margin-right:4px; vertical-align:middle; }
+  #trendCanvas { width:100%; height:78px; display:block; border:1px solid #E9E9E9; border-radius:4px; }
+  .procDetail { border:1px solid #E9E9E9; border-radius:4px; background:#FAFAFA; padding:6px 8px; margin-top:6px; font:12px Consolas,'Microsoft YaHei'; white-space:pre-wrap; min-height:64px; max-height:96px; overflow:auto; color:#404040; }
+  body.dark .procCtrl select, body.dark .procCtrl input { background:#202020; border-color:#3C3C3C; }
+  body.dark .procDetail { background:#1B1B1B; border-color:#3C3C3C; color:#B8B8B8; }
+  body.dark #trendCanvas { border-color:#3C3C3C; }
+
   /* ===== 任务看板 / 连接管理 ===== */
   .board { display:flex; gap:10px; align-items:flex-start; }
   .boardCol { flex:1; background:#F7F8FA; border:1px solid #E9E9E9; border-radius:6px; padding:8px; }
@@ -146,6 +159,10 @@ public static class WebPageHtml
   .brow .old { width:44%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#606060; }
   .brow input { flex:1; border:1px solid #D5D5D5; border-radius:3px; padding:4px 6px; font:13px 'Segoe UI','Microsoft YaHei'; outline:none; color:inherit; background:#fff; }
   .brow input:focus { border-color:#4A8FD0; }
+  .brow .reason { color:#E06C55; }
+  .encodeCtrl { display:flex; align-items:center; gap:8px; padding:8px 12px; border-bottom:1px solid #E9E9E9; flex-wrap:wrap; font-size:13px; }
+  .encodeCtrl select { border:1px solid #D5D5D5; border-radius:3px; padding:4px 6px; font:13px 'Segoe UI','Microsoft YaHei'; outline:none; color:inherit; background:#fff; }
+  .encodeCtrl label { display:flex; align-items:center; gap:4px; cursor:pointer; }
   .ctx { position:fixed; background:#fff; border:1px solid #DCDCDC; border-radius:6px; box-shadow:0 6px 18px rgba(0,0,0,.16); padding:4px; z-index:40; min-width:170px; }
   .ctx .item { padding:5px 12px; border-radius:4px; cursor:pointer; font-size:12px; white-space:nowrap; }
   .ctx .item:hover { background:#F0F6FF; }
@@ -219,6 +236,7 @@ public static class WebPageHtml
   body.dark .dir { color:#5AA2F5; }
   body.dark .file { color:#E8E8E8; }
   body.dark .addr, body.dark .searchBox, body.dark .brow input { background:#202020; border-color:#3C3C3C; }
+  body.dark .encodeCtrl select { background:#202020; border-color:#3C3C3C; }
   body.dark .tbtn.disabled, body.dark .btn.disabled { color:#5A5A5A; }
   body.dark .panel { background:#202020; }
   body.dark .panelHead, body.dark .panelFoot { border-color:#323232; }
@@ -290,6 +308,7 @@ public static class WebPageHtml
     <span class="btn" id="btnPaste" onclick="clickBtn('btnPaste','paste')">粘贴</span>
     <span class="btn" id="btnFolder" onclick="createFolder()">新建文件夹</span>
     <span class="btn" id="btnBatch" onclick="openBatch()">批量改名</span>
+    <span class="btn" id="btnEncode" onclick="openEncode()">编码转换</span>
     <span class="btn" id="btnRecycle" onclick="deleteChecked()">回收站</span>
     <span class="btn" id="btnHidden" onclick="clickBtn('btnHidden','togglehidden')"><span class="tick" id="tickHiddenBtn"></span>显示隐藏条目</span>
     <span class="btn" id="btnInfoPane" onclick="toggleInfoPane()"><span class="tick" id="tickInfoBtn"></span>显示详细信息窗格</span>
@@ -448,6 +467,29 @@ public static class WebPageHtml
     </div>
   </div>
 
+  <!-- 编码转换：文件名 / 文件夹名的批量编码转换（源编码 → 目标编码，支持递归子项） -->
+  <div class="modal hidden" id="encode">
+    <div class="panel small">
+      <div class="panelHead">
+        <div class="panelTitle">编码转换（共 <span id="encodeCount">0</span> 项）</div>
+        <span class="btn" onclick="closeEncode()">关闭</span>
+      </div>
+      <div class="encodeCtrl">
+        <span>源编码</span>
+        <select id="encodeFrom" onchange="previewEncode()"></select>
+        <span>目标编码</span>
+        <select id="encodeTo" onchange="previewEncode()"></select>
+        <label><input type="checkbox" id="encodeRecursive" onchange="previewEncode()">递归处理子项</label>
+      </div>
+      <div class="batchList" id="encodeList"></div>
+      <div class="panelFoot">
+        <span class="hint" id="encodeFoot">源编码 = 名字当前被误解的编码</span>
+        <div class="spacer"></div>
+        <span class="btn" onclick="applyEncode()">执行转换</span>
+      </div>
+    </div>
+  </div>
+
   <!-- 行右键菜单（与桌面列表右键菜单同构） -->
   <div class="ctx hidden" id="ctx"></div>
 
@@ -513,6 +555,7 @@ function applyPermissions() {
   setGate('btnCut', permissions.canCreateDelete);
   setGate('btnPaste', permissions.canCreateDelete);
   setGate('btnBatch', permissions.canCreateDelete);
+  setGate('btnEncode', permissions.canCreateDelete);
   setGate('btnRecycle', permissions.canCreateDelete);
   setGate('btnHidden', permissions.canModify);
   setGate('btnPin', permissions.canModify);
@@ -648,6 +691,11 @@ function clickBtn(id, action, argument) {
 }
 
 function openPath(target) { return post('/api/open', { p: target }); }
+function navOpen(target, selected) {
+  // 二次点击已选中的导航项：回到导航菜单根目录（此电脑）
+  if (selected) { return openPath(''); }
+  return openPath(target);
+}
 function openPathAt(index) { return post('/api/open', { p: crumbPaths[index] || '' }); }
 function selectTab(index) { return post('/api/select', { i: index }); }
 function closeTab(index) { return post('/api/tabs/close', { i: index }); }
@@ -732,7 +780,8 @@ function renderSidebar() {
   html += '<div class="navsec"><span class="ico">&#xE968;</span>网络</div>'
     + '<div class="navitem" onclick="clickBtn(null,\'openconnections\')"><span class="ico">&#xE968;</span>连接管理</div>'
     + '<div class="navitem" onclick="clickBtn(null,\'opensearch\')"><span class="ico">&#xE721;</span>全局搜索</div>'
-    + '<div class="navitem" onclick="clickBtn(null,\'opendisk\')"><span class="ico">&#xE9F4;</span>磁盘视图</div>';
+    + '<div class="navitem" onclick="clickBtn(null,\'opendisk\')"><span class="ico">&#xE9F4;</span>磁盘视图</div>'
+    + '<div class="navitem" onclick="clickBtn(null,\'openprocess\')"><span class="ico">&#xE9F5;</span>进程监控</div>';
   document.getElementById('sidebar').innerHTML = html;
 }
 
@@ -742,8 +791,8 @@ function navSection(title, glyph, items) {
     return html;
   }
   for (const item of items) {
-    html += '<div class="navitem' + (item.selected ? ' selected' : '') + '" onclick="openPath('
-      + JSON.stringify(item.path).replace(/"/g, '&quot;') + ')">'
+    html += '<div class="navitem' + (item.selected ? ' selected' : '') + '" onclick="navOpen('
+      + JSON.stringify(item.path).replace(/"/g, '&quot;') + ',' + (item.selected ? 1 : 0) + ')">'
       + '<span class="ico">' + (item.iconGlyph ? esc(item.iconGlyph) : '&#xE8B7;') + '</span>'
       + '<span>' + esc(item.name) + '</span></div>';
   }
@@ -806,9 +855,13 @@ function syncCheckedFromState() {
 
 function renderContent(tab) {
   const signature = tab.index + '|' + tab.tabType + '|' + tab.viewMode + '|' + tab.showInfoPane
-    + '|' + permissions.canCreateDelete + '|' + JSON.stringify(tab.rows)
+    + '|' + permissions.canCreateDelete + '|' + permissions.canModify + '|' + JSON.stringify(tab.rows)
     + '|' + JSON.stringify(Array.from(checked)) + '|' + tab.todo + '|' + tab.inProgress + '|' + tab.done
-    + '|' + tab.connections + '|' + tab.summaryText;
+    + '|' + tab.connections + '|' + tab.summaryText
+    + '|' + tab.resourceText + '|' + JSON.stringify(tab.processRows)
+    + '|' + tab.detailText + '|' + tab.affinityInput + '|' + tab.priorityIndex
+    + '|' + tab.detailSupported + '|' + tab.trendVersion
+    + '|' + tab.sortField + '|' + tab.sortAscending;
   if (signature === lastContentSignature) { applyFocusHighlight(); return; }
   lastContentSignature = signature;
 
@@ -823,17 +876,31 @@ function renderContent(tab) {
     html = renderBoard(tab);
   } else if (tab.tabType === 'connections') {
     html = renderConnections(tab);
+  } else if (tab.tabType === 'process') {
+    html = renderProcess(tab);
   } else {
     html = '<div class="hint">「' + esc(tab.title) + '」是桌面端专用视图（终端 / 传输 / 编辑器等），网页端暂不展示其内容。</div>';
   }
-  if (tab.totalRows && tab.totalRows > tab.rows.length) {
+  if (tab.tabType !== 'process' && tab.totalRows && tab.totalRows > tab.rows.length) {
     html += '<div class="hint">仅显示前 ' + tab.rows.length + ' 项，共 ' + tab.totalRows + ' 项</div>';
   }
   // 摘要栏：与桌面一致，显示在内容底部（桌面 FileListPanel 底部摘要）
   if (tab.summaryText) {
     html += '<div class="hint summary">' + esc(tab.summaryText) + '</div>';
   }
+  // 进程页：重绘前记录正在输入的控件，重绘后恢复焦点与内容（两秒一次的采样刷新不打断输入）
+  let procFocusId = '';
+  let procFocusValue = '';
+  const activeElement = document.activeElement;
+  if (activeElement && (activeElement.id === 'procPriority' || activeElement.id === 'procAffinity')) {
+    procFocusId = activeElement.id;
+    procFocusValue = activeElement.value;
+  }
   document.getElementById('contentMain').innerHTML = html;
+  if (tab.tabType === 'process') {
+    syncProcessControls(tab, procFocusId, procFocusValue);
+    drawProcessTrend(tab);
+  }
   applyFocusHighlight();
 }
 
@@ -851,8 +918,9 @@ function renderTable(tab) {
   } else if (mode === 'Content') {
     columns = '<th>类型</th>';
   } else {
+    // 全局搜索与桌面一致只有名称 / 修改日期 / 大小三列，不展示类型列
     columns = '<th class="sortable" onclick="clickBtn(null,\'sort\',\'Modified\')">修改日期' + sortArrow(tab, 'Modified') + '</th>'
-      + '<th class="sortable" onclick="clickBtn(null,\'sort\',\'Type\')">类型' + sortArrow(tab, 'Type') + '</th>'
+      + (isSearch ? '' : '<th class="sortable" onclick="clickBtn(null,\'sort\',\'Type\')">类型' + sortArrow(tab, 'Type') + '</th>')
       + '<th class="sortable" onclick="clickBtn(null,\'sort\',\'Size\')">大小' + sortArrow(tab, 'Size') + '</th>';
   }
   let head = '<tr><th style="width:34px"></th><th class="sortable" style="width:46%" onclick="clickBtn(null,\'sort\',\'Name\')">名称'
@@ -872,7 +940,9 @@ function renderTable(tab) {
       + esc(row.iconGlyph || '&#xE7C3;') + '</span>'
       + '<span class="text ' + (row.isDirectory ? 'dir' : 'file') + '" title="' + esc(path) + '">' + esc(row.name) + '</span></td>';
     if (mode === 'Details') {
-      html += '<td>' + esc(row.modified) + '</td><td>' + esc(row.type) + '</td><td>' + esc(row.size) + '</td>';
+      html += '<td>' + esc(row.modified) + '</td>';
+      if (!isSearch) { html += '<td>' + esc(row.type) + '</td>'; }
+      html += '<td>' + esc(row.size) + '</td>';
     } else if (mode === 'Content') {
       html += '<td>' + esc(row.type) + '</td>';
     }
@@ -906,8 +976,12 @@ function renderTiles(tab) {
 }
 
 function renderDiskTable(tab) {
-  let html = '<table><tr><th style="width:32%">名称</th><th>类型</th><th style="width:120px">大小</th>'
-    + '<th style="width:130px">剩余</th><th style="width:90px">使用率</th><th style="width:110px">文件系统</th></tr>';
+  let html = '<table><tr><th class="sortable" style="width:32%" onclick="clickBtn(null,\'sort\',\'Name\')">名称' + sortArrow(tab, 'Name') + '</th>'
+    + '<th class="sortable" onclick="clickBtn(null,\'sort\',\'Type\')">类型' + sortArrow(tab, 'Type') + '</th>'
+    + '<th class="sortable" style="width:120px" onclick="clickBtn(null,\'sort\',\'Size\')">大小' + sortArrow(tab, 'Size') + '</th>'
+    + '<th class="sortable" style="width:130px" onclick="clickBtn(null,\'sort\',\'Free\')">剩余' + sortArrow(tab, 'Free') + '</th>'
+    + '<th class="sortable" style="width:90px" onclick="clickBtn(null,\'sort\',\'Usage\')">使用率' + sortArrow(tab, 'Usage') + '</th>'
+    + '<th class="sortable" style="width:110px" onclick="clickBtn(null,\'sort\',\'FileSystem\')">文件系统' + sortArrow(tab, 'FileSystem') + '</th></tr>';
   if (!tab.rows || tab.rows.length === 0) {
     html += '<tr><td class="hint" colspan="6">暂无磁盘数据，正在扫描……</td></tr>';
   }
@@ -918,7 +992,9 @@ function renderDiskTable(tab) {
     const indent = (row.level || 0) * 16;
     html += '<tr class="row" data-i="' + rowIndex + '"><td class="name" style="padding-left:' + indent + 'px">';
     if (row.isDirectory) {
-      html += '<span class="ico" style="color:#E8A317">' + (row.expanded ? '&#9662;' : '&#9656;') + '</span>'
+      // 小三角与文件名点击效果完全一致：同一 diskNav 处理，点击即展开或折叠
+      html += '<span class="ico" style="color:#E8A317;cursor:pointer" onclick="diskNav(' + target + ')">'
+        + (row.expanded ? '&#9662;' : '&#9656;') + '</span>'
         + '<span class="dir" onclick="diskNav(' + target + ')">' + esc(row.name) + '</span>';
     } else {
       html += '<span class="ico"></span><span>' + esc(row.name) + '</span>';
@@ -930,6 +1006,192 @@ function renderDiskTable(tab) {
   }
   html += '</table>';
   return html;
+}
+
+// 进程监控：与桌面 ProcessPanel 同构（操作按钮 + 调节行 + 资源摘要 + 进程表格 + 走势图 + 详情区）
+function renderProcess(tab) {
+  const rows = tab.processRows || [];
+  const canAdjust = permissions.canModify && tab.detailSupported;
+  let html = '<div class="procBar">'
+    + '<button class="btn" onclick="clickBtn(null,\'processrefresh\')">刷新</button> '
+    + '<button class="btn' + (permissions.canModify ? '' : ' disabled') + '" onclick="processKill()">结束进程</button></div>';
+  // 调节行：优先级下拉 + CPU 亲和性输入（与桌面调节行同构，非 Windows 平台或未放行修改权限时整体灰化）
+  html += '<div class="procCtrl"><span>优先级</span><select id="procPriority"' + (canAdjust ? '' : ' disabled') + '>';
+  const priorityNames = ['低', '低于标准', '标准', '高于标准', '高', '实时'];
+  const priorityValue = (tab.priorityIndex >= 0 && tab.priorityIndex < priorityNames.length) ? tab.priorityIndex : 2;
+  for (let priorityIndex = 0; priorityIndex < priorityNames.length; priorityIndex++) {
+    html += '<option value="' + priorityIndex + '"' + (priorityIndex === priorityValue ? ' selected' : '') + '>'
+      + priorityNames[priorityIndex] + '</option>';
+  }
+  html += '</select><button class="btn' + (canAdjust ? '' : ' disabled') + '" onclick="processApplyPriority()">应用</button>'
+    + '<span>CPU 亲和性</span>'
+    + '<input id="procAffinity" type="text" placeholder="核心编号，如 0,1,2" value="' + escAttr(tab.affinityInput || '') + '"'
+    + (canAdjust ? '' : ' disabled') + '>'
+    + '<button class="btn' + (canAdjust ? '' : ' disabled') + '" onclick="processApplyAffinity()">应用</button></div>';
+  if (tab.resourceText) {
+    html += '<div class="hint">' + esc(tab.resourceText) + '</div>';
+  }
+  html += '<table><tr><th class="sortable" style="width:70px" onclick="clickBtn(null,\'sort\',\'Cpu\')">处理器' + sortArrow(tab, 'Cpu') + '</th>'
+    + '<th class="sortable" onclick="clickBtn(null,\'sort\',\'Name\')">进程名称（树）' + sortArrow(tab, 'Name') + '</th>'
+    + '<th class="sortable" style="width:100px" onclick="clickBtn(null,\'sort\',\'Memory\')">内存' + sortArrow(tab, 'Memory') + '</th>'
+    + '<th class="sortable" style="width:70px" onclick="clickBtn(null,\'sort\',\'ProcessId\')">编号' + sortArrow(tab, 'ProcessId') + '</th>'
+    + '<th class="sortable" onclick="clickBtn(null,\'sort\',\'WindowTitle\')">窗口标题' + sortArrow(tab, 'WindowTitle') + '</th></tr>';
+  if (rows.length === 0) {
+    html += '<tr><td class="hint" colspan="5">暂无进程数据，正在刷新……</td></tr>';
+  }
+  let rowIndex = 0;
+  for (const row of rows) {
+    // 单击选中进程（与桌面 ListBox 选中一致），选中后可点「结束进程」与调节项
+    const displayName = (row.indentText || '') + row.name;
+    html += '<tr class="row' + (row.isSelected ? ' checked' : '') + '" data-i="' + rowIndex + '"'
+      + ' onclick="processSelect(' + row.processId + ')">'
+      + '<td>' + esc(row.cpuText || '—') + '</td>'
+      + '<td class="name"><span class="text" title="' + escAttr(displayName) + '">' + esc(displayName) + '</span></td>'
+      + '<td>' + esc(row.memoryText) + '</td>'
+      + '<td>' + row.processId + '</td>'
+      + '<td title="' + escAttr(row.windowTitle) + '">' + esc(row.windowTitle) + '</td></tr>';
+    rowIndex++;
+  }
+  html += '</table>';
+  // 走势图：与桌面 ProcessTrendChart 同构（三条折线，最近 60 次采样，纵轴 0 到 100）
+  html += '<div class="trendLegend">'
+    + '<span><i style="background:#2E7D32"></i>系统处理器</span>'
+    + '<span><i style="background:#7E57C2"></i>系统内存</span>'
+    + '<span><i style="background:#EF6C00"></i>选中进程处理器</span></div>'
+    + '<canvas id="trendCanvas" height="78"></canvas>';
+  // 详情区：可执行文件、启动命令行、启动时间、进程所有者、优先级、CPU 亲和性（多行只读）
+  html += '<div class="procDetail">' + esc(tab.detailText || '') + '</div>';
+  return html;
+}
+
+// 进程页重绘后回填调节项：先恢复服务端最新值，再恢复用户正在输入的焦点与内容（采样刷新不打断输入）
+function syncProcessControls(tab, focusId, focusValue) {
+  const priorityBox = document.getElementById('procPriority');
+  const affinityBox = document.getElementById('procAffinity');
+  if (priorityBox) {
+    priorityBox.value = String((tab.priorityIndex >= 0) ? tab.priorityIndex : 2);
+  }
+  if (affinityBox) {
+    affinityBox.value = tab.affinityInput || '';
+  }
+  if (focusId) {
+    const focused = document.getElementById(focusId);
+    if (focused) {
+      focused.value = focusValue;
+      focused.focus();
+    }
+  }
+}
+
+// 走势图画布：背景 + 0/50/100% 网格 + 三条折线（与桌面 ProcessTrendChart.Render 同构）
+function drawProcessTrend(tab) {
+  const canvas = document.getElementById('trendCanvas');
+  if (!canvas || !canvas.getContext) { return; }
+  const width = Math.max(canvas.clientWidth, 80);
+  const height = 78;
+  if (canvas.width !== width) { canvas.width = width; }
+  canvas.height = height;
+  const context = canvas.getContext('2d');
+  const dark = document.body.classList.contains('dark');
+  context.clearRect(0, 0, width, height);
+  context.fillStyle = dark ? 'rgba(255,255,255,0.05)' : 'rgba(128,128,128,0.09)';
+  context.fillRect(0, 0, width, height);
+  context.strokeStyle = dark ? 'rgba(255,255,255,0.16)' : 'rgba(128,128,128,0.30)';
+  context.lineWidth = 1;
+  const gridRows = [1, height / 2, height - 1];
+  for (let gridIndex = 0; gridIndex < gridRows.length; gridIndex++) {
+    context.beginPath();
+    context.moveTo(0, gridRows[gridIndex]);
+    context.lineTo(width, gridRows[gridIndex]);
+    context.stroke();
+  }
+  drawTrendSeries(context, width, height, tab.systemCpuTrend, '#2E7D32');
+  drawTrendSeries(context, width, height, tab.systemMemoryTrend, '#7E57C2');
+  drawTrendSeries(context, width, height, tab.selectedCpuTrend, '#EF6C00');
+}
+
+// 画一条折线：横轴按固定 60 点铺满（历史未满时占左侧），纵轴按 0 到 100 映射
+function drawTrendSeries(context, width, height, values, color) {
+  if (!values || values.length < 2) { return; }
+  context.strokeStyle = color;
+  context.lineWidth = 1.5;
+  context.beginPath();
+  for (let index = 0; index < values.length; index++) {
+    let percent = values[index];
+    if (percent < 0) { percent = 0; }
+    if (percent > 100) { percent = 100; }
+    const x = width * index / 59;
+    const y = height - 2 - (percent / 100) * (height - 4);
+    if (index === 0) { context.moveTo(x, y); } else { context.lineTo(x, y); }
+  }
+  context.stroke();
+}
+
+// 取当前选中的进程行；未选中时返回 null
+function processSelectedRow() {
+  if (!currentTab || currentTab.tabType !== 'process') { return null; }
+  const rows = currentTab.processRows || [];
+  for (const row of rows) {
+    if (row.isSelected) { return row; }
+  }
+  return null;
+}
+
+function processSelect(processId) {
+  if (currentTab && currentTab.tabType === 'process') {
+    doAction('processselect', processId);
+  }
+}
+
+function processKill() {
+  if (!permissions.canModify) {
+    flash('该端口未放行修改权限');
+    return;
+  }
+  const target = processSelectedRow();
+  if (!target) {
+    flash('请先在列表中选择要结束的进程');
+    return;
+  }
+  doAction('processkill', target.processId);
+}
+
+// 应用优先级：把选中进程的编号与下拉框索引回传（如 1234,3）
+function processApplyPriority() {
+  if (!permissions.canModify) {
+    flash('该端口未放行修改权限');
+    return;
+  }
+  if (!currentTab || currentTab.tabType !== 'process' || !currentTab.detailSupported) {
+    flash('当前平台不支持优先级调节');
+    return;
+  }
+  const target = processSelectedRow();
+  if (!target) {
+    flash('请先在列表中选择要调节的进程');
+    return;
+  }
+  const priorityBox = document.getElementById('procPriority');
+  doAction('processpriority', target.processId + ',' + (priorityBox ? priorityBox.value : '2'));
+}
+
+// 应用 CPU 亲和性：把选中进程的编号与核心编号列表回传（如 1234,0,1,2）
+function processApplyAffinity() {
+  if (!permissions.canModify) {
+    flash('该端口未放行修改权限');
+    return;
+  }
+  if (!currentTab || currentTab.tabType !== 'process' || !currentTab.detailSupported) {
+    flash('当前平台不支持亲和性调节');
+    return;
+  }
+  const target = processSelectedRow();
+  if (!target) {
+    flash('请先在列表中选择要调节的进程');
+    return;
+  }
+  const affinityBox = document.getElementById('procAffinity');
+  doAction('processaffinity', target.processId + ',' + (affinityBox ? affinityBox.value : ''));
 }
 
 function renderBoard(tab) {
@@ -1112,6 +1374,11 @@ function openTarget(row) {
   if (!row) { return; }
   if (row.isDirectory) {
     if (currentTab && currentTab.tabType === 'disk') { diskNav(row.fullPath); return; }
+    openPath(row.fullPath);
+    return;
+  }
+  // 压缩包：走 openPath 由服务端新开预览标签（与桌面端双击压缩包一致）
+  if (/\.(zip|7z|rar|tar|gz|bz2|xz|zst|tgz|tbz2?)$/i.test(row.fullPath)) {
     openPath(row.fullPath);
     return;
   }
@@ -1350,6 +1617,114 @@ async function applyBatch() {
     flash(response.ok ? (text || '批量改名已提交') : (text || '批量改名失败'));
   } catch (error) {
     flash('批量改名提交失败：' + error);
+  }
+  await refresh();
+}
+
+// ======== 编码转换（文件名 / 文件夹名批量编码转换） ========
+
+// 编码表与内核 FileNameEncodingConverter.GetSupportedEncodings 保持一致：[显示名, 代码页]
+const ENCODE_CHOICES = [
+  ['UTF-8', 65001], ['UTF-16 LE', 1200], ['UTF-16 BE', 1201], ['GBK', 936], ['GB18030', 54936],
+  ['Big5', 950], ['Latin-1', 28591], ['Shift_JIS', 932], ['EUC-JP', 51932], ['EUC-KR', 949],
+  ['KOI8-R', 20866], ['Windows-1251', 1251], ['Windows-1252', 1252], ['ISO-8859-2', 28592]
+];
+let encodePaths = [];
+let encodeRows = [];
+
+function encodeOptionsHtml(selectedPage) {
+  let html = '';
+  for (const choice of ENCODE_CHOICES) {
+    html += '<option value="' + choice[1] + '"' + (choice[1] === selectedPage ? ' selected' : '') + '>'
+      + esc(choice[0]) + '</option>';
+  }
+  return html;
+}
+
+async function openEncode() {
+  if (!permissions.canCreateDelete) { flash('该端口未放行新建与删除权限'); return; }
+  if (checked.size === 0) { flash('请先勾选要转换编码的条目'); return; }
+  encodePaths = [];
+  for (const row of currentRows) {
+    if (checked.has(row.fullPath)) { encodePaths.push(row.fullPath); }
+  }
+  document.getElementById('encodeFrom').innerHTML = encodeOptionsHtml(936);
+  document.getElementById('encodeTo').innerHTML = encodeOptionsHtml(65001);
+  document.getElementById('encodeRecursive').checked = false;
+  encodeRows = [];
+  renderEncodePreview([]);
+  document.getElementById('encode').classList.remove('hidden');
+  await previewEncode();
+}
+
+// 两步只读预览：向服务端要转换计划（不改动任何文件），仅在页面只读渲染
+async function previewEncode() {
+  if (encodePaths.length === 0) { return; }
+  const fromPage = document.getElementById('encodeFrom').value;
+  const toPage = document.getElementById('encodeTo').value;
+  const recursive = document.getElementById('encodeRecursive').checked ? '1' : '0';
+  let body = fromPage + '\t' + toPage + '\t' + recursive + '\n';
+  for (const path of encodePaths) { body += path + '\n'; }
+  try {
+    const response = await fetch(url('/api/action', { a: 'encodepreview' }), { method: 'POST', body: body });
+    const text = await response.text();
+    if (!response.ok) { flash(text || '编码转换预览失败'); return; }
+    const rows = [];
+    for (const line of text.split('\n')) {
+      const clean = line.replace(/\r$/, '');
+      if (!clean) { continue; }
+      const parts = clean.split('\t');
+      if (parts.length < 3) { continue; }
+      rows.push({ path: parts[0], name: parts[1], reason: parts.slice(2).join('\t') });
+    }
+    if (rows.length === 0) { flash(text || '没有可预览的转换项'); return; }
+    encodeRows = rows;
+    renderEncodePreview(rows);
+  } catch (error) {
+    flash('编码转换预览失败：' + error);
+  }
+}
+
+function renderEncodePreview(rows) {
+  let html = '';
+  let executable = 0;
+  let failed = 0;
+  for (const row of rows) {
+    const oldName = row.path.split('\\').pop().split('/').pop();
+    const changed = row.name !== oldName;
+    if (row.reason) { failed++; } else if (changed) { executable++; }
+    const reasonText = row.reason ? '（' + esc(row.reason) + '）' : '';
+    html += '<div class="brow"><span class="old" title="' + esc(row.path) + '">' + esc(row.path) + '</span>'
+      + '<span>&rsaquo;</span><span class="reason" style="flex:1">' + esc(row.name) + reasonText + '</span></div>';
+  }
+  document.getElementById('encodeList').innerHTML = html || '<div class="hint">没有可转换的条目</div>';
+  document.getElementById('encodeCount').textContent = rows.length;
+  document.getElementById('encodeFoot').textContent =
+    '共 ' + rows.length + ' 项，可执行 ' + executable + ' 项，无法转换 ' + failed + ' 项';
+}
+
+function closeEncode() {
+  document.getElementById('encode').classList.add('hidden');
+}
+
+async function applyEncode() {
+  let plan = '';
+  let changed = 0;
+  for (const row of encodeRows) {
+    if (row.reason) { continue; }
+    const oldName = row.path.split('\\').pop().split('/').pop();
+    if (row.name === oldName) { continue; }
+    plan += row.path + '\t' + row.name + '\n';
+    changed++;
+  }
+  closeEncode();
+  if (changed === 0) { flash('没有可执行的转换项'); return; }
+  try {
+    const response = await fetch(url('/api/action', { a: 'encodeapply' }), { method: 'POST', body: plan });
+    const text = await response.text();
+    flash(response.ok ? (text || '编码转换已提交') : (text || '编码转换失败'));
+  } catch (error) {
+    flash('编码转换提交失败：' + error);
   }
   await refresh();
 }
@@ -1991,6 +2366,11 @@ document.addEventListener('click', function (event) {
 
 document.getElementById('crumb').addEventListener('click', function (event) {
   if (event.target === event.currentTarget) { enterAddressEdit(); }
+});
+
+document.getElementById('addrInput').addEventListener('blur', function () {
+  // 失焦即退出编辑模式：恢复面包屑显示，使路径框继续跟随后续导航更新
+  exitAddressEdit();
 });
 
 document.getElementById('addrInput').addEventListener('keydown', function (event) {

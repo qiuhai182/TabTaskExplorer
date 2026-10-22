@@ -146,6 +146,13 @@
     <Style Selector="ListBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter">
       <Setter Property="Background" Value="{DynamicResource RowSelectedBrush}"/>
     </Style>
+    <!-- 选中行左侧不显示主题自带的紫色竖条（SelectionIndicator），与网页端选中效果保持一致 -->
+    <Style Selector="ListBoxItem:selected /template/ Rectangle#SelectionIndicator">
+      <Setter Property="IsVisible" Value="False"/>
+    </Style>
+    <Style Selector="TreeViewItem:selected /template/ Rectangle#SelectionIndicator">
+      <Setter Property="IsVisible" Value="False"/>
+    </Style>
 
     <!-- 标签条：悬停变灰，选中融入内容区（TabX 行为） -->
     <Style Selector="ListBoxItem.tabhover">

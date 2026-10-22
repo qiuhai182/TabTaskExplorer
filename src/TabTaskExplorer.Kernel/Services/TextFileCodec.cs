@@ -184,6 +184,20 @@ public static class TextFileCodec
         }
     }
 
+    /// <summary>按代码页解析出编码对象（文件名编码转换复用同一份代码页提供程序注册）；不支持时返回 null。</summary>
+    public static Encoding? ResolveCodePage(int codePage)
+    {
+        EnsureProviderRegistered();
+        try
+        {
+            return Encoding.GetEncoding(codePage);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     /// <summary>把文本按指定编码编码成字节数组；带 BOM 的编码会写出前导标记。</summary>
     public static byte[] Encode(string text, string encodingName)
     {

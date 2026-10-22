@@ -11,6 +11,7 @@ using Avalonia.Threading;
 using TabTaskExplorer.App.Services;
 using TabTaskExplorer.Kernel.Abstractions;
 using TabTaskExplorer.Kernel.Models;
+using TabTaskExplorer.Kernel.Services;
 
 namespace TabTaskExplorer.App.ViewModels;
 
@@ -30,6 +31,8 @@ public class DiskViewPanelViewModel : INotifyPropertyChanged
     private string summaryText = "正在加载磁盘视图……";
     private string rootPathInput = string.Empty;
     private string subscribedRoot = string.Empty;
+    private string sortField = string.Empty;
+    private bool sortAscending = true;
     private bool isForeground;
     private bool closed;
     private bool heartbeatMode;
@@ -59,6 +62,18 @@ public class DiskViewPanelViewModel : INotifyPropertyChanged
     /// <summary>扫描结果行集合（扁平可见列表：子行紧跟在父行之后）。</summary>
     public ObservableCollection<DiskRow> Rows { get; } = new ObservableCollection<DiskRow>();
 
+    /// <summary>当前排序字段：空为扫描服务默认顺序，Name / Type / Size / Free / Usage / FileSystem。</summary>
+    public string SortField
+    {
+        get { return this.sortField; }
+    }
+
+    /// <summary>排序方向是否为升序（降序时表头显示向下箭头）。</summary>
+    public bool SortAscending
+    {
+        get { return this.sortAscending; }
+    }
+
     /// <summary>属性变化通知事件。</summary>
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -82,6 +97,98 @@ public class DiskViewPanelViewModel : INotifyPropertyChanged
             this.rootPathInput = value == null ? string.Empty : value;
             this.OnPropertyChanged(nameof(this.RootPathInput));
         }
+    }
+
+    /// <summary>点击表头排序：重复点击同一字段切换升序降序，点击新字段按升序排列。
+    /// 只调换同级子树的位置，树形层级与展开状态保持不变。</summary>
+    /// <param name="field">排序字段：Name / Type / Size / Free / Usage / FileSystem。</param>
+    public void SetSortField(string field)
+    {
+        if (this.sortField == field)
+        {
+            this.sortAscending = !this.sortAscending;
+        }
+        else
+        {
+            this.sortField = field;
+            this.sortAscending = true;
+        }
+        this.ReapplySort();
+        UiLogger.Log("磁盘视图", "点击表头排序：排序字段=" + field
+            + " 排序方向=" + (this.sortAscending ? "升序" : "降序")
+            + " 行数=" + this.Rows.Count);
+    }
+
+    /// <summary>按当前排序字段把可见行列表整体重排（同级子树整体换位，父子结构与展开状态不变）。</summary>
+    private void ReapplySort()
+    {
+        if (this.Rows.Count <= 1)
+        {
+            return;
+        }
+        List<DiskRow> sorted = new List<DiskRow>(this.Rows);
+        TreeRowSorter.SortSameLevel<DiskRow>(sorted, DiskViewPanelViewModel.SelectRowLevel, this.CompareDiskRows);
+        this.Rows.Clear();
+        foreach (DiskRow row in sorted)
+        {
+            this.Rows.Add(row);
+        }
+    }
+
+    /// <summary>同级磁盘行比较器：目录始终在前（与文件列表一致），再按当前排序字段比较；
+    /// 未排序时用扫描服务的默认顺序（目录在前、大小降序）。</summary>
+    /// <param name="left">左行。</param>
+    /// <param name="right">右行。</param>
+    /// <returns>小于 0 / 等于 0 / 大于 0。</returns>
+    private int CompareDiskRows(DiskRow left, DiskRow right)
+    {
+        if (this.sortField.Length == 0)
+        {
+            return DiskScanService.CompareRows(left, right);
+        }
+        int directoryCompare = right.IsDirectory.CompareTo(left.IsDirectory);
+        if (directoryCompare != 0)
+        {
+            return directoryCompare;
+        }
+        int result;
+        if (this.sortField == "Name")
+        {
+            result = string.Compare(left.Name, right.Name, StringComparison.OrdinalIgnoreCase);
+        }
+        else if (this.sortField == "Type")
+        {
+            result = string.Compare(left.EntryTypeText, right.EntryTypeText, StringComparison.OrdinalIgnoreCase);
+        }
+        else if (this.sortField == "Size")
+        {
+            result = left.SizeBytes.CompareTo(right.SizeBytes);
+        }
+        else if (this.sortField == "Free")
+        {
+            result = left.FreeBytes.CompareTo(right.FreeBytes);
+        }
+        else if (this.sortField == "Usage")
+        {
+            result = left.UsagePercent.CompareTo(right.UsagePercent);
+        }
+        else
+        {
+            result = string.Compare(left.FileSystemText, right.FileSystemText, StringComparison.OrdinalIgnoreCase);
+        }
+        if (!this.sortAscending)
+        {
+            result = -result;
+        }
+        return result;
+    }
+
+    /// <summary>取出行的树形层级（树形同级排序器使用）。</summary>
+    /// <param name="row">一行磁盘数据。</param>
+    /// <returns>树形层级，0 为顶层。</returns>
+    private static int SelectRowLevel(DiskRow row)
+    {
+        return row.Level;
     }
 
     /// <summary>
@@ -446,6 +553,10 @@ public class DiskViewPanelViewModel : INotifyPropertyChanged
         {
             this.Rows.Add(row.Clone());
         }
+        if (this.sortField.Length > 0)
+        {
+            this.ReapplySort();
+        }
         this.SummaryText = result.SummaryText;
     }
 
@@ -651,7 +762,7 @@ public class DiskViewPanelViewModel : INotifyPropertyChanged
         {
             group.Add(this.Rows[index]);
         }
-        group.Sort(DiskScanService.CompareRows);
+        group.Sort(this.CompareDiskRows);
         for (int index = 0; index < count; index++)
         {
             this.Rows[start + index] = group[index];
@@ -703,6 +814,10 @@ public class DiskViewPanelViewModel : INotifyPropertyChanged
             foreach (DiskRow row in rows)
             {
                 this.Rows.Add(row);
+            }
+            if (this.sortField.Length > 0)
+            {
+                this.ReapplySort();
             }
         }
         else
@@ -761,7 +876,9 @@ public class DiskViewPanelViewModel : INotifyPropertyChanged
                 existing.SizeBytes = fresh.SizeBytes;
                 existing.SizeText = fresh.SizeText;
                 existing.FreeText = fresh.FreeText;
+                existing.FreeBytes = fresh.FreeBytes;
                 existing.UsageText = fresh.UsageText;
+                existing.UsagePercent = fresh.UsagePercent;
                 existing.FileSystemText = fresh.FileSystemText;
                 this.RecordDriveMtime(existing);
             }
@@ -783,6 +900,10 @@ public class DiskViewPanelViewModel : INotifyPropertyChanged
                 }
                 this.Rows.RemoveAt(index);
             }
+        }
+        if (this.sortField.Length > 0)
+        {
+            this.ReapplySort();
         }
     }
 
@@ -828,7 +949,9 @@ public class DiskViewPanelViewModel : INotifyPropertyChanged
         if (totalBytes > 0)
         {
             row.FreeText = DiskScanService.FormatSize(freeBytes);
-            row.UsageText = (usedBytes * 100D / totalBytes).ToString("F1") + "%";
+            row.FreeBytes = freeBytes;
+            row.UsagePercent = usedBytes * 100D / totalBytes;
+            row.UsageText = row.UsagePercent.ToString("F1") + "%";
         }
         try
         {
@@ -958,7 +1081,7 @@ public class DiskViewPanelViewModel : INotifyPropertyChanged
                     }
                     children.Add(child);
                 }
-                children.Sort(DiskScanService.CompareRows);
+                children.Sort(this.owner.CompareDiskRows);
                 this.Children = children;
             }
             catch (Exception exception)
@@ -1173,8 +1296,14 @@ public class DiskRow : INotifyPropertyChanged
     /// <summary>剩余可用空间文本；非驱动器行显示占位符。</summary>
     public string FreeText { get; set; } = "—";
 
+    /// <summary>剩余可用空间字节数（非驱动器行为 0，排序使用）。</summary>
+    public long FreeBytes { get; set; }
+
     /// <summary>已用空间占比文本（如 82.7%）；非驱动器行显示占位符。</summary>
     public string UsageText { get; set; } = "—";
+
+    /// <summary>已用空间占比数值（0 到 100，非驱动器行为 0，排序使用）。</summary>
+    public double UsagePercent { get; set; }
 
     /// <summary>文件系统格式（如 NTFS）；非驱动器行显示占位符。</summary>
     public string FileSystemText { get; set; } = "—";
@@ -1268,7 +1397,9 @@ public class DiskRow : INotifyPropertyChanged
         copy.FullPath = this.FullPath;
         copy.EntryTypeText = this.EntryTypeText;
         copy.FreeText = this.FreeText;
+        copy.FreeBytes = this.FreeBytes;
         copy.UsageText = this.UsageText;
+        copy.UsagePercent = this.UsagePercent;
         copy.FileSystemText = this.FileSystemText;
         copy.IsDirectory = this.IsDirectory;
         copy.sizeBytes = this.sizeBytes;

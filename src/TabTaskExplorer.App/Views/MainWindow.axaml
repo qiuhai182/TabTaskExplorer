@@ -275,6 +275,12 @@
           <TextBlock Text="批量改名" VerticalAlignment="Center" Foreground="{DynamicResource ToolbarTextBrush}" />
         </StackPanel>
       </Button>
+      <Button Classes="nav tool" Click="OnToolbarEncodeConvertClick" ToolTip.Tip="编码转换（先勾选条目，转换文件名编码）">
+        <StackPanel Orientation="Horizontal" Spacing="5">
+          <TextBlock Text="?" FontSize="13" Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
+          <TextBlock Text="编码转换" VerticalAlignment="Center" Foreground="{DynamicResource ToolbarTextBrush}" />
+        </StackPanel>
+      </Button>
       <Button Classes="nav tool" Click="OnToolbarDeleteClick" ToolTip.Tip="删除勾选项（Windows 移入回收站）">
         <StackPanel Orientation="Horizontal" Spacing="5">
           <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE74D;" FontSize="13" Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
@@ -316,7 +322,7 @@
             <Button x:Name="AddressEditArea" Classes="nav" Background="Transparent" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
                     HorizontalContentAlignment="Left" Click="OnBreadcrumbEditClick" ToolTip.Tip="点击编辑路径" />
             <StackPanel x:Name="BreadcrumbPanel" Orientation="Horizontal" Spacing="1" Margin="4,2" VerticalAlignment="Center" />
-            <TextBox x:Name="AddressBox" IsVisible="False" PlaceholderText="输入路径后按回车跳转" KeyDown="OnAddressKeyDown" />
+            <TextBox x:Name="AddressBox" IsVisible="False" PlaceholderText="输入路径后按回车跳转" KeyDown="OnAddressKeyDown" LostFocus="OnAddressBoxLostFocus" />
           </Panel>
           <Button Grid.Column="1" x:Name="RecentButton" Classes="nav" FontFamily="{StaticResource IconFont}" Content="&#xE81C;" Width="30" Click="OnRecentClick" ToolTip.Tip="最近访问">
             <Button.Flyout>
@@ -350,7 +356,8 @@
               <TextBlock Text="快捷访问" FontWeight="Medium" Foreground="{DynamicResource AccentGlyphBrush}" VerticalAlignment="Center" />
             </StackPanel>
             <ListBox x:Name="PinnedNavList" ItemsSource="{Binding QuickAccessItems}" SelectionMode="Single"
-                     Background="Transparent" BorderThickness="0" SelectionChanged="OnNavSelectionChanged">
+                     Background="Transparent" BorderThickness="0" SelectionChanged="OnNavSelectionChanged"
+                     PointerReleased="OnNavPointerReleased">
               <ListBox.ItemTemplate>
                 <DataTemplate>
                   <StackPanel Orientation="Horizontal" Spacing="7" Margin="2,0">
@@ -366,7 +373,8 @@
               <TextBlock Text="此电脑" FontWeight="Medium" Foreground="{DynamicResource AccentGlyphBrush}" VerticalAlignment="Center" />
             </StackPanel>
             <ListBox x:Name="PcNavList" ItemsSource="{Binding ThisPcItems}" SelectionMode="Single"
-                     Background="Transparent" BorderThickness="0" SelectionChanged="OnNavSelectionChanged">
+                     Background="Transparent" BorderThickness="0" SelectionChanged="OnNavSelectionChanged"
+                     PointerReleased="OnNavPointerReleased">
               <ListBox.ItemTemplate>
                 <DataTemplate>
                   <StackPanel Orientation="Horizontal" Spacing="7" Margin="2,0">
@@ -403,6 +411,14 @@
                 <TextBlock Text="磁盘视图" VerticalAlignment="Center" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}" />
               </StackPanel>
             </Button>
+
+            <!-- 进程监控（跨平台任务管理器：资源摘要 + 进程列表） -->
+            <Button Classes="nav" HorizontalAlignment="Stretch" Click="OnProcessMonitorClick">
+              <StackPanel Orientation="Horizontal" Spacing="7">
+                <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE9F5;" Foreground="{DynamicResource AccentGlyphBrush}" FontSize="13" VerticalAlignment="Center" />
+                <TextBlock Text="进程监控" VerticalAlignment="Center" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}" />
+              </StackPanel>
+            </Button>
           </StackPanel>
         </ScrollViewer>
       </Border>
@@ -433,6 +449,9 @@
           </DataTemplate>
           <DataTemplate DataType="vm:DiskViewPanelViewModel">
             <views:DiskViewPanel />
+          </DataTemplate>
+          <DataTemplate DataType="vm:ProcessPanelViewModel">
+            <views:ProcessPanel />
           </DataTemplate>
         </ContentControl.DataTemplates>
       </ContentControl>

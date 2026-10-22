@@ -1,0 +1,107 @@
+﻿<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:views="using:TabTaskExplorer.App.Views"
+             x:Class="TabTaskExplorer.App.Views.ProcessPanel">
+
+  <Grid RowDefinitions="Auto,Auto,Auto,Auto,*,Auto,Auto,Auto" Margin="8,4,8,4">
+
+    <!-- 操作行：刷新与结束进程（与网页端同款按钮） -->
+    <StackPanel Orientation="Horizontal" Spacing="8">
+      <Button Content="刷新" Click="OnRefreshClick" />
+      <Button Content="结束进程" Click="OnKillClick" />
+    </StackPanel>
+
+    <!-- 调节行：优先级档位与 CPU 亲和性核心编号（其他平台整体禁用） -->
+    <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="6" Margin="0,8,0,0"
+                IsEnabled="{Binding IsDetailSupported}">
+      <TextBlock VerticalAlignment="Center" Text="优先级" />
+      <ComboBox x:Name="PriorityBox" Width="110"
+                SelectedIndex="{Binding SelectedPriorityIndex, Mode=TwoWay}">
+        <ComboBoxItem Content="低" />
+        <ComboBoxItem Content="低于标准" />
+        <ComboBoxItem Content="标准" />
+        <ComboBoxItem Content="高于标准" />
+        <ComboBoxItem Content="高" />
+        <ComboBoxItem Content="实时" />
+      </ComboBox>
+      <Button Content="应用" Click="OnApplyPriorityClick" />
+      <TextBlock VerticalAlignment="Center" Margin="12,0,0,0" Text="CPU 亲和性" />
+      <TextBox x:Name="AffinityBox" Width="170" Watermark="核心编号，如 0,1,2"
+               Text="{Binding AffinityInput, Mode=TwoWay}" />
+      <Button Content="应用" Click="OnApplyAffinityClick" />
+    </StackPanel>
+
+    <!-- 资源摘要：处理器占用、内存占用与进程数量 -->
+    <TextBlock Grid.Row="2" Margin="0,8,0,0" Text="{Binding ResourceText}" />
+
+    <!-- 表头：与行模板列宽保持一致；点击表头按该列排序，箭头显示当前排序方向 -->
+    <Grid Grid.Row="3" ColumnDefinitions="70,3*,100,70,3*" Margin="0,8,0,4">
+      <Button Grid.Column="0" Tag="Cpu" Click="OnSortClick" FontWeight="Medium" HorizontalAlignment="Left" Background="Transparent" Foreground="{DynamicResource TextMutedBrush}">
+        <StackPanel Orientation="Horizontal">
+          <TextBlock Text="处理器" />
+          <TextBlock x:Name="ArrowCpu" Margin="4,0,0,0" />
+        </StackPanel>
+      </Button>
+      <Button Grid.Column="1" Tag="Name" Click="OnSortClick" FontWeight="Medium" HorizontalAlignment="Left" Background="Transparent" Foreground="{DynamicResource TextMutedBrush}">
+        <StackPanel Orientation="Horizontal">
+          <TextBlock Text="进程名称（树）" />
+          <TextBlock x:Name="ArrowName" Margin="4,0,0,0" />
+        </StackPanel>
+      </Button>
+      <Button Grid.Column="2" Tag="Memory" Click="OnSortClick" FontWeight="Medium" HorizontalAlignment="Left" Background="Transparent" Foreground="{DynamicResource TextMutedBrush}">
+        <StackPanel Orientation="Horizontal">
+          <TextBlock Text="内存" />
+          <TextBlock x:Name="ArrowMemory" Margin="4,0,0,0" />
+        </StackPanel>
+      </Button>
+      <Button Grid.Column="3" Tag="ProcessId" Click="OnSortClick" FontWeight="Medium" HorizontalAlignment="Left" Background="Transparent" Foreground="{DynamicResource TextMutedBrush}">
+        <StackPanel Orientation="Horizontal">
+          <TextBlock Text="编号" />
+          <TextBlock x:Name="ArrowProcessId" Margin="4,0,0,0" />
+        </StackPanel>
+      </Button>
+      <Button Grid.Column="4" Tag="WindowTitle" Click="OnSortClick" FontWeight="Medium" HorizontalAlignment="Left" Background="Transparent" Foreground="{DynamicResource TextMutedBrush}">
+        <StackPanel Orientation="Horizontal">
+          <TextBlock Text="窗口标题" />
+          <TextBlock x:Name="ArrowWindowTitle" Margin="4,0,0,0" />
+        </StackPanel>
+      </Button>
+    </Grid>
+
+    <!-- 进程列表：单击行选中，选中项驱动结束进程与详情 / 调节 -->
+    <ListBox Grid.Row="4" x:Name="ProcessList" ItemsSource="{Binding Rows}"
+             SelectedItem="{Binding SelectedRow, Mode=TwoWay}"
+             SelectionMode="Single" Background="Transparent" Padding="0" BorderThickness="0">
+      <ListBox.ItemContainerTheme>
+        <ControlTheme TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+          <Setter Property="Padding" Value="0" />
+          <Setter Property="MinHeight" Value="26" />
+          <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        </ControlTheme>
+      </ListBox.ItemContainerTheme>
+      <ListBox.ItemTemplate>
+        <DataTemplate>
+          <Grid ColumnDefinitions="70,3*,100,70,3*" Margin="0,1">
+            <TextBlock Grid.Column="0" Text="{Binding CpuText}" />
+            <TextBlock Grid.Column="1" Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" />
+            <TextBlock Grid.Column="2" Text="{Binding MemoryText}" />
+            <TextBlock Grid.Column="3" Text="{Binding ProcessId}" />
+            <TextBlock Grid.Column="4" Text="{Binding WindowTitle}" TextTrimming="CharacterEllipsis" Opacity="0.8" />
+          </Grid>
+        </DataTemplate>
+      </ListBox.ItemTemplate>
+    </ListBox>
+
+    <!-- 资源走势图：系统处理器、系统内存与选中进程的最近 60 次采样 -->
+    <views:ProcessTrendChart Grid.Row="5" Height="78" Margin="0,8,0,0" />
+
+    <!-- 选中进程详情：可执行路径、命令行、启动时间、所有者、优先级与亲和性 -->
+    <TextBox Grid.Row="6" Height="96" Margin="0,6,0,0" FontSize="12"
+             IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap"
+             Text="{Binding DetailText, Mode=OneWay}" />
+
+    <!-- 底部提示：刷新结果、结束进程与调节结果（与网页端底部提示一致） -->
+    <TextBlock Grid.Row="7" Margin="0,6,0,0" Text="{Binding SummaryText}" TextWrapping="Wrap"
+               Foreground="{DynamicResource TextMutedBrush}" />
+  </Grid>
+</UserControl>

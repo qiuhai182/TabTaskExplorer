@@ -16,4 +16,10 @@ public class ProcessInfo
 
     /// <summary>主窗口标题，无窗口的进程为空字符串。</summary>
     public string WindowTitle { get; set; } = string.Empty;
+
+    /// <summary>父进程编号，未知或读取不到时为 0。</summary>
+    public int ParentProcessId { get; set; }
+
+    /// <summary>累计占用处理器的时间（Tick），用于两次采样差分计算每进程处理器占用。</summary>
+    public long CpuTimeTicks { get; set; }
 }

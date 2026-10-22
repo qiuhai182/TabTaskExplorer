@@ -3,12 +3,14 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
+using System.Text;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Avalonia.Controls;
 using TabTaskExplorer.App.Services;
 using TabTaskExplorer.Kernel.Abstractions;
 using TabTaskExplorer.Kernel.Models;
+using TabTaskExplorer.Kernel.Services;
 
 namespace TabTaskExplorer.App.ViewModels;
 
@@ -121,6 +123,15 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
                 {
                     newDiskView.SetForeground(true);
                 }
+                // 进程监控同理：只有台前标签才周期刷新
+                if (previous is ProcessPanelViewModel previousProcess)
+                {
+                    previousProcess.SetForeground(false);
+                }
+                if (value is ProcessPanelViewModel newProcess)
+                {
+                    newProcess.SetForeground(true);
+                }
             }
             this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SelectedTab)));
         }
@@ -193,6 +204,22 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
         {
             this.EnterIdeMode();
         }
+    }
+
+    /// <summary>
+    /// 拖出标签创建的新窗口所用构造：与主窗口共享同一份设置对象（避免多份配置互相覆盖保存），
+    /// 不恢复会话标签（标签由拖出操作移入），固定以资源管理器模式打开。
+    /// </summary>
+    public MainWindowViewModel(IServiceProvider services, AppSettings sharedSettings)
+    {
+        this.services = services;
+        this.Settings = sharedSettings;
+        this.IdeShell = new IdeShellViewModel(this.Settings, services);
+        this.FillThisPcItems();
+        this.FillQuickAccessItems();
+        this.SyncViewSettings();
+        this.ApplySavedTheme();
+        UiLogger.Log("程序行为", "新窗口视图模型创建：共享设置对象、不恢复会话标签、资源管理器模式");
     }
 
     /// <summary>两种模式一键切换。</summary>
@@ -271,17 +298,52 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
         return profile.Name;
     }
 
-    /// <summary>新建文件标签页并打开指定路径。</summary>
+    /// <summary>新建文件标签页并打开指定路径（路径为压缩包时自动开预览标签）。</summary>
     public void AddTab(string path)
     {
-        FileTabViewModel tab = new FileTabViewModel(
-            this.services.GetRequiredService<IFileSystemProvider>(),
-            this.Settings,
-            path);
+        IArchiveService archiveService = this.services.GetRequiredService<IArchiveService>();
+        IFileSystemProvider provider;
+        DiskScanService? scanService;
+        if (ArchiveFileSystemProvider.TryCreate(archiveService, path, out ArchiveFileSystemProvider? archiveProvider))
+        {
+            // 压缩包：用压缩包虚拟文件系统浏览，虚拟路径不做本机目录大小回填
+            provider = archiveProvider!;
+            scanService = null;
+        }
+        else
+        {
+            provider = this.services.GetRequiredService<IFileSystemProvider>();
+            scanService = this.services.GetRequiredService<DiskScanService>();
+        }
+        this.CreateFileTab(provider, path, scanService, archiveService);
+    }
+
+    /// <summary>压缩包条目打开请求：在本标签所属的压缩包文件系统上新开预览子标签。</summary>
+    private void OnArchiveOpenRequested(object? sender, string path)
+    {
+        ArchiveFileSystemProvider? owner = sender is FileTabViewModel sourceTab
+            ? sourceTab.FileSystemProvider as ArchiveFileSystemProvider
+            : null;
+        if (owner != null)
+        {
+            this.CreateFileTab(owner, path, null, this.services.GetRequiredService<IArchiveService>());
+            return;
+        }
+        this.AddTab(path);
+    }
+
+    /// <summary>按给定提供者创建文件标签并加入标签条。</summary>
+    private void CreateFileTab(IFileSystemProvider provider, string path,
+        DiskScanService? scanService, IArchiveService archiveService)
+    {
+        FileTabViewModel tab = new FileTabViewModel(provider, this.Settings, path, scanService, archiveService);
         tab.PathChanged += this.OnTabPathChanged;
+        tab.ArchiveOpenRequested += this.OnArchiveOpenRequested;
         this.Tabs.Add(tab);
         this.SelectedTab = tab;
-        UiLogger.Log("程序行为", "新建文件标签：路径=" + (string.IsNullOrEmpty(path) ? "此电脑" : path) + " 标签总数=" + this.Tabs.Count);
+        string locationText = string.IsNullOrEmpty(path) ? "此电脑" : path;
+        string kindText = provider is ArchiveFileSystemProvider ? "压缩包预览" : "文件";
+        UiLogger.Log("程序行为", "新建" + kindText + "标签：路径=" + locationText + " 标签总数=" + this.Tabs.Count);
     }
 
     /// <summary>最近访问的路径（供地址栏"最近"下拉列表展示）。</summary>
@@ -365,6 +427,27 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
         this.Tabs.Add(newManager);
         this.SelectedTab = newManager;
         UiLogger.Log("程序行为", "新建连接管理标签：标签总数=" + this.Tabs.Count);
+    }
+
+    /// <summary>打开进程监控标签页（已存在时直接选中）。</summary>
+    public void OpenProcessMonitorTab()
+    {
+        foreach (object tab in this.Tabs)
+        {
+            if (tab is ProcessPanelViewModel processPanel)
+            {
+                this.SelectedTab = processPanel;
+                UiLogger.Log("程序行为", "切换到进程监控标签：标签总数=" + this.Tabs.Count);
+                return;
+            }
+        }
+        ProcessPanelViewModel newProcessPanel = new ProcessPanelViewModel(
+            this.services.GetRequiredService<ProcessSampleService>(),
+            this.services.GetRequiredService<IProcessProvider>(),
+            this.services.GetRequiredService<IProcessDetailService>());
+        this.Tabs.Add(newProcessPanel);
+        this.SelectedTab = newProcessPanel;
+        UiLogger.Log("程序行为", "新建进程监控标签：标签总数=" + this.Tabs.Count);
     }
 
     /// <summary>打开磁盘视图标签页（已存在时直接选中）。</summary>
@@ -517,7 +600,9 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
             {
                 return factory.OpenFileSystem(profile, secret);
             });
-            FileTabViewModel newTab = new FileTabViewModel(provider, this.Settings, "/");
+            // 远程标签传空扫描服务：禁止对本机磁盘做目录大小回填
+            FileTabViewModel newTab = new FileTabViewModel(provider, this.Settings, "/", null,
+                this.services.GetRequiredService<IArchiveService>());
             newTab.AttachedProfileId = profile.Id;
             newTab.PathChanged += this.OnTabPathChanged;
             newTab.RemoteFileOpenRequested += this.OnRemoteFileOpenRequested;
@@ -669,6 +754,16 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
         {
             closingDiskView.Close();
         }
+        // 进程监控标签关闭时停止台前周期刷新
+        if (tab is ProcessPanelViewModel closingProcessPanel)
+        {
+            closingProcessPanel.Close();
+        }
+        // 文件标签关闭时停止在途的目录大小回填
+        if (tab is FileTabViewModel closingFileTab)
+        {
+            closingFileTab.Close();
+        }
         int index = this.Tabs.IndexOf(tab);
         if (index < 0)
         {
@@ -686,6 +781,62 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
             index = this.Tabs.Count - 1;
         }
         this.SelectedTab = this.Tabs[index];
+    }
+
+    /// <summary>
+    /// 把标签移出本窗口（拖出成新窗口用）：只解除事件订阅与集合归属，不调用标签的关闭 / 释放逻辑。
+    /// </summary>
+    public void DetachTab(object tab)
+    {
+        int index = this.Tabs.IndexOf(tab);
+        if (index < 0)
+        {
+            return;
+        }
+        string locationText = "非文件标签";
+        FileTabViewModel? fileTab = tab as FileTabViewModel;
+        if (fileTab != null)
+        {
+            fileTab.PathChanged -= this.OnTabPathChanged;
+            fileTab.ArchiveOpenRequested -= this.OnArchiveOpenRequested;
+            locationText = fileTab.CurrentPath;
+        }
+        this.Tabs.Remove(tab);
+        // 修正选中标签（与关闭标签相同的邻接选择逻辑，但标签本身继续存活）
+        if (object.ReferenceEquals(this.selectedTab, tab))
+        {
+            if (this.Tabs.Count == 0)
+            {
+                this.SelectedTab = null;
+            }
+            else
+            {
+                if (index >= this.Tabs.Count)
+                {
+                    index = this.Tabs.Count - 1;
+                }
+                this.SelectedTab = this.Tabs[index];
+            }
+        }
+        UiLogger.Log("程序行为", "标签移出窗口：路径=" + locationText + " 源窗口剩余标签数=" + this.Tabs.Count);
+    }
+
+    /// <summary>
+    /// 把标签移入本窗口（拖出创建的新窗口接收用）：重新订阅事件并选中该标签，标签全程不被关闭。
+    /// </summary>
+    public void AttachTab(object tab)
+    {
+        string locationText = "非文件标签";
+        FileTabViewModel? fileTab = tab as FileTabViewModel;
+        if (fileTab != null)
+        {
+            fileTab.PathChanged += this.OnTabPathChanged;
+            fileTab.ArchiveOpenRequested += this.OnArchiveOpenRequested;
+            locationText = fileTab.CurrentPath;
+        }
+        this.Tabs.Add(tab);
+        this.SelectedTab = tab;
+        UiLogger.Log("程序行为", "标签移入本窗口：路径=" + locationText + " 本窗口标签总数=" + this.Tabs.Count);
     }
 
     /// <summary>按方向切换标签：1 向后，-1 向前。</summary>
@@ -850,7 +1001,6 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
             return;
         }
 
-        IFileSystemProvider fileSystem = this.services.GetRequiredService<IFileSystemProvider>();
         int successCount = 0;
         int failedCount = 0;
         foreach (string path in this.clipboardPaths)
@@ -861,6 +1011,8 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
             }
             try
             {
+                // 按源 / 目标是否在压缩包内解析实际提供者：包内粘贴走追加，包内复制出走解压
+                IFileSystemProvider fileSystem = this.ResolvePasteProvider(tab, path);
                 if (this.clipboardIsCut)
                 {
                     fileSystem.Move(path, tab.CurrentPath);
@@ -883,6 +1035,28 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
         }
         tab.ShowMessage("粘贴完成：成功 " + successCount + " 项，失败 " + failedCount + " 项");
         tab.Refresh();
+    }
+
+    /// <summary>
+    /// 解析单条粘贴路径应使用的文件系统提供者：
+    /// 目标标签在压缩包内时一律用目标压缩包提供者（包外源 → 追加进包）；
+    /// 否则源在压缩包内时用源压缩包提供者（包内源 → 解压到目标目录）；
+    /// 两者都不是时用目标标签自己的提供者。
+    /// </summary>
+    private IFileSystemProvider ResolvePasteProvider(FileTabViewModel tab, string path)
+    {
+        ArchiveFileSystemProvider? targetArchive = tab.FileSystemProvider as ArchiveFileSystemProvider;
+        if (targetArchive != null)
+        {
+            return targetArchive;
+        }
+        IArchiveService archiveService = this.services.GetRequiredService<IArchiveService>();
+        if (ArchiveFileSystemProvider.TryCreate(archiveService, path, out ArchiveFileSystemProvider? sourceArchive)
+            && sourceArchive!.OwnsPath(path))
+        {
+            return sourceArchive;
+        }
+        return tab.FileSystemProvider;
     }
 
     /// <summary>保存设置并让全部文件标签页按新设置刷新；网页端服务的开关与端口在此重新应用。</summary>
@@ -919,27 +1093,26 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
         }
     }
 
-    /// <summary>保存当前打开的标签页路径（窗口关闭时调用）。</summary>
+    /// <summary>保存全部窗口打开的标签页路径（任一窗口关闭时调用，跨窗口取并集避免丢标签）。</summary>
     public void SaveOpenTabs()
     {
         this.Settings.OpenTabPaths.Clear();
-        foreach (object tab in this.Tabs)
+        foreach (Views.MainWindow window in WindowRegistry.GetAllWindows())
         {
-            if (tab is FileTabViewModel fileTab)
+            if (!(window.DataContext is MainWindowViewModel viewModel))
             {
-                this.Settings.OpenTabPaths.Add(fileTab.CurrentPath);
+                continue;
+            }
+            foreach (object tab in viewModel.Tabs)
+            {
+                if (tab is FileTabViewModel fileTab)
+                {
+                    this.Settings.OpenTabPaths.Add(fileTab.CurrentPath);
+                }
             }
         }
         this.settingsStore.Save(this.Settings);
-        UiLogger.Log("配置更改", "会话保存：记录打开的标签数量=" + this.Settings.OpenTabPaths.Count);
-    }
-
-    /// <summary>创建进程监控面板（供独立窗口使用）。</summary>
-    public ProcessPanelViewModel CreateProcessPanel()
-    {
-        IProcessProvider processProvider = this.services.GetRequiredService<IProcessProvider>();
-        ISystemMetricsProvider metricsProvider = this.services.GetRequiredService<ISystemMetricsProvider>();
-        return new ProcessPanelViewModel(processProvider, metricsProvider);
+        UiLogger.Log("配置更改", "会话保存：记录打开的标签数量=" + this.Settings.OpenTabPaths.Count + " 参与保存的窗口数量=" + WindowRegistry.GetAllWindows().Count);
     }
 
     /// <summary>接入网页端服务并按当前设置决定是否随程序启动。</summary>
@@ -1210,9 +1383,29 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
         }
         if (action == "sort")
         {
-            if (fileTab == null) { return "当前标签不是文件列表"; }
-            fileTab.SetSortField(argument);
-            return "已按 " + argument + (fileTab.SortAscending ? " 升序" : " 降序") + " 排列";
+            if (fileTab != null)
+            {
+                fileTab.SetSortField(argument);
+                return "已按 " + argument + (fileTab.SortAscending ? " 升序" : " 降序") + " 排列";
+            }
+            if (diskTab != null)
+            {
+                diskTab.SetSortField(argument);
+                return "已按 " + argument + (diskTab.SortAscending ? " 升序" : " 降序") + " 排列";
+            }
+            ProcessPanelViewModel? sortProcessTab = this.SelectedTab as ProcessPanelViewModel;
+            if (sortProcessTab != null)
+            {
+                sortProcessTab.SetSortField(argument);
+                return "已按 " + argument + (sortProcessTab.SortAscending ? " 升序" : " 降序") + " 排列";
+            }
+            SearchTabViewModel? sortSearchTab = this.SelectedTab as SearchTabViewModel;
+            if (sortSearchTab != null)
+            {
+                sortSearchTab.SetSortField(argument);
+                return "已按 " + argument + (sortSearchTab.SortAscending ? " 升序" : " 降序") + " 排列";
+            }
+            return "当前标签不支持排序";
         }
         if (action == "back")
         {
@@ -1326,6 +1519,33 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
             fileTab.ApplyBatchRenames(renamePlan);
             return "批量改名已提交，计划条目数=" + renamePlan.Count;
         }
+        if (action == "encodepreview")
+        {
+            if (fileTab == null) { return "当前标签不是文件列表"; }
+            int fromCodePage;
+            int toCodePage;
+            bool recursive;
+            List<string> encodePaths = MainWindowViewModel.ParseEncodePreviewRequest(argument,
+                out fromCodePage, out toCodePage, out recursive);
+            if (encodePaths.Count == 0) { return "没有要转换的路径"; }
+            List<EncodeConvertEntry> entries = fileTab.PreviewEncodeConvert(
+                encodePaths, recursive, fromCodePage, toCodePage);
+            StringBuilder previewText = new StringBuilder();
+            foreach (EncodeConvertEntry entry in entries)
+            {
+                previewText.Append(entry.OldPath).Append('\t')
+                    .Append(entry.NewName).Append('\t').Append(entry.Reason).Append('\n');
+            }
+            return previewText.ToString();
+        }
+        if (action == "encodeapply")
+        {
+            if (fileTab == null) { return "当前标签不是文件列表"; }
+            List<string[]> convertPlan = MainWindowViewModel.ParseRenamePlan(argument);
+            if (convertPlan.Count == 0) { return "没有需要转换的条目"; }
+            fileTab.ApplyBatchRenames(convertPlan);
+            return "编码转换已提交，计划条目数=" + convertPlan.Count;
+        }
         if (action == "chmod")
         {
             if (fileTab == null) { return "当前标签不是文件列表"; }
@@ -1396,7 +1616,77 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
             this.OpenDiskViewTab();
             return string.Empty;
         }
+        if (action == "openprocess")
+        {
+            this.OpenProcessMonitorTab();
+            return string.Empty;
+        }
+        ProcessPanelViewModel? processTab = this.SelectedTab as ProcessPanelViewModel;
+        if (action == "processrefresh")
+        {
+            if (processTab == null) { return "当前标签不是进程监控"; }
+            processTab.StartRefresh();
+            return string.Empty;
+        }
+        if (action == "processselect")
+        {
+            if (processTab == null) { return "当前标签不是进程监控"; }
+            int selectedProcessId;
+            if (int.TryParse(argument, out selectedProcessId))
+            {
+                processTab.SelectProcessById(selectedProcessId);
+            }
+            return string.Empty;
+        }
+        if (action == "processkill")
+        {
+            if (processTab == null) { return "当前标签不是进程监控"; }
+            int killProcessId;
+            if (!int.TryParse(argument, out killProcessId))
+            {
+                return "缺少要结束的进程编号";
+            }
+            processTab.TerminateByProcessId(killProcessId);
+            return string.Empty;
+        }
+        if (action == "processpriority")
+        {
+            if (processTab == null) { return "当前标签不是进程监控"; }
+            string[] priorityParts = argument.Split(',');
+            int priorityProcessId;
+            int priorityIndex;
+            if (priorityParts.Length != 2
+                || !int.TryParse(priorityParts[0].Trim(), out priorityProcessId)
+                || !int.TryParse(priorityParts[1].Trim(), out priorityIndex))
+            {
+                return "优先级参数格式不正确，应为进程编号,优先级索引";
+            }
+            processTab.ApplyPriorityByProcessId(priorityProcessId, priorityIndex);
+            return string.Empty;
+        }
+        if (action == "processaffinity")
+        {
+            if (processTab == null) { return "当前标签不是进程监控"; }
+            string[] affinityParts = argument.Split(new char[] { ',' }, 2);
+            int affinityProcessId;
+            if (affinityParts.Length != 2 || !int.TryParse(affinityParts[0].Trim(), out affinityProcessId))
+            {
+                return "亲和性参数格式不正确，应为进程编号,核心编号列表";
+            }
+            processTab.ApplyAffinityByProcessId(affinityProcessId, affinityParts[1]);
+            return string.Empty;
+        }
         return "未知动作：" + action;
+    }
+
+    /// <summary>把走势图序列复制到快照列表（复制而非引用，避免快照与界面状态竞争）。</summary>
+    private static void CopyTrendList(IReadOnlyList<double> source, List<double> target)
+    {
+        target.Clear();
+        for (int index = 0; index < source.Count; index++)
+        {
+            target.Add(source[index]);
+        }
     }
 
     /// <summary>把"每行一个路径"的文本拆成路径列表（去掉空行与行尾回车）。</summary>
@@ -1429,6 +1719,41 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
             plan.Add(new string[] { cleanLine.Substring(0, tab), cleanLine.Substring(tab + 1) });
         }
         return plan;
+    }
+
+    /// <summary>解析编码转换预览请求：首行为 源代码页 \t 目标代码页 \t 递归标志（1 为递归），其余行为要转换的路径。</summary>
+    private static List<string> ParseEncodePreviewRequest(string text,
+        out int fromCodePage, out int toCodePage, out bool recursive)
+    {
+        fromCodePage = 0;
+        toCodePage = 0;
+        recursive = false;
+        List<string> paths = new List<string>();
+        string[] lines = text.Split('\n');
+        for (int index = 0; index < lines.Length; index++)
+        {
+            string line = lines[index].TrimEnd('\r');
+            if (index == 0)
+            {
+                string[] header = line.Split('\t');
+                if (header.Length < 3)
+                {
+                    return paths;
+                }
+                if (!int.TryParse(header[0], out fromCodePage)
+                    || !int.TryParse(header[1], out toCodePage))
+                {
+                    return paths;
+                }
+                recursive = header[2] == "1";
+                continue;
+            }
+            if (line.Length > 0)
+            {
+                paths.Add(line);
+            }
+        }
+        return paths;
     }
 
     /// <summary>创建一个新的网页端独立工作区。</summary>
@@ -1484,6 +1809,131 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
             return;
         }
         this.SelectedFileTab.OpenPath(path);
+    }
+
+    /// <summary>
+    /// 规范化路径用于跨窗口去重比较：取绝对路径、去掉尾部分隔符（盘根除外），
+    /// 比较统一按忽略大小写进行。
+    /// </summary>
+    private static string NormalizePath(string path)
+    {
+        string text = path.Trim();
+        if (string.IsNullOrEmpty(text))
+        {
+            return text;
+        }
+        try
+        {
+            text = Path.GetFullPath(text);
+        }
+        catch
+        {
+            // 非法路径字符串：保持原样参与比较
+        }
+        string root = Path.GetPathRoot(text) ?? string.Empty;
+        while (text.Length > root.Length
+            && (text[text.Length - 1] == Path.DirectorySeparatorChar || text[text.Length - 1] == Path.AltDirectorySeparatorChar))
+        {
+            text = text.Substring(0, text.Length - 1);
+        }
+        return text;
+    }
+
+    /// <summary>
+    /// 系统唤起打开路径（文件夹接管 / 单实例转发 / 程序启动参数走这里）：
+    /// 跨全部窗口按规范化路径查找既有文件标签，命中则激活所在窗口并跳转（不重复开新标签），
+    /// 未命中则在主窗口新建标签。手动打开（新建标签按钮、书签、地址栏、网页端）不走去重逻辑。
+    /// 每一步都写日志：唤起路径、规范化结果、程序选择（哪个窗口哪个标签承接）、最终行为效果。
+    /// </summary>
+    /// <param name="path">系统唤起的原始路径（目录或文件）。</param>
+    /// <param name="source">唤起来源（程序启动参数 / 单实例命令管道等），仅用于日志追溯。</param>
+    public void OpenPathFromSystem(string path, string source)
+    {
+        UiLogger.Log("程序行为", "系统唤起打开路径：来源=" + source + " 原始路径=" + path);
+        string target = NormalizePath(path);
+        if (string.IsNullOrEmpty(target))
+        {
+            UiLogger.Log("程序行为", "系统唤起路径规范化后为空，本次唤起不打开任何标签：来源=" + source + " 原始路径=" + path);
+            return;
+        }
+        if (!Directory.Exists(target))
+        {
+            if (File.Exists(target))
+            {
+                // 唤起对象是文件时打开其所在目录
+                string directory = NormalizePath(Path.GetDirectoryName(target) ?? target);
+                UiLogger.Log("程序行为", "系统唤起对象是文件，程序选择改为打开其所在目录：来源=" + source
+                    + " 文件路径=" + target + " 所在目录=" + directory);
+                target = directory;
+            }
+            else
+            {
+                UiLogger.Log("程序行为", "系统唤起路径不存在，本次唤起不打开任何标签：来源=" + source + " 路径=" + target);
+                return;
+            }
+        }
+        UiLogger.Log("程序行为", "系统唤起路径校验通过：来源=" + source
+            + " 原始路径=" + path + " 规范化路径=" + target + " 路径类型=目录");
+
+        // 跨全部窗口查找既有文件标签（压缩包虚拟标签不参与匹配）
+        IReadOnlyList<Views.MainWindow> windows = WindowRegistry.GetAllWindows();
+        int scannedWindowCount = 0;
+        int scannedTabCount = 0;
+        foreach (Views.MainWindow window in windows)
+        {
+            scannedWindowCount++;
+            if (!(window.DataContext is MainWindowViewModel viewModel))
+            {
+                continue;
+            }
+            foreach (object tab in viewModel.Tabs)
+            {
+                scannedTabCount++;
+                FileTabViewModel? fileTab = tab as FileTabViewModel;
+                if (fileTab == null || fileTab.FileSystemProvider is ArchiveFileSystemProvider)
+                {
+                    continue;
+                }
+                if (!string.Equals(NormalizePath(fileTab.CurrentPath), target, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+                // 命中既有标签：激活所在窗口并跳转选中，不再开新标签
+                int matchedTabIndex = viewModel.Tabs.IndexOf(fileTab);
+                bool windowWasVisible = window.IsVisible;
+                window.Show();
+                window.WindowState = Avalonia.Controls.WindowState.Normal;
+                window.Activate();
+                viewModel.SelectedTab = fileTab;
+                UiLogger.Log("程序行为", "系统唤起最终行为：命中既有标签，激活所在窗口并跳转，未新建标签"
+                    + " 来源=" + source + " 路径=" + target
+                    + " 命中窗口序号=" + WindowRegistry.GetWindowIndex(window)
+                    + " 命中窗口唤起前可见=" + windowWasVisible
+                    + " 命中窗口唤起后可见=" + window.IsVisible
+                    + " 命中窗口唤起后状态=" + window.WindowState
+                    + " 命中标签序号=" + matchedTabIndex
+                    + " 该窗口标签总数=" + viewModel.Tabs.Count
+                    + " 本次扫描窗口数=" + scannedWindowCount
+                    + " 本次扫描标签数=" + scannedTabCount);
+                return;
+            }
+        }
+
+        // 未命中：默认在既有主窗口内新建标签
+        Views.MainWindow? primaryWindow = WindowRegistry.Primary;
+        MainWindowViewModel? mainViewModel = primaryWindow?.DataContext as MainWindowViewModel;
+        if (mainViewModel == null)
+        {
+            mainViewModel = this;
+        }
+        int previousTabCount = mainViewModel.Tabs.Count;
+        UiLogger.Log("程序行为", "系统唤起最终行为：未命中既有标签，在主窗口新建标签"
+            + " 来源=" + source + " 路径=" + target
+            + " 新建目标窗口序号=" + (primaryWindow != null ? WindowRegistry.GetWindowIndex(primaryWindow) : -1)
+            + " 新建前该窗口标签数=" + previousTabCount
+            + " 本次扫描窗口数=" + scannedWindowCount
+            + " 本次扫描标签数=" + scannedTabCount);
+        mainViewModel.AddTab(target);
     }
 
     /// <summary>按保存的设置应用主题（程序启动时调用）。</summary>
@@ -1556,6 +2006,7 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
             TaskBoardViewModel? board = tab as TaskBoardViewModel;
             ConnectionManagerViewModel? connections = tab as ConnectionManagerViewModel;
             DiskViewPanelViewModel? diskViewTab = tab as DiskViewPanelViewModel;
+            ProcessPanelViewModel? processPanelTab = tab as ProcessPanelViewModel;
             SearchTabViewModel? searchTab = tab as SearchTabViewModel;
             if (fileTab != null)
             {
@@ -1620,6 +2071,8 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
                 tabState.CurrentPath = diskViewTab.RootPathInput;
                 tabState.SummaryText = diskViewTab.SummaryText;
                 tabState.TotalRows = diskViewTab.Rows.Count;
+                tabState.SortField = diskViewTab.SortField;
+                tabState.SortAscending = diskViewTab.SortAscending;
                 foreach (DiskRow row in diskViewTab.Rows)
                 {
                     DebugFileRow mirror = new DebugFileRow();
@@ -1636,6 +2089,39 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
                     tabState.Rows.Add(mirror);
                 }
             }
+            else if (processPanelTab != null)
+            {
+                // 进程监控标签：摘要、详情、调节项、走势图与进程行镜像，网页端按同一套界面展示
+                tabState.TabType = "process";
+                tabState.Title = processPanelTab.Title;
+                tabState.ResourceText = processPanelTab.ResourceText;
+                tabState.SummaryText = processPanelTab.SummaryText;
+                tabState.TotalRows = processPanelTab.Rows.Count;
+                tabState.DetailText = processPanelTab.DetailText;
+                tabState.AffinityInput = processPanelTab.AffinityInput;
+                tabState.PriorityIndex = processPanelTab.SelectedPriorityIndex;
+                tabState.DetailSupported = processPanelTab.IsDetailSupported;
+                tabState.TrendVersion = processPanelTab.TrendUpdatedAt.Ticks;
+                tabState.SortField = processPanelTab.SortField;
+                tabState.SortAscending = processPanelTab.SortAscending;
+                CopyTrendList(processPanelTab.SystemCpuTrend, tabState.SystemCpuTrend);
+                CopyTrendList(processPanelTab.SystemMemoryTrend, tabState.SystemMemoryTrend);
+                CopyTrendList(processPanelTab.SelectedCpuTrend, tabState.SelectedCpuTrend);
+                int processLimit = tabState.TotalRows > 1000 ? 1000 : tabState.TotalRows;
+                for (int processIndex = 0; processIndex < processLimit; processIndex++)
+                {
+                    ProcessRow row = processPanelTab.Rows[processIndex];
+                    DebugProcessRow mirror = new DebugProcessRow();
+                    mirror.ProcessId = row.ProcessId;
+                    mirror.IndentText = row.IndentText;
+                    mirror.Name = row.Name;
+                    mirror.CpuText = row.CpuText;
+                    mirror.MemoryText = row.MemoryText;
+                    mirror.WindowTitle = row.WindowTitle;
+                    mirror.IsSelected = object.ReferenceEquals(row, processPanelTab.SelectedRow);
+                    tabState.ProcessRows.Add(mirror);
+                }
+            }
             else if (searchTab != null)
             {
                 // 全局搜索标签：结果行与文件列表同构，网页端按同一套表格展示
@@ -1644,6 +2130,8 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
                 tabState.SearchText = searchTab.QueryText;
                 tabState.SummaryText = searchTab.StatusText;
                 tabState.TotalRows = searchTab.Results.Count;
+                tabState.SortField = searchTab.SortField;
+                tabState.SortAscending = searchTab.SortAscending;
                 int searchLimit = tabState.TotalRows > 1000 ? 1000 : tabState.TotalRows;
                 for (int resultIndex = 0; resultIndex < searchLimit; resultIndex++)
                 {

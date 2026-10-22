@@ -82,16 +82,36 @@ public partial class BatchRenameDialog : Window
     private void OnOptionChanged(object? sender, RoutedEventArgs e)
     {
         this.RebuildPreview();
+        BatchRenameOptions options = this.CollectOptions();
+        UiLogger.Log("程序行为", "批量重命名选项已变更：查找内容=" + options.FindText
+            + " 替换为=" + options.ReplaceText
+            + " 前缀=" + options.PrefixText
+            + " 后缀=" + options.SuffixText
+            + " 是否添加序号=" + (options.UseSequence ? "是" : "否")
+            + " 序号起始值=" + options.SequenceStart
+            + " 新扩展名=" + options.NewExtension
+            + " 影响条数=" + this.RenamePlan.Count);
     }
 
     private void OnApplyClick(object? sender, RoutedEventArgs e)
     {
         this.RebuildPreview();
+        BatchRenameOptions options = this.CollectOptions();
+        UiLogger.Log("程序行为", "批量重命名点击执行改名：查找内容=" + options.FindText
+            + " 替换为=" + options.ReplaceText
+            + " 前缀=" + options.PrefixText
+            + " 后缀=" + options.SuffixText
+            + " 是否添加序号=" + (options.UseSequence ? "是" : "否")
+            + " 序号起始值=" + options.SequenceStart
+            + " 新扩展名=" + options.NewExtension
+            + " 影响条数=" + this.RenamePlan.Count
+            + " 结果=成功，已把改名计划交回调用方执行");
         this.Close(true);
     }
 
     private void OnCancelClick(object? sender, RoutedEventArgs e)
     {
+        UiLogger.Log("程序行为", "批量重命名点击取消：已关闭对话框，未执行任何修改");
         this.Close(false);
     }
 }

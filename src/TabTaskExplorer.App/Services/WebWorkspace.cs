@@ -7,6 +7,7 @@ using Avalonia.Threading;
 using Microsoft.Extensions.DependencyInjection;
 using TabTaskExplorer.App.ViewModels;
 using TabTaskExplorer.Kernel.Abstractions;
+using TabTaskExplorer.Kernel.Services;
 
 namespace TabTaskExplorer.App.Services;
 
@@ -91,17 +92,74 @@ public class WebWorkspace
         return Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
     }
 
-    /// <summary>新建文件标签并打开指定路径。</summary>
+    /// <summary>新建文件标签并打开指定路径（路径为压缩包时自动开预览标签，与桌面端一致）。</summary>
     public void AddFileTab(string path)
     {
-        FileTabViewModel tab = new FileTabViewModel(
-            this.services.GetRequiredService<IFileSystemProvider>(),
-            this.settings,
-            path);
+        IArchiveService archiveService = this.services.GetRequiredService<IArchiveService>();
+        IFileSystemProvider provider = this.services.GetRequiredService<IFileSystemProvider>();
+        DiskScanService? scanService = this.services.GetRequiredService<DiskScanService>();
+        if (ArchiveFileSystemProvider.TryCreate(archiveService, path, out ArchiveFileSystemProvider? archiveProvider))
+        {
+            // 压缩包：用压缩包虚拟文件系统浏览，虚拟路径不做本机目录大小回填
+            provider = archiveProvider!;
+            scanService = null;
+        }
+        this.CreateFileTab(provider, path, scanService, archiveService);
+    }
+
+    /// <summary>按给定提供者创建文件标签并加入标签条。</summary>
+    private void CreateFileTab(IFileSystemProvider provider, string path,
+        DiskScanService? scanService, IArchiveService archiveService)
+    {
+        FileTabViewModel tab = new FileTabViewModel(provider, this.settings, path, scanService, archiveService);
+        tab.ArchiveOpenRequested += this.OnArchiveOpenRequested;
         this.tabs.Add(tab);
         this.selectedIndex = this.tabs.Count - 1;
-        UiLogger.Log("网页端工作区", "工作区=" + this.Id + " 新建文件标签：路径=" + (string.IsNullOrEmpty(path) ? "此电脑" : path) + " 标签总数=" + this.tabs.Count);
-        this.SyncDiskForeground();
+        string kindText = provider is ArchiveFileSystemProvider ? "压缩包预览" : "文件";
+        UiLogger.Log("网页端工作区", "工作区=" + this.Id + " 新建" + kindText + "标签：路径=" + (string.IsNullOrEmpty(path) ? "此电脑" : path) + " 标签总数=" + this.tabs.Count);
+        this.SyncTabForeground();
+    }
+
+    /// <summary>压缩包条目打开请求：在本标签所属的压缩包文件系统上新开预览子标签。</summary>
+    private void OnArchiveOpenRequested(object? sender, string path)
+    {
+        if (sender is FileTabViewModel sourceTab && sourceTab.FileSystemProvider is ArchiveFileSystemProvider owner)
+        {
+            this.CreateFileTab(owner, path, null, this.services.GetRequiredService<IArchiveService>());
+            return;
+        }
+        this.AddFileTab(path);
+    }
+
+    /// <summary>
+    /// 打开路径若是压缩包则新开预览标签并返回 true（与桌面端双击压缩包一致）：
+    /// 当前标签已在压缩包内且路径属于它时复用其文件系统（嵌套压缩包），
+    /// 否则按真实文件魔数校验通过才开标签。
+    /// </summary>
+    private bool TryOpenArchiveTab(string path)
+    {
+        if (string.IsNullOrEmpty(path))
+        {
+            return false;
+        }
+        IArchiveService archiveService = this.services.GetRequiredService<IArchiveService>();
+        if (!archiveService.IsArchivePath(path))
+        {
+            return false;
+        }
+        FileTabViewModel? current = this.CurrentFileTab();
+        if (current != null && current.FileSystemProvider is ArchiveFileSystemProvider owner && owner.OwnsPath(path))
+        {
+            this.CreateFileTab(owner, path, null, archiveService);
+            return true;
+        }
+        if (archiveService.Probe(path) == null)
+        {
+            // 伪装扩展名的普通文件或文件不存在：交回原逻辑处理
+            return false;
+        }
+        this.AddFileTab(path);
+        return true;
     }
 
     /// <summary>新建磁盘视图标签。</summary>
@@ -113,7 +171,20 @@ public class WebWorkspace
         this.tabs.Add(tab);
         this.selectedIndex = this.tabs.Count - 1;
         UiLogger.Log("网页端工作区", "工作区=" + this.Id + " 新建磁盘视图标签：标签总数=" + this.tabs.Count);
-        this.SyncDiskForeground();
+        this.SyncTabForeground();
+    }
+
+    /// <summary>新建进程监控标签。</summary>
+    public void AddProcessTab()
+    {
+        ProcessPanelViewModel tab = new ProcessPanelViewModel(
+            this.services.GetRequiredService<ProcessSampleService>(),
+            this.services.GetRequiredService<IProcessProvider>(),
+            this.services.GetRequiredService<IProcessDetailService>());
+        this.tabs.Add(tab);
+        this.selectedIndex = this.tabs.Count - 1;
+        UiLogger.Log("网页端工作区", "工作区=" + this.Id + " 新建进程监控标签：标签总数=" + this.tabs.Count);
+        this.SyncTabForeground();
     }
 
     /// <summary>选中指定下标的标签；下标非法时忽略。</summary>
@@ -125,7 +196,7 @@ public class WebWorkspace
         }
         this.selectedIndex = index;
         UiLogger.Log("网页端工作区", "工作区=" + this.Id + " 切换标签：序号=" + index + " 标题=" + this.DescribeTitle(this.tabs[index]));
-        this.SyncDiskForeground();
+        this.SyncTabForeground();
     }
 
     /// <summary>关闭指定下标的标签；关闭后自动选中相邻标签。</summary>
@@ -140,6 +211,17 @@ public class WebWorkspace
         {
             closingDiskTab.Close();
         }
+        ProcessPanelViewModel? closingProcessTab = this.tabs[index] as ProcessPanelViewModel;
+        if (closingProcessTab != null)
+        {
+            closingProcessTab.Close();
+        }
+        // 文件标签关闭时停止在途的目录大小回填
+        FileTabViewModel? closingFileTab = this.tabs[index] as FileTabViewModel;
+        if (closingFileTab != null)
+        {
+            closingFileTab.Close();
+        }
         string title = this.DescribeTitle(this.tabs[index]);
         this.tabs.RemoveAt(index);
         if (this.selectedIndex >= this.tabs.Count)
@@ -147,10 +229,10 @@ public class WebWorkspace
             this.selectedIndex = this.tabs.Count - 1;
         }
         UiLogger.Log("网页端工作区", "工作区=" + this.Id + " 关闭标签：标题=" + title + " 剩余标签数=" + this.tabs.Count);
-        this.SyncDiskForeground();
+        this.SyncTabForeground();
     }
 
-    /// <summary>回收工作区前调用：关闭全部磁盘视图标签，退订扫描事件并停止台前探测。</summary>
+    /// <summary>回收工作区前调用：关闭全部磁盘视图与进程监控标签，退订扫描事件并停止台前探测。</summary>
     public void ReleaseTabs()
     {
         foreach (object tab in this.tabs)
@@ -159,27 +241,52 @@ public class WebWorkspace
             {
                 diskTab.Close();
             }
+            if (tab is ProcessPanelViewModel processTab)
+            {
+                processTab.Close();
+            }
+            if (tab is FileTabViewModel fileTab)
+            {
+                fileTab.Close();
+            }
         }
-        UiLogger.Log("网页端工作区", "工作区=" + this.Id + " 已释放标签资源：磁盘视图标签全部关闭");
+        UiLogger.Log("网页端工作区", "工作区=" + this.Id + " 已释放标签资源：磁盘视图、进程监控与文件标签的在途回填全部停止");
     }
 
-    /// <summary>台前同步：选中的磁盘视图标签进入台前，其余磁盘视图标签退到台后（没有磁盘标签时全部退台）。</summary>
-    private void SyncDiskForeground()
+    /// <summary>台前同步：磁盘视图与进程监控只有选中的标签进入台前（台前才周期刷新，其余停在台后）。</summary>
+    private void SyncTabForeground()
     {
-        DiskViewPanelViewModel? current = this.CurrentDiskTab();
+        DiskViewPanelViewModel? currentDisk = this.CurrentDiskTab();
+        ProcessPanelViewModel? currentProcess = this.CurrentProcessTab();
         for (int index = 0; index < this.tabs.Count; index++)
         {
             DiskViewPanelViewModel? diskTab = this.tabs[index] as DiskViewPanelViewModel;
             if (diskTab != null)
             {
-                diskTab.SetForeground(object.ReferenceEquals(diskTab, current));
+                diskTab.SetForeground(object.ReferenceEquals(diskTab, currentDisk));
+            }
+            ProcessPanelViewModel? processTab = this.tabs[index] as ProcessPanelViewModel;
+            if (processTab != null)
+            {
+                processTab.SetForeground(object.ReferenceEquals(processTab, currentProcess));
             }
         }
     }
 
-    /// <summary>在当前文件标签中打开路径；没有文件标签时自动新建。</summary>
+    /// <summary>取当前选中的进程监控标签；没有时返回 null。</summary>
+    private ProcessPanelViewModel? CurrentProcessTab()
+    {
+        ProcessPanelViewModel? processTab = this.tabs[this.selectedIndex] as ProcessPanelViewModel;
+        return processTab;
+    }
+
+    /// <summary>在当前文件标签中打开路径；没有文件标签时自动新建；压缩包路径开预览标签。</summary>
     public void OpenPath(string path)
     {
+        if (this.TryOpenArchiveTab(path))
+        {
+            return;
+        }
         FileTabViewModel? current = this.CurrentFileTab();
         if (current == null)
         {
@@ -292,9 +399,23 @@ public class WebWorkspace
 
         if (action == "sort")
         {
-            if (fileTab == null) { return "当前标签不是文件列表"; }
-            fileTab.SetSortField(argument);
-            return "已按 " + argument + (fileTab.SortAscending ? " 升序" : " 降序") + " 排列";
+            if (fileTab != null)
+            {
+                fileTab.SetSortField(argument);
+                return "已按 " + argument + (fileTab.SortAscending ? " 升序" : " 降序") + " 排列";
+            }
+            if (diskTab != null)
+            {
+                diskTab.SetSortField(argument);
+                return "已按 " + argument + (diskTab.SortAscending ? " 升序" : " 降序") + " 排列";
+            }
+            ProcessPanelViewModel? sortProcessTab = this.CurrentProcessTab();
+            if (sortProcessTab != null)
+            {
+                sortProcessTab.SetSortField(argument);
+                return "已按 " + argument + (sortProcessTab.SortAscending ? " 升序" : " 降序") + " 排列";
+            }
+            return "当前标签不支持排序";
         }
         if (action == "back")
         {
@@ -404,6 +525,33 @@ public class WebWorkspace
             fileTab.ApplyBatchRenames(renamePlan);
             return "批量改名已提交，计划条目数=" + renamePlan.Count;
         }
+        if (action == "encodepreview")
+        {
+            if (fileTab == null) { return "当前标签不是文件列表"; }
+            int fromCodePage;
+            int toCodePage;
+            bool recursive;
+            List<string> encodePaths = WebWorkspace.ParseEncodePreviewRequest(argument,
+                out fromCodePage, out toCodePage, out recursive);
+            if (encodePaths.Count == 0) { return "没有要转换的路径"; }
+            List<EncodeConvertEntry> entries = fileTab.PreviewEncodeConvert(
+                encodePaths, recursive, fromCodePage, toCodePage);
+            StringBuilder previewText = new StringBuilder();
+            foreach (EncodeConvertEntry entry in entries)
+            {
+                previewText.Append(entry.OldPath).Append('\t')
+                    .Append(entry.NewName).Append('\t').Append(entry.Reason).Append('\n');
+            }
+            return previewText.ToString();
+        }
+        if (action == "encodeapply")
+        {
+            if (fileTab == null) { return "当前标签不是文件列表"; }
+            List<string[]> convertPlan = WebWorkspace.ParseRenamePlan(argument);
+            if (convertPlan.Count == 0) { return "没有需要转换的条目"; }
+            fileTab.ApplyBatchRenames(convertPlan);
+            return "编码转换已提交，计划条目数=" + convertPlan.Count;
+        }
         if (action == "chmod")
         {
             if (fileTab == null) { return "当前标签不是文件列表"; }
@@ -448,6 +596,66 @@ public class WebWorkspace
         if (action == "opendisk")
         {
             this.AddDiskViewTab();
+            return string.Empty;
+        }
+        if (action == "openprocess")
+        {
+            this.AddProcessTab();
+            return string.Empty;
+        }
+        ProcessPanelViewModel? processTab = this.CurrentProcessTab();
+        if (action == "processrefresh")
+        {
+            if (processTab == null) { return "当前标签不是进程监控"; }
+            processTab.StartRefresh();
+            return string.Empty;
+        }
+        if (action == "processselect")
+        {
+            if (processTab == null) { return "当前标签不是进程监控"; }
+            int selectedProcessId;
+            if (int.TryParse(argument, out selectedProcessId))
+            {
+                processTab.SelectProcessById(selectedProcessId);
+            }
+            return string.Empty;
+        }
+        if (action == "processkill")
+        {
+            if (processTab == null) { return "当前标签不是进程监控"; }
+            int killProcessId;
+            if (!int.TryParse(argument, out killProcessId))
+            {
+                return "缺少要结束的进程编号";
+            }
+            processTab.TerminateByProcessId(killProcessId);
+            return string.Empty;
+        }
+        if (action == "processpriority")
+        {
+            if (processTab == null) { return "当前标签不是进程监控"; }
+            string[] priorityParts = argument.Split(',');
+            int priorityProcessId;
+            int priorityIndex;
+            if (priorityParts.Length != 2
+                || !int.TryParse(priorityParts[0].Trim(), out priorityProcessId)
+                || !int.TryParse(priorityParts[1].Trim(), out priorityIndex))
+            {
+                return "优先级参数格式不正确，应为进程编号,优先级索引";
+            }
+            processTab.ApplyPriorityByProcessId(priorityProcessId, priorityIndex);
+            return string.Empty;
+        }
+        if (action == "processaffinity")
+        {
+            if (processTab == null) { return "当前标签不是进程监控"; }
+            string[] affinityParts = argument.Split(new char[] { ',' }, 2);
+            int affinityProcessId;
+            if (affinityParts.Length != 2 || !int.TryParse(affinityParts[0].Trim(), out affinityProcessId))
+            {
+                return "亲和性参数格式不正确，应为进程编号,核心编号列表";
+            }
+            processTab.ApplyAffinityByProcessId(affinityProcessId, affinityParts[1]);
             return string.Empty;
         }
         return "未知动作：" + action;
@@ -547,6 +755,41 @@ public class WebWorkspace
         return plan;
     }
 
+    /// <summary>解析编码转换预览请求：首行为 源代码页 \t 目标代码页 \t 递归标志（1 为递归），其余行为要转换的路径。</summary>
+    private static List<string> ParseEncodePreviewRequest(string text,
+        out int fromCodePage, out int toCodePage, out bool recursive)
+    {
+        fromCodePage = 0;
+        toCodePage = 0;
+        recursive = false;
+        List<string> paths = new List<string>();
+        string[] lines = text.Split('\n');
+        for (int index = 0; index < lines.Length; index++)
+        {
+            string line = lines[index].TrimEnd('\r');
+            if (index == 0)
+            {
+                string[] header = line.Split('\t');
+                if (header.Length < 3)
+                {
+                    return paths;
+                }
+                if (!int.TryParse(header[0], out fromCodePage)
+                    || !int.TryParse(header[1], out toCodePage))
+                {
+                    return paths;
+                }
+                recursive = header[2] == "1";
+                continue;
+            }
+            if (line.Length > 0)
+            {
+                paths.Add(line);
+            }
+        }
+        return paths;
+    }
+
     /// <summary>解析八进制权限文本（000~777）：必须全部是数字 0~7，超范围返回 false。</summary>
     public static bool TryParseOctalMode(string text, out int mode)
     {
@@ -619,6 +862,16 @@ public class WebWorkspace
         File.WriteAllBytes(path, content);
     }
 
+    /// <summary>把走势图序列复制到快照列表（复制而非引用，避免快照与界面状态竞争）。</summary>
+    private static void CopyTrend(IReadOnlyList<double> source, List<double> target)
+    {
+        target.Clear();
+        for (int index = 0; index < source.Count; index++)
+        {
+            target.Add(source[index]);
+        }
+    }
+
     /// <summary>在 UI 线程构建当前工作区快照。</summary>
     public Task<DebugUiState> BuildStateAsync()
     {
@@ -681,12 +934,51 @@ public class WebWorkspace
             else
             {
                 DiskViewPanelViewModel? diskTab = tab as DiskViewPanelViewModel;
-                if (diskTab != null)
+                ProcessPanelViewModel? processTab = tab as ProcessPanelViewModel;
+                if (processTab != null)
+                {
+                    tabState.TabType = "process";
+                    tabState.ResourceText = processTab.ResourceText;
+                    tabState.SummaryText = processTab.SummaryText;
+                    tabState.TotalRows = processTab.Rows.Count;
+                    tabState.DetailText = processTab.DetailText;
+                    tabState.AffinityInput = processTab.AffinityInput;
+                    tabState.PriorityIndex = processTab.SelectedPriorityIndex;
+                    tabState.DetailSupported = processTab.IsDetailSupported;
+                    tabState.TrendVersion = processTab.TrendUpdatedAt.Ticks;
+                    tabState.SortField = processTab.SortField;
+                    tabState.SortAscending = processTab.SortAscending;
+                    CopyTrend(processTab.SystemCpuTrend, tabState.SystemCpuTrend);
+                    CopyTrend(processTab.SystemMemoryTrend, tabState.SystemMemoryTrend);
+                    CopyTrend(processTab.SelectedCpuTrend, tabState.SelectedCpuTrend);
+                    if (tabState.Selected)
+                    {
+                        // 网页端台前心跳：页面仍在轮询时保持台前周期刷新，页面关闭后自动停止
+                        processTab.NotifyVisible();
+                    }
+                    int processLimit = tabState.TotalRows > 1000 ? 1000 : tabState.TotalRows;
+                    for (int processIndex = 0; processIndex < processLimit; processIndex++)
+                    {
+                        ProcessRow row = processTab.Rows[processIndex];
+                        DebugProcessRow debugRow = new DebugProcessRow();
+                        debugRow.ProcessId = row.ProcessId;
+                        debugRow.IndentText = row.IndentText;
+                        debugRow.Name = row.Name;
+                        debugRow.CpuText = row.CpuText;
+                        debugRow.MemoryText = row.MemoryText;
+                        debugRow.WindowTitle = row.WindowTitle;
+                        debugRow.IsSelected = object.ReferenceEquals(row, processTab.SelectedRow);
+                        tabState.ProcessRows.Add(debugRow);
+                    }
+                }
+                else if (diskTab != null)
                 {
                     tabState.TabType = "disk";
                     tabState.CurrentPath = diskTab.RootPathInput;
                     tabState.SummaryText = diskTab.SummaryText;
                     tabState.TotalRows = diskTab.Rows.Count;
+                    tabState.SortField = diskTab.SortField;
+                    tabState.SortAscending = diskTab.SortAscending;
                     if (tabState.Selected)
                     {
                         // 网页端台前心跳：页面仍在轮询时保持台前探测，页面关闭后探测自动停止

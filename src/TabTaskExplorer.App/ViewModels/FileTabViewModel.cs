@@ -3,11 +3,13 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 using Avalonia.Threading;
 using TabTaskExplorer.App.Services;
 using TabTaskExplorer.Kernel.Abstractions;
 using TabTaskExplorer.Kernel.Models;
+using TabTaskExplorer.Kernel.Services;
 
 namespace TabTaskExplorer.App.ViewModels;
 
@@ -36,6 +38,12 @@ public class FileTabViewModel : INotifyPropertyChanged
     private readonly IFileSystemProvider fileSystemProvider;
     private readonly AppSettings appSettings;
 
+    /// <summary>压缩包服务：识别压缩包文件并触发预览标签打开请求（与提供者无关，始终可用）。</summary>
+    private readonly IArchiveService archiveService;
+
+    /// <summary>磁盘扫描服务：提供目录大小的单飞共享计算与快照复用；远程标签为 null，不做本机回填。</summary>
+    private readonly DiskScanService? scanService;
+
     private readonly List<string> backStack = new List<string>();
     private readonly List<string> forwardStack = new List<string>();
     private List<FileRow> allRows = new List<FileRow>();
@@ -58,6 +66,9 @@ public class FileTabViewModel : INotifyPropertyChanged
     private int fetchGeneration = -1;
     private List<FileRow> fetchedRows = new List<FileRow>();
     private int fetchedGeneration = -1;
+
+    // 目录大小回填：切路径、刷新或关闭标签时取消，只让本订阅者退出共享计算
+    private CancellationTokenSource? sizeBackfillCancellation;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -266,10 +277,13 @@ public class FileTabViewModel : INotifyPropertyChanged
         }
     }
 
-    public FileTabViewModel(IFileSystemProvider fileSystemProvider, AppSettings appSettings, string openPath)
+    public FileTabViewModel(IFileSystemProvider fileSystemProvider, AppSettings appSettings,
+        string openPath, DiskScanService? diskScanService, IArchiveService archiveService)
     {
         this.fileSystemProvider = fileSystemProvider;
         this.appSettings = appSettings;
+        this.scanService = diskScanService;
+        this.archiveService = archiveService;
         this.LoadCore(openPath, true);
     }
 
@@ -312,11 +326,17 @@ public class FileTabViewModel : INotifyPropertyChanged
         this.LoadCore(target, false);
     }
 
-    /// <summary>返回上一层目录；已在磁盘根目录时回到此电脑视图。</summary>
+    /// <summary>返回上一层目录；已在磁盘根目录时回到此电脑视图，已在压缩包根时停住。</summary>
     public void NavigateUp()
     {
         if (string.IsNullOrEmpty(this.currentPath))
         {
+            return;
+        }
+        ArchiveFileSystemProvider? archiveProvider = this.fileSystemProvider as ArchiveFileSystemProvider;
+        if (archiveProvider != null && archiveProvider.IsRoot(this.currentPath))
+        {
+            // 已在压缩包根：再向上会离开压缩包，虚拟路径无法对应真实目录，停住不动
             return;
         }
         DirectoryInfo? parent = Directory.GetParent(this.currentPath);
@@ -485,6 +505,8 @@ public class FileTabViewModel : INotifyPropertyChanged
     /// <summary>执行批量改名计划：entry[0] 为旧路径，entry[1] 为新名称。</summary>
     public void ApplyBatchRenames(List<string[]> renamePlan)
     {
+        // 自底向上执行：路径更深（分隔符更多）的先改，避免先改父目录后子路径失效
+        renamePlan.Sort(CompareRenameDepth);
         int successCount = 0;
         int failedCount = 0;
         foreach (string[] entry in renamePlan)
@@ -512,8 +534,64 @@ public class FileTabViewModel : INotifyPropertyChanged
         this.Refresh();
     }
 
+    /// <summary>比较两条改名计划的路径深度：分隔符多（更深）的排在前面，实现自底向上执行。</summary>
+    private static int CompareRenameDepth(string[] left, string[] right)
+    {
+        int leftDepth = CountSeparators(left.Length > 0 ? left[0] : string.Empty);
+        int rightDepth = CountSeparators(right.Length > 0 ? right[0] : string.Empty);
+        return rightDepth.CompareTo(leftDepth);
+    }
+
+    /// <summary>统计路径里的分隔符个数，作为路径深度的近似。</summary>
+    private static int CountSeparators(string path)
+    {
+        int count = 0;
+        for (int index = 0; index < path.Length; index++)
+        {
+            if (path[index] == '/' || path[index] == '\\')
+            {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    /// <summary>
+    /// 为选中路径生成编码转换计划（递归时收集全部后代），
+    /// 供桌面对话框预览与网页端预览共用。
+    /// </summary>
+    /// <param name="paths">选中的完整路径列表。</param>
+    /// <param name="recursive">是否递归处理选中目录的全部后代。</param>
+    /// <param name="fromCodePage">源编码代码页。</param>
+    /// <param name="toCodePage">目标编码代码页。</param>
+    /// <returns>转换计划列表（旧路径、新名称、原因）。</returns>
+    public List<EncodeConvertEntry> PreviewEncodeConvert(List<string> paths, bool recursive,
+        int fromCodePage, int toCodePage)
+    {
+        List<EncodeConvertEntry> plan = FileNameEncodingConverter.BuildPlan(
+            this.fileSystemProvider, paths, recursive, fromCodePage, toCodePage);
+        int executableCount = 0;
+        foreach (EncodeConvertEntry entry in plan)
+        {
+            if (entry.Reason.Length == 0
+                && entry.NewName != FileNameEncodingConverter.GetEntryName(entry.OldPath))
+            {
+                executableCount++;
+            }
+        }
+        UiLogger.Log("编码转换", "预览编码转换：路径数=" + paths.Count
+            + " 源编码=" + FileNameEncodingConverter.GetEncodingName(fromCodePage)
+            + " 目标编码=" + FileNameEncodingConverter.GetEncodingName(toCodePage)
+            + " 递归=" + (recursive ? "是" : "否")
+            + " 计划条数=" + plan.Count + " 可执行条数=" + executableCount);
+        return plan;
+    }
+
     /// <summary>远程文件内容打开请求（仅当提供者支持内容读写时触发），参数为文件完整路径。</summary>
     public event EventHandler<string>? RemoteFileOpenRequested;
+
+    /// <summary>压缩包打开请求：主窗口据此在对应压缩包文件系统上新开预览标签，参数为压缩包完整路径。</summary>
+    public event EventHandler<string>? ArchiveOpenRequested;
 
     /// <summary>远程文件内容访问能力；本地提供者不支持时为 null。</summary>
     public IFileContentAccess? ContentAccess
@@ -533,7 +611,7 @@ public class FileTabViewModel : INotifyPropertyChanged
         get { return this.fileSystemProvider as IRemotePermissionChanger; }
     }
 
-    /// <summary>打开一个条目：文件夹进入目录，远程文件在线编辑，本地文件用系统默认程序打开。</summary>
+    /// <summary>打开一个条目：文件夹进入目录，远程文件在线编辑，压缩包开预览标签，本地文件用系统默认程序打开。</summary>
     public void OpenEntry(FileRow row)
     {
         if (row.IsDirectory)
@@ -551,6 +629,35 @@ public class FileTabViewModel : INotifyPropertyChanged
             }
             return;
         }
+        ArchiveFileSystemProvider? archiveProvider = this.fileSystemProvider as ArchiveFileSystemProvider;
+        if (archiveProvider != null)
+        {
+            // 压缩包标签内：压缩包条目再开一层预览标签，其余文件解出临时文件后交给系统程序打开
+            if (this.archiveService.IsArchivePath(row.FullPath))
+            {
+                this.RaiseArchiveOpenRequested(row.FullPath);
+                return;
+            }
+            try
+            {
+                string tempFile = archiveProvider.ExtractFileToTemp(row.FullPath);
+                ProcessStartInfo startInfo = new ProcessStartInfo();
+                startInfo.FileName = tempFile;
+                startInfo.UseShellExecute = true;
+                Process.Start(startInfo);
+            }
+            catch (Exception error)
+            {
+                this.SummaryText = "无法打开该文件：" + error.Message;
+            }
+            return;
+        }
+        // 普通标签：压缩包文件开预览标签（经魔数校验，防止伪装扩展名的普通文件被误判）
+        if (this.archiveService.IsArchivePath(row.FullPath) && this.archiveService.Probe(row.FullPath) != null)
+        {
+            this.RaiseArchiveOpenRequested(row.FullPath);
+            return;
+        }
         // 本机文件一律交给系统默认程序打开（IDE 模式下的打开方式由 IDE 侧设置决定）
         try
         {
@@ -563,6 +670,176 @@ public class FileTabViewModel : INotifyPropertyChanged
         {
             this.SummaryText = "无法打开该文件：" + error.Message;
         }
+    }
+
+    /// <summary>发出压缩包打开请求（无订阅方时静默忽略）。</summary>
+    private void RaiseArchiveOpenRequested(string path)
+    {
+        EventHandler<string>? handler = this.ArchiveOpenRequested;
+        if (handler != null)
+        {
+            handler(this, path);
+        }
+    }
+
+    /// <summary>右键"解压到"前置判断：压缩包标签内任意条目可解出，普通标签仅压缩包条目可解。</summary>
+    public bool IsExtractableRow(FileRow row)
+    {
+        if (this.fileSystemProvider is ArchiveFileSystemProvider)
+        {
+            return true;
+        }
+        return this.archiveService.IsArchivePath(row.FullPath) && this.archiveService.Probe(row.FullPath) != null;
+    }
+
+    /// <summary>
+    /// 把指定条目压缩为新压缩包（后台执行，进度显示在摘要栏）；
+    /// 目标格式按扩展名自动识别（zip / 7z / tar / tar.gz 等）。
+    /// </summary>
+    public void CompressSelection(List<FileRow> rows, string archivePath)
+    {
+        if (rows == null || rows.Count == 0)
+        {
+            return;
+        }
+        if (this.fileSystemProvider is ArchiveFileSystemProvider)
+        {
+            this.SummaryText = "压缩包内条目暂不支持直接压缩，请先解压到普通文件夹再压缩";
+            return;
+        }
+        List<string> sources = new List<string>();
+        foreach (FileRow row in rows)
+        {
+            sources.Add(row.FullPath);
+        }
+
+        Progress<ArchiveProgress> progress = new Progress<ArchiveProgress>(delegate (ArchiveProgress report)
+        {
+            this.SummaryText = report.EntriesTotal > 0
+                ? "正在压缩：" + report.EntriesDone + "/" + report.EntriesTotal + " " + report.CurrentEntryName
+                : "正在压缩：" + report.CurrentEntryName;
+        });
+        this.SummaryText = "正在压缩 " + sources.Count + " 个条目……";
+        UiLogger.Log("压缩", "开始压缩：目标=" + archivePath + " 源条目数=" + sources.Count);
+        Task.Run(delegate
+        {
+            try
+            {
+                ArchiveCreateOptions options = new ArchiveCreateOptions();
+                this.archiveService.Create(archivePath, sources, options, progress);
+                UiLogger.Log("压缩", "压缩完成：目标=" + archivePath);
+                Dispatcher.UIThread.Post(delegate
+                {
+                    this.SummaryText = "已创建压缩包：" + Path.GetFileName(archivePath);
+                    this.Refresh();
+                });
+            }
+            catch (Exception error)
+            {
+                UiLogger.Log("压缩", "压缩失败：目标=" + archivePath + " 原因=" + error.Message);
+                Dispatcher.UIThread.Post(delegate
+                {
+                    this.SummaryText = "压缩失败：" + error.Message;
+                });
+            }
+        });
+    }
+
+    /// <summary>
+    /// 把选中条目解压到指定真实目录（后台执行，进度显示在摘要栏）：
+    /// 普通标签解压选中的压缩包本体；压缩包标签逐条把包内条目解出到目标目录。
+    /// </summary>
+    public void ExtractSelectionTo(List<FileRow> rows, string targetDirectory)
+    {
+        if (rows == null || rows.Count == 0)
+        {
+            return;
+        }
+        ArchiveFileSystemProvider? archiveProvider = this.fileSystemProvider as ArchiveFileSystemProvider;
+        List<string> targets = new List<string>();
+        foreach (FileRow row in rows)
+        {
+            if (archiveProvider != null
+                || (this.archiveService.IsArchivePath(row.FullPath) && this.archiveService.Probe(row.FullPath) != null))
+            {
+                targets.Add(row.FullPath);
+            }
+        }
+        if (targets.Count == 0)
+        {
+            this.SummaryText = "选中的条目里没有可解压的压缩包";
+            return;
+        }
+
+        Progress<ArchiveProgress> progress = new Progress<ArchiveProgress>(delegate (ArchiveProgress report)
+        {
+            this.SummaryText = report.EntriesTotal > 0
+                ? "正在解压：" + report.EntriesDone + "/" + report.EntriesTotal + " " + report.CurrentEntryName
+                : "正在解压：" + report.CurrentEntryName;
+        });
+        this.SummaryText = "正在解压到：" + targetDirectory;
+        UiLogger.Log("解压", "开始解压：目标目录=" + targetDirectory + " 条目数=" + targets.Count);
+        Task.Run(delegate
+        {
+            int successCount = 0;
+            int failedCount = 0;
+            string firstError = string.Empty;
+            for (int i = 0; i < targets.Count; i++)
+            {
+                string target = targets[i];
+                int displayIndex = i;
+                if (archiveProvider == null)
+                {
+                    // 普通标签：解压整个压缩包到目标目录
+                    try
+                    {
+                        ArchiveExtractOptions options = new ArchiveExtractOptions();
+                        options.TargetDirectory = targetDirectory;
+                        options.Overwrite = true;
+                        this.archiveService.Extract(target, options, progress);
+                        successCount++;
+                    }
+                    catch (Exception error)
+                    {
+                        failedCount++;
+                        if (firstError.Length == 0)
+                        {
+                            firstError = error.Message;
+                        }
+                    }
+                }
+                else
+                {
+                    // 压缩包标签：包内条目跨界解压到目标目录（保留原名称，同名目录合并）
+                    Dispatcher.UIThread.Post(delegate
+                    {
+                        this.SummaryText = "正在解压：" + (displayIndex + 1) + "/" + targets.Count + " " + Path.GetFileName(target);
+                    });
+                    try
+                    {
+                        archiveProvider.Copy(target, targetDirectory);
+                        successCount++;
+                    }
+                    catch (Exception error)
+                    {
+                        failedCount++;
+                        if (firstError.Length == 0)
+                        {
+                            firstError = error.Message;
+                        }
+                    }
+                }
+            }
+            UiLogger.Log("解压", "解压结束：目标目录=" + targetDirectory
+                + " 成功=" + successCount + " 失败=" + failedCount
+                + (firstError.Length > 0 ? " 首个错误=" + firstError : string.Empty));
+            Dispatcher.UIThread.Post(delegate
+            {
+                this.SummaryText = failedCount > 0
+                    ? "解压完成：成功 " + successCount + " 项，失败 " + failedCount + " 项（" + firstError + "）"
+                    : "解压完成：成功 " + successCount + " 项 → " + targetDirectory;
+            });
+        });
     }
 
     /// <summary>返回唯一勾选的条目；没有勾选或勾选多项时返回 null 并提示。</summary>
@@ -682,6 +959,7 @@ public class FileTabViewModel : INotifyPropertyChanged
         this.PathChanged?.Invoke(this, path);
 
         this.fetchPath = path;
+        this.CancelSizeBackfill();
         this.fetchGeneration = ++this.loadGeneration;
         Task.Run(new Action(this.FetchInBackground));
     }
@@ -734,11 +1012,73 @@ public class FileTabViewModel : INotifyPropertyChanged
 
         this.allRows = new List<FileRow>(this.fetchedRows);
         this.ApplyFilter();
+        this.StartSizeBackfill();
 
         if (this.allRows.Count == 0 && !string.IsNullOrEmpty(this.currentPath))
         {
             this.SummaryText = "目录为空，或无法读取该目录";
         }
+    }
+
+    /// <summary>取消进行中的目录大小回填批次（切路径、刷新与关闭标签时调用）。</summary>
+    private void CancelSizeBackfill()
+    {
+        CancellationTokenSource? source = this.sizeBackfillCancellation;
+        if (source == null)
+        {
+            return;
+        }
+        this.sizeBackfillCancellation = null;
+        // 只取消不释放：与磁盘视图一致，避免在途计算读取消令牌时撞上已释放的取消源
+        source.Cancel();
+    }
+
+    /// <summary>
+    /// 为当前可见的目录行启动大小回填：经扫描服务单飞共享计算，
+    /// 同路径的多标签页与多视图只实际扫描一次，结果写回共享快照供复用。
+    /// </summary>
+    private void StartSizeBackfill()
+    {
+        if (this.scanService == null)
+        {
+            // 远程标签不做本机磁盘回填
+            return;
+        }
+        if (string.IsNullOrEmpty(this.currentPath))
+        {
+            // 此电脑视图的驱动器行不回填，避免整盘递归统计
+            return;
+        }
+
+        List<FileRow> targets = new List<FileRow>();
+        foreach (FileRow row in this.visibleRows)
+        {
+            if (row.IsDirectory && string.IsNullOrEmpty(row.SizeText))
+            {
+                targets.Add(row);
+            }
+        }
+        if (targets.Count == 0)
+        {
+            return;
+        }
+
+        this.CancelSizeBackfill();
+        CancellationTokenSource source = new CancellationTokenSource();
+        this.sizeBackfillCancellation = source;
+        int generation = this.loadGeneration;
+        SizeBackfillBatch batch = new SizeBackfillBatch(this, targets, generation, source);
+        UiLogger.Log("文件标签", "开始目录大小回填：路径=" + this.currentPath
+            + " 目录行数=" + targets.Count);
+        Task.Run(batch.Execute);
+    }
+
+    /// <summary>关闭标签钩子：停止在途的目录大小回填，释放共享计算订阅。</summary>
+    public void Close()
+    {
+        this.CancelSizeBackfill();
+        UiLogger.Log("文件标签", "关闭文件标签：路径=" + (string.IsNullOrEmpty(this.currentPath) ? "此电脑" : this.currentPath)
+            + " 已停止目录大小回填");
     }
 
     /// <summary>排序比较器：文件夹始终在前。</summary>
@@ -814,6 +1154,112 @@ public class FileTabViewModel : INotifyPropertyChanged
         }
         return name;
     }
+
+    /// <summary>
+    /// 一次目录大小回填批次：并行经共享单飞计算各可见目录行的大小，
+    /// 结果回界面线程写回行数据；分代不符的过期结果直接丢弃。
+    /// </summary>
+    private class SizeBackfillBatch
+    {
+        private readonly FileTabViewModel owner;
+        private readonly List<FileRow> rows;
+        private readonly int generation;
+        private readonly CancellationTokenSource source;
+        private int successCount;
+        private int failureCount;
+
+        /// <summary>创建回填批次。</summary>
+        /// <param name="owner">所属文件标签。</param>
+        /// <param name="rows">需要统计大小的可见目录行。</param>
+        /// <param name="generation">启动时的加载分代，用于丢弃过期结果。</param>
+        /// <param name="source">本批次的取消源：取消只让本订阅者退出共享计算。</param>
+        public SizeBackfillBatch(FileTabViewModel owner, List<FileRow> rows, int generation, CancellationTokenSource source)
+        {
+            this.owner = owner;
+            this.rows = rows;
+            this.generation = generation;
+            this.source = source;
+        }
+
+        /// <summary>批次入口：后台并行统计，全部结束后回界面线程收尾。</summary>
+        public void Execute()
+        {
+            try
+            {
+                ParallelOptions options = new ParallelOptions();
+                options.MaxDegreeOfParallelism = Environment.ProcessorCount;
+                options.CancellationToken = this.source.Token;
+                Parallel.ForEach(this.rows, options, this.ComputeOne);
+            }
+            catch (OperationCanceledException)
+            {
+                UiLogger.Log("文件标签", "目录大小回填已取消：路径=" + this.owner.currentPath
+                    + " 目录行数=" + this.rows.Count);
+                return;
+            }
+            catch (Exception exception)
+            {
+                UiLogger.LogError("文件标签", "目录大小回填批次失败：路径=" + this.owner.currentPath, exception);
+                return;
+            }
+            Dispatcher.UIThread.Post(new Action(this.OnBatchFinished));
+        }
+
+        /// <summary>统计单个目录行的大小：经共享单飞计算，完成后回界面线程写回。</summary>
+        /// <param name="row">待统计的目录行。</param>
+        private void ComputeOne(FileRow row)
+        {
+            try
+            {
+                DiskScanService service = this.owner.scanService!;
+                long sizeBytes = service.ComputeSizeShared(row.FullPath, this.source.Token);
+                Interlocked.Increment(ref this.successCount);
+                Dispatcher.UIThread.Post(delegate { this.ApplyOne(row, sizeBytes); });
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                Interlocked.Increment(ref this.failureCount);
+                UiLogger.LogError("文件标签", "目录大小回填失败：目录=" + row.FullPath, exception);
+            }
+        }
+
+        /// <summary>在界面线程把统计结果写回行；分代已变（切路径或刷新）则丢弃。</summary>
+        /// <param name="row">统计完成的目录行。</param>
+        /// <param name="sizeBytes">目录总大小（字节）。</param>
+        private void ApplyOne(FileRow row, long sizeBytes)
+        {
+            if (this.generation != this.owner.loadGeneration)
+            {
+                return;
+            }
+            row.UpdateSize(sizeBytes);
+            if (this.owner.sortField == "Size")
+            {
+                // 按大小排序时新数据改变了次序，重新排一次
+                this.owner.ApplyFilter();
+            }
+        }
+
+        /// <summary>批次收尾（界面线程）：释放取消源、持久化快照并记录完成日志。</summary>
+        private void OnBatchFinished()
+        {
+            if (this.generation != this.owner.loadGeneration)
+            {
+                return;
+            }
+            if (object.ReferenceEquals(this.owner.sizeBackfillCancellation, this.source))
+            {
+                this.owner.sizeBackfillCancellation = null;
+            }
+            this.owner.scanService!.SaveSnapshot();
+            UiLogger.Log("文件标签", "目录大小回填完成：路径=" + this.owner.currentPath
+                + " 成功行数=" + this.successCount + " 失败行数=" + this.failureCount);
+        }
+    }
 }
 
 /// <summary>
@@ -835,8 +1281,18 @@ public class FileRow : INotifyPropertyChanged
     /// <summary>类型文字：文件夹或扩展名描述。</summary>
     public string TypeText { get; set; } = string.Empty;
 
-    /// <summary>大小显示文字。</summary>
-    public string SizeText { get; set; } = string.Empty;
+    private string sizeText = string.Empty;
+
+    /// <summary>大小显示文字；目录行由回填任务异步补上，改动需通知界面。</summary>
+    public string SizeText
+    {
+        get { return this.sizeText; }
+        set
+        {
+            this.sizeText = value;
+            this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SizeText)));
+        }
+    }
 
     /// <summary>修改时间显示文字（本地时区）。</summary>
     public string ModifiedText { get; set; } = string.Empty;
@@ -966,6 +1422,14 @@ public class FileRow : INotifyPropertyChanged
         row.IconGlyph = "\uE7F8";
         row.IconColor = "#4CC2FF";
         return row;
+    }
+
+    /// <summary>回填目录统计结果：同时更新显示文字与排序用字节数。</summary>
+    /// <param name="sizeBytes">目录总大小（字节）。</param>
+    public void UpdateSize(long sizeBytes)
+    {
+        this.LengthBytes = sizeBytes;
+        this.SizeText = FormatSize(sizeBytes);
     }
 
     /// <summary>把字节数格式化成易读文字。</summary>

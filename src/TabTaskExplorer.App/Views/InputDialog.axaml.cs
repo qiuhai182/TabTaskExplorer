@@ -32,11 +32,16 @@ public partial class InputDialog : Window
     private void OnOkClick(object? sender, RoutedEventArgs e)
     {
         this.ResultValue = this.ValueBox.Text;
+        UiLogger.Log("程序行为", "输入对话框点击确定：标题=" + this.Title
+            + " 输入值=" + (this.ResultValue ?? string.Empty)
+            + " 结果=成功，已提交输入并关闭对话框");
         this.Close();
     }
 
     private void OnCancelClick(object? sender, RoutedEventArgs e)
     {
+        UiLogger.Log("程序行为", "输入对话框点击取消：标题=" + this.Title
+            + " 结果=已关闭对话框，未提交任何输入");
         this.Close();
     }
 }
