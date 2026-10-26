@@ -33,7 +33,7 @@ public enum FileViewMode
 /// 路径为空字符串时表示"此电脑"根视图，展示全部磁盘分区。
 /// 目录枚举在后台线程执行，避免大文件夹冻结界面。
 /// </summary>
-public class FileTabViewModel : INotifyPropertyChanged
+public class FileTabViewModel : INotifyPropertyChanged, IColumnWidthViewModel
 {
     private readonly IFileSystemProvider fileSystemProvider;
     private readonly AppSettings appSettings;
@@ -59,6 +59,9 @@ public class FileTabViewModel : INotifyPropertyChanged
     private FileViewMode viewMode = FileViewMode.Details;
     private bool showInfoPane;
     private IReadOnlyList<FileRow> visibleRows = new List<FileRow>();
+
+    /// <summary>表头列宽：仅本次运行内有效，重启后恢复界面文件里的默认列宽。</summary>
+    private string columnWidths = string.Empty;
 
     // 后台加载的状态：分代令牌用于丢弃过期的加载结果
     private int loadGeneration;
@@ -88,6 +91,17 @@ public class FileTabViewModel : INotifyPropertyChanged
 
     /// <summary>关联的连接配置编号；本地标签为空文本。</summary>
     public string AttachedProfileId { get; set; } = string.Empty;
+
+    /// <summary>表头列宽（逗号分隔的像素值）：同时通知表头与行模板两处网格刷新。</summary>
+    public string ColumnWidths
+    {
+        get { return this.columnWidths; }
+        set
+        {
+            this.columnWidths = value ?? string.Empty;
+            this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ColumnWidths)));
+        }
+    }
 
     /// <summary>当前目录完整路径，空字符串表示此电脑根视图。</summary>
     public string CurrentPath
@@ -275,6 +289,26 @@ public class FileTabViewModel : INotifyPropertyChanged
             this.showInfoPane = value;
             this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ShowInfoPane)));
         }
+    }
+
+    /// <summary>把拖动得到的全像素列宽应用到界面（表头与所有行同时生效）。</summary>
+    /// <param name="widths">按列序号排列的列宽，单位像素。</param>
+    public void ApplyColumnWidths(double[] widths)
+    {
+        this.ColumnWidths = ColumnResize.FormatWidths(widths);
+    }
+
+    /// <summary>拖动结束后记录一条包含视图名与全部列宽的纯中文日志。</summary>
+    public void LogColumnWidths()
+    {
+        if (this.columnWidths.Length == 0)
+        {
+            UiLogger.Log("文件列表", "表头列宽拖动结束：本次没有产生列宽变化，仍为默认列宽");
+            return;
+        }
+        string[] parts = this.columnWidths.Split(',');
+        UiLogger.Log("文件列表", "表头列宽拖动完成：列数=" + parts.Length
+            + " 调整后列宽=" + this.columnWidths + "像素 列宽仅本次运行有效，重启后恢复默认列宽");
     }
 
     public FileTabViewModel(IFileSystemProvider fileSystemProvider, AppSettings appSettings,

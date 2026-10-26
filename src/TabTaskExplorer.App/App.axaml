@@ -122,17 +122,48 @@
     <styling:FluentAvaloniaTheme />
 
     <!-- ======== TabX 风格交互：悬停 / 选中随主题字典切换 ======== -->
+    <!-- 行与磁贴的常驻透明底色必须写成基础样式并放在各动态样式之前：若直接写在元素上（本地值），会压过下面的悬停、选中与拖放高亮样式 -->
+    <Style Selector="Border.row">
+      <Setter Property="Background" Value="Transparent"/>
+    </Style>
     <Style Selector="Border.row:pointerover">
       <Setter Property="Background" Value="{DynamicResource RowHoverBrush}"/>
     </Style>
     <Style Selector="Border.row.checked">
       <Setter Property="Background" Value="{DynamicResource RowSelectedBrush}"/>
     </Style>
+    <Style Selector="Border.tile">
+      <Setter Property="Background" Value="Transparent"/>
+    </Style>
     <Style Selector="Border.tile:pointerover">
       <Setter Property="Background" Value="{DynamicResource RowHoverBrush}"/>
     </Style>
-    <Style Selector="Border.tile.checked">
+    <Style Selector="Border.tile:checked">
       <Setter Property="Background" Value="{DynamicResource RowSelectedBrush}"/>
+    </Style>
+
+    <!-- 拖放目标高亮：拖拽经过文件行 / 磁贴 / 左侧导航项 / 书签项 / 标签时显示强调色边框与底色 -->
+    <Style Selector="Border.row.droptarget">
+      <Setter Property="Background" Value="{DynamicResource RowHoverBrush}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource AccentGlyphBrush}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="4"/>
+    </Style>
+    <Style Selector="Border.tile.droptarget">
+      <Setter Property="Background" Value="{DynamicResource RowHoverBrush}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource AccentGlyphBrush}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="4"/>
+    </Style>
+    <Style Selector="ListBoxItem.droptarget /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource RowHoverBrush}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource AccentGlyphBrush}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+    </Style>
+    <Style Selector="Button.nav.droptarget /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource RowHoverBrush}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource AccentGlyphBrush}"/>
+      <Setter Property="BorderThickness" Value="1"/>
     </Style>
 
     <Style Selector="ListBoxItem">

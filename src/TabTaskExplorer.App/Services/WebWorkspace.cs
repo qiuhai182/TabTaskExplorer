@@ -417,6 +417,43 @@ public class WebWorkspace
             }
             return "当前标签不支持排序";
         }
+        // 表头列宽拖动：网页端回传"表格键=列宽列表"，这里识别所属视图并记录完成日志；
+        // 列宽只在本次页面打开期间有效，不回写设置
+        if (action == "colresize")
+        {
+            int separatorIndex = argument.IndexOf('=');
+            if (separatorIndex <= 0 || separatorIndex >= argument.Length - 1)
+            {
+                UiLogger.Log("网页端", "表头列宽拖动结束：参数格式不正确，无法识别表格键与列宽，参数=" + argument);
+                return string.Empty;
+            }
+            string tableKey = argument.Substring(0, separatorIndex);
+            string widthsText = argument.Substring(separatorIndex + 1);
+            string viewName = "未知视图";
+            if (tableKey.StartsWith("file:", StringComparison.Ordinal))
+            {
+                viewName = "文件列表";
+            }
+            else if (tableKey.StartsWith("search:", StringComparison.Ordinal))
+            {
+                viewName = "全盘搜索";
+            }
+            else if (tableKey == "disk")
+            {
+                viewName = "磁盘视图";
+            }
+            else if (tableKey == "process")
+            {
+                viewName = "进程监控";
+            }
+            else if (tableKey == "connections")
+            {
+                viewName = "连接管理";
+            }
+            string[] parts = widthsText.Split(',');
+            UiLogger.Log("网页端", "表头列宽拖动完成：视图=" + viewName + " 表格键=" + tableKey + " 列数=" + parts.Length + " 调整后列宽=" + widthsText + "像素 列宽仅本次页面打开期间有效，重新打开页面后恢复默认列宽");
+            return string.Empty;
+        }
         if (action == "back")
         {
             if (fileTab == null) { return "当前标签不是文件列表"; }

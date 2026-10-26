@@ -20,7 +20,7 @@ namespace TabTaskExplorer.App.ViewModels;
 /// 构造时不扫描，只有进入台前后才请求扫描并启动周期探测（约每 5 秒比较一次目录修改时间）；
 /// 离开台前立即停止全部扫描与探测。文件夹只支持原地展开或收起，不再进入下一级。
 /// </summary>
-public class DiskViewPanelViewModel : INotifyPropertyChanged
+public class DiskViewPanelViewModel : INotifyPropertyChanged, IColumnWidthViewModel
 {
     private readonly IDiskUsageProvider diskUsageProvider;
     private readonly DiskScanService scanService;
@@ -32,6 +32,10 @@ public class DiskViewPanelViewModel : INotifyPropertyChanged
     private string rootPathInput = string.Empty;
     private string subscribedRoot = string.Empty;
     private string sortField = string.Empty;
+
+    /// <summary>表头列宽：仅本次运行内有效，重启后恢复界面文件里的默认列宽。</summary>
+    private string columnWidths = string.Empty;
+
     private bool sortAscending = true;
     private bool isForeground;
     private bool closed;
@@ -56,6 +60,26 @@ public class DiskViewPanelViewModel : INotifyPropertyChanged
         UiLogger.Log("磁盘视图", "创建磁盘视图标签：进入台前后才会开始扫描 请求方=" + this.ownerId);
     }
 
+    /// <summary>把拖动得到的全像素列宽应用到界面（表头与所有行同时生效）。</summary>
+    /// <param name="widths">按列序号排列的列宽，单位像素。</param>
+    public void ApplyColumnWidths(double[] widths)
+    {
+        this.ColumnWidths = ColumnResize.FormatWidths(widths);
+    }
+
+    /// <summary>拖动结束后记录一条包含视图名与全部列宽的纯中文日志。</summary>
+    public void LogColumnWidths()
+    {
+        if (this.columnWidths.Length == 0)
+        {
+            UiLogger.Log("磁盘视图", "表头列宽拖动结束：本次没有产生列宽变化，仍为默认列宽");
+            return;
+        }
+        string[] parts = this.columnWidths.Split(',');
+        UiLogger.Log("磁盘视图", "表头列宽拖动完成：列数=" + parts.Length
+            + " 调整后列宽=" + this.columnWidths + "像素 列宽仅本次运行有效，重启后恢复默认列宽");
+    }
+
     /// <summary>标签条显示的标题。</summary>
     public string Title { get; set; } = "磁盘视图";
 
@@ -72,6 +96,17 @@ public class DiskViewPanelViewModel : INotifyPropertyChanged
     public bool SortAscending
     {
         get { return this.sortAscending; }
+    }
+
+    /// <summary>表头列宽（逗号分隔的像素值）：同时通知表头与行模板两处网格刷新。</summary>
+    public string ColumnWidths
+    {
+        get { return this.columnWidths; }
+        set
+        {
+            this.columnWidths = value ?? string.Empty;
+            this.OnPropertyChanged(nameof(this.ColumnWidths));
+        }
     }
 
     /// <summary>属性变化通知事件。</summary>

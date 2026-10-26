@@ -176,6 +176,19 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
         }
     }
 
+    /// <summary>
+    /// 系统右键菜单服务：供设置页与文件列表枚举、启停、唤起系统真实右键菜单项；
+    /// 服务容器未注册时回退为空实现（非 Windows 平台）。
+    /// </summary>
+    public ISystemContextMenuService SystemContextMenus
+    {
+        get
+        {
+            return this.services.GetService(typeof(ISystemContextMenuService)) as ISystemContextMenuService
+                ?? new NullSystemContextMenuService();
+        }
+    }
+
     public MainWindowViewModel(IServiceProvider services)
     {
         this.services = services;
@@ -1001,9 +1014,33 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
             return;
         }
 
+        int successCount = this.TransferPathsToDirectory(tab, tab.CurrentPath, this.clipboardPaths,
+            this.clipboardIsCut, out int failedCount);
+        if (this.clipboardIsCut)
+        {
+            this.clipboardPaths = null;
+        }
+        tab.ShowMessage("粘贴完成：成功 " + successCount + " 项，失败 " + failedCount + " 项");
+        tab.Refresh();
+    }
+
+    /// <summary>
+    /// 把一批路径统一移动或复制到指定目录：Ctrl+V 粘贴、列表内拖放、窗口级拖放共用的落地入口。
+    /// 逐条按源路径解析实际提供者（压缩包内 / 包外各自处理），单条失败不影响其余条目，
+    /// 返回成功条数，并通过 out 参数返回失败条数。
+    /// </summary>
+    /// <param name="providerTab">发起落地的目标标签（用于判断目标是否在压缩包内）。</param>
+    /// <param name="targetDirectory">目标目录。</param>
+    /// <param name="paths">要移动或复制的源路径列表。</param>
+    /// <param name="isMove">true 为移动，false 为复制。</param>
+    /// <param name="failedCount">落地失败的条目数。</param>
+    /// <returns>落地成功的条目数。</returns>
+    public int TransferPathsToDirectory(FileTabViewModel providerTab, string targetDirectory,
+        IReadOnlyList<string> paths, bool isMove, out int failedCount)
+    {
         int successCount = 0;
-        int failedCount = 0;
-        foreach (string path in this.clipboardPaths)
+        failedCount = 0;
+        foreach (string path in paths)
         {
             if (string.IsNullOrEmpty(path))
             {
@@ -1012,14 +1049,14 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
             try
             {
                 // 按源 / 目标是否在压缩包内解析实际提供者：包内粘贴走追加，包内复制出走解压
-                IFileSystemProvider fileSystem = this.ResolvePasteProvider(tab, path);
-                if (this.clipboardIsCut)
+                IFileSystemProvider fileSystem = this.ResolvePasteProvider(providerTab, path);
+                if (isMove)
                 {
-                    fileSystem.Move(path, tab.CurrentPath);
+                    fileSystem.Move(path, targetDirectory);
                 }
                 else
                 {
-                    fileSystem.Copy(path, tab.CurrentPath);
+                    fileSystem.Copy(path, targetDirectory);
                 }
                 successCount++;
             }
@@ -1028,13 +1065,7 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
                 failedCount++;
             }
         }
-
-        if (this.clipboardIsCut)
-        {
-            this.clipboardPaths = null;
-        }
-        tab.ShowMessage("粘贴完成：成功 " + successCount + " 项，失败 " + failedCount + " 项");
-        tab.Refresh();
+        return successCount;
     }
 
     /// <summary>
@@ -2118,6 +2149,13 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
                     mirror.CpuText = row.CpuText;
                     mirror.MemoryText = row.MemoryText;
                     mirror.WindowTitle = row.WindowTitle;
+                    mirror.UserNameText = row.UserNameText;
+                    mirror.ThreadText = row.ThreadText;
+                    mirror.HandleText = row.HandleText;
+                    mirror.PriorityText = row.PriorityText;
+                    mirror.IoText = row.IoText;
+                    mirror.StartTimeText = row.StartTimeText;
+                    mirror.CommandLineText = row.CommandLineText;
                     mirror.IsSelected = object.ReferenceEquals(row, processPanelTab.SelectedRow);
                     tabState.ProcessRows.Add(mirror);
                 }

@@ -14,12 +14,47 @@ using Avalonia.VisualTree;
 using Microsoft.Extensions.DependencyInjection;
 using TabTaskExplorer.App.Services;
 using TabTaskExplorer.App.ViewModels;
+using TabTaskExplorer.Kernel.Services;
 
 namespace TabTaskExplorer.App.Views;
 
 /// <summary>主窗口：自绘标题栏 + 标签条 + 工具栏 + 侧边栏，支持最小化到托盘常驻。</summary>
 public partial class MainWindow : Window
 {
+    /// <summary>窗口级拖放的一次评估结果：落点类型、目标路径、允许效果与拒绝原因。</summary>
+    private sealed class WindowDropDecision
+    {
+        /// <summary>落点类型（标签 / 左侧导航 / 书签 / 地址栏 / 无可识别落点）。</summary>
+        public string DropKind = string.Empty;
+
+        /// <summary>落点目标路径（导航目的地或移动 / 复制的接收目录）。</summary>
+        public string TargetPath = string.Empty;
+
+        /// <summary>是否为导航型落点（只切换目录，不移动也不复制）。</summary>
+        public bool IsNavigate;
+
+        /// <summary>导航型落点上承载该导航的文件标签。</summary>
+        public FileTabViewModel? NavigateTab;
+
+        /// <summary>移动 / 复制时用于解析文件系统提供者的文件标签。</summary>
+        public FileTabViewModel? ProviderTab;
+
+        /// <summary>拖放来源条目的路径列表。</summary>
+        public List<string> SourcePaths = new List<string>();
+
+        /// <summary>是否为本程序发起的内部拖拽（区别于外部程序拖入）。</summary>
+        public bool IsInternalDrag;
+
+        /// <summary>该落点允许的拖放效果（移动 / 复制 / 导航）。</summary>
+        public DragDropEffects Effects = DragDropEffects.None;
+
+        /// <summary>拒绝放置的原因（null 表示允许在该落点放置）。</summary>
+        public string? RejectReason;
+
+        /// <summary>需要挂 droptarget 高亮样式类的落点控件。</summary>
+        public Control? Highlight;
+    }
+
     private readonly List<ListBoxItem> tabHooked = new List<ListBoxItem>();
     private FileTabViewModel? breadcrumbTab;
     private bool navSyncing;
@@ -49,6 +84,12 @@ public partial class MainWindow : Window
     /// <summary>拖拽结束后吞掉下一次按下，避免收尾点击误触发。</summary>
     private bool suppressNextTabPress;
 
+    /// <summary>当前挂 droptarget 高亮的窗口级落点控件（null 表示没有高亮）。</summary>
+    private Control? windowDropHighlight;
+
+    /// <summary>窗口拖拽经过日志的去重键（落点类型 + 目标路径 + 拒绝原因 + 效果），相同则不重复记日志。</summary>
+    private string windowDropLogKey = string.Empty;
+
     public MainWindow()
     {
         this.InitializeComponent();
@@ -61,6 +102,15 @@ public partial class MainWindow : Window
             new EventHandler<PointerEventArgs>(this.OnTabStripPointerMoved), RoutingStrategies.Bubble, true);
         this.TabStrip.AddHandler(InputElement.PointerReleasedEvent,
             new EventHandler<PointerReleasedEventArgs>(this.OnTabStripPointerReleased), RoutingStrategies.Bubble, true);
+        // 窗口级拖放：接收系统资源管理器等拖入的文件，按落点判定导航或移动 / 复制
+        this.AddHandler(DragDrop.DragEnterEvent,
+            new EventHandler<DragEventArgs>(this.OnWindowDragEnter), RoutingStrategies.Bubble, true);
+        this.AddHandler(DragDrop.DragOverEvent,
+            new EventHandler<DragEventArgs>(this.OnWindowDragOver), RoutingStrategies.Bubble, true);
+        this.AddHandler(DragDrop.DragLeaveEvent,
+            new EventHandler<DragEventArgs>(this.OnWindowDragLeave), RoutingStrategies.Bubble);
+        this.AddHandler(DragDrop.DropEvent,
+            new EventHandler<DragEventArgs>(this.OnWindowDrop), RoutingStrategies.Bubble);
         this.Closing += this.OnWindowClosing;
         this.DataContextChanged += this.OnDataContextChanged;
     }
@@ -621,6 +671,7 @@ public partial class MainWindow : Window
         MainWindowViewModel? viewModel = this.ViewModel;
         if (viewModel == null)
         {
+            UiLogger.Log("程序行为", "标签拖动中止：标签=" + this.DescribeTab(this.dragTab) + " 结果=失败，主窗口视图模型为空，已重置拖动状态");
             this.ResetTabDrag();
             return;
         }
@@ -642,6 +693,10 @@ public partial class MainWindow : Window
             this.tabDragActive = true;
             e.Pointer.Capture(this.TabStrip);
             e.Handled = true;
+            UiLogger.Log("程序行为", "标签拖动开始：" + this.DescribeTab(this.dragTab)
+                + " 按下位置=横坐标" + this.dragStartPoint.X + "、纵坐标" + this.dragStartPoint.Y
+                + " 当前位置=横坐标" + stripPoint.X + "、纵坐标" + stripPoint.Y
+                + " 结果=已超过拖动阈值并进入拖动状态，随后按落点判定换位或拖出为新窗口");
         }
 
         // 越界判定：指针越过标签条上下各 12 像素，或越出窗口范围
@@ -663,6 +718,7 @@ public partial class MainWindow : Window
         int currentIndex = viewModel.Tabs.IndexOf(this.dragTab);
         if (currentIndex < 0)
         {
+            UiLogger.Log("程序行为", "标签拖动中止：标签=" + this.DescribeTab(this.dragTab) + " 结果=失败，该标签已不在标签列表中，已重置拖动状态");
             this.ResetTabDrag();
             return;
         }
@@ -698,12 +754,14 @@ public partial class MainWindow : Window
         MainWindowViewModel? viewModel = this.ViewModel;
         if (viewModel == null)
         {
+            UiLogger.Log("程序行为", "标签拖动结束：标签=" + this.DescribeTab(tab) + " 结果=失败，主窗口视图模型为空，本次拖动结果未处理");
             return;
         }
         if (detach)
         {
             if (viewModel.Tabs.IndexOf(tab) < 0)
             {
+                UiLogger.Log("程序行为", "标签拖动结束：标签=" + this.DescribeTab(tab) + " 判定结果=拖出为新窗口 结果=失败，该标签已不在标签列表中，未创建新窗口");
                 return;
             }
             // 从原窗口移除（内部会先关闭标签页），再创建新窗口挂载该标签并选中
@@ -721,6 +779,10 @@ public partial class MainWindow : Window
         {
             UiLogger.Log("程序行为", "标签拖动排序：" + this.DescribeTab(tab)
                 + " 开始序号=" + startIndex + " 结束序号=" + viewModel.Tabs.IndexOf(tab));
+        }
+        else
+        {
+            UiLogger.Log("程序行为", "标签拖动结束：" + this.DescribeTab(tab) + " 结果=本次拖动未发生换位也未拖出为新窗口，标签顺序保持不变");
         }
     }
 
@@ -856,6 +918,40 @@ public partial class MainWindow : Window
         {
             viewModel.AddTab(string.Empty);
             UiLogger.Log("导航行为", "点击徽标按钮：当前没有文件标签 结果=已新建文件标签并打开此电脑");
+        }
+    }
+
+    /// <summary>点击侧边栏「此电脑」标题：导航当前文件标签到此电脑根视图（无文件标签时自动新建）。</summary>
+    private void OnThisPcHeaderClick(object? sender, RoutedEventArgs e)
+    {
+        MainWindowViewModel? viewModel = this.ViewModel;
+        if (viewModel == null)
+        {
+            UiLogger.Log("导航行为", "点击侧边栏此电脑标题：当前没有可用的主窗口视图模型 结果=失败，未导航");
+            return;
+        }
+        FileTabViewModel? selectedFileTab = viewModel.SelectedFileTab;
+        string originalTitle = selectedFileTab == null ? "无文件标签" : selectedFileTab.Title;
+        string originalPath;
+        if (selectedFileTab == null)
+        {
+            originalPath = "未取到";
+        }
+        else
+        {
+            originalPath = selectedFileTab.CurrentPath.Length == 0 ? "此电脑" : selectedFileTab.CurrentPath;
+        }
+        this.OpenInFileTab(string.Empty);
+        FileTabViewModel? currentFileTab = this.ViewModel?.SelectedFileTab;
+        if (currentFileTab == null)
+        {
+            UiLogger.Log("导航行为", "点击侧边栏此电脑标题：原标签=" + originalTitle + " 原路径=" + originalPath + " 结果=失败，导航后仍未取到文件标签");
+        }
+        else
+        {
+            UiLogger.Log("导航行为", "点击侧边栏此电脑标题：原标签=" + originalTitle + " 原路径=" + originalPath
+                + " 现标签=" + currentFileTab.Title + " 现路径=此电脑 标签总数=" + this.ViewModel?.Tabs.Count
+                + " 结果=成功，已导航到此电脑根视图");
         }
     }
 
@@ -1107,6 +1203,329 @@ public partial class MainWindow : Window
             return;
         }
         viewModel.SelectedFileTab.OpenPath(path);
+    }
+
+    // ======== 窗口级拖放（与系统资源管理器互拖） ========
+
+    /// <summary>拖拽进入主窗口：立即按落点计算可放置效果并高亮。</summary>
+    private void OnWindowDragEnter(object? sender, DragEventArgs e)
+    {
+        this.ApplyWindowDropEffect(e);
+    }
+
+    /// <summary>拖拽在主窗口内移动：随落点变化刷新可放置效果与高亮。</summary>
+    private void OnWindowDragOver(object? sender, DragEventArgs e)
+    {
+        this.ApplyWindowDropEffect(e);
+    }
+
+    /// <summary>拖拽离开主窗口：指针确已越出窗口边界时清除落点高亮与日志去重键。</summary>
+    private void OnWindowDragLeave(object? sender, DragEventArgs e)
+    {
+        if (e.Handled)
+        {
+            return;
+        }
+        Point position = e.GetPosition(this);
+        if (position.X < 0 || position.Y < 0 || position.X > this.Bounds.Width || position.Y > this.Bounds.Height)
+        {
+            this.UpdateWindowDropHighlight(null);
+            this.windowDropLogKey = string.Empty;
+            UiLogger.Log("程序行为", "拖拽离开主窗口：离开位置=横坐标" + position.X + "、纵坐标" + position.Y + " 结果=已清除窗口级落点高亮与日志去重键");
+        }
+    }
+
+    /// <summary>拖拽放置：按落点执行导航或移动 / 复制，执行前清理高亮与日志去重键。</summary>
+    private void OnWindowDrop(object? sender, DragEventArgs e)
+    {
+        if (e.Handled)
+        {
+            return;
+        }
+        e.Handled = true;
+        WindowDropDecision decision = this.EvaluateWindowDrop(e);
+        e.DragEffects = decision.Effects;
+        this.UpdateWindowDropHighlight(null);
+        this.windowDropLogKey = string.Empty;
+        this.HandleWindowDrop(e, decision);
+    }
+
+    /// <summary>拖拽经过时统一处理：计算落点效果、刷新高亮，并按去重键记录落点经过日志。</summary>
+    private void ApplyWindowDropEffect(DragEventArgs e)
+    {
+        if (e.Handled)
+        {
+            this.UpdateWindowDropHighlight(null);
+            this.windowDropLogKey = string.Empty;
+            return;
+        }
+        e.Handled = true;
+        WindowDropDecision decision = this.EvaluateWindowDrop(e);
+        e.DragEffects = decision.Effects;
+        this.UpdateWindowDropHighlight(decision.RejectReason == null ? decision.Highlight : null);
+        string logKey = decision.DropKind + "|" + decision.TargetPath + "|" + (decision.RejectReason ?? string.Empty)
+            + "|" + FileDropPolicy.DescribeEffects(decision.Effects);
+        if (!string.Equals(logKey, this.windowDropLogKey, StringComparison.Ordinal))
+        {
+            this.windowDropLogKey = logKey;
+            UiLogger.Log("程序行为", "窗口拖拽经过落点：落点类型=" + decision.DropKind
+                + " 目标路径=" + decision.TargetPath
+                + " 拖放来源=" + (decision.IsInternalDrag ? "本程序发起" : "外部程序拖入")
+                + " 源条目数=" + decision.SourcePaths.Count
+                + " 源条目=" + string.Join("、", decision.SourcePaths)
+                + " 修饰键=" + FileDropPolicy.DescribeModifiers(e.KeyModifiers)
+                + " 效果=" + FileDropPolicy.DescribeEffects(decision.Effects)
+                + " 结果=" + (decision.RejectReason == null ? "允许在该落点放置" : "拒绝放置，原因：" + decision.RejectReason));
+        }
+    }
+
+    /// <summary>评估当前拖拽落点：识别落点控件与目标路径，判定导航或移动 / 复制效果，不可放置时给出拒绝原因。</summary>
+    private WindowDropDecision EvaluateWindowDrop(DragEventArgs e)
+    {
+        WindowDropDecision decision = new WindowDropDecision();
+        decision.SourcePaths = FileDropPolicy.CollectSourcePaths(e.DataTransfer, out decision.IsInternalDrag);
+        Visual? current = e.Source as Visual;
+        ListBoxItem? hitItem = null;
+        Button? quickAccessButton = null;
+        bool insideAddressBar = false;
+        while (current != null)
+        {
+            if (hitItem == null && current is ListBoxItem item)
+            {
+                hitItem = item;
+            }
+            if (quickAccessButton == null && current is Button button && button.DataContext is QuickAccessItem)
+            {
+                quickAccessButton = button;
+            }
+            if (!insideAddressBar && current == this.AddressBarBorder)
+            {
+                insideAddressBar = true;
+            }
+            current = current.GetVisualParent();
+        }
+        if (hitItem != null && IsInsideVisual(hitItem, this.TabStrip))
+        {
+            decision.DropKind = "标签";
+            decision.Highlight = hitItem;
+            decision.IsNavigate = true;
+            decision.NavigateTab = hitItem.DataContext as FileTabViewModel;
+        }
+        else if (hitItem != null && (IsInsideVisual(hitItem, this.PinnedNavList) || IsInsideVisual(hitItem, this.PcNavList)))
+        {
+            decision.DropKind = "左侧导航";
+            decision.Highlight = hitItem;
+            if (hitItem.DataContext is QuickAccessItem quickAccessItem)
+            {
+                decision.TargetPath = quickAccessItem.Path;
+            }
+        }
+        else if (quickAccessButton != null)
+        {
+            decision.DropKind = "书签";
+            decision.Highlight = quickAccessButton;
+            if (quickAccessButton.DataContext is QuickAccessItem quickAccessItem)
+            {
+                decision.TargetPath = quickAccessItem.Path;
+            }
+        }
+        else
+        {
+            if (!insideAddressBar)
+            {
+                decision.DropKind = "无可识别落点";
+                decision.RejectReason = "指针不在标签条、左侧导航、书签栏或地址栏上";
+                return decision;
+            }
+            decision.DropKind = "地址栏";
+            decision.Highlight = this.AddressEditArea;
+            decision.IsNavigate = true;
+            decision.NavigateTab = this.ViewModel?.SelectedFileTab;
+        }
+        if (decision.SourcePaths.Count == 0)
+        {
+            decision.RejectReason = "拖放内容中没有可用的本机路径";
+            return decision;
+        }
+        string localSourceError = FileDropPolicy.CheckLocalTargetSources(decision.SourcePaths);
+        if (localSourceError.Length > 0)
+        {
+            decision.RejectReason = localSourceError;
+            return decision;
+        }
+        if (decision.IsNavigate)
+        {
+            if (decision.NavigateTab == null)
+            {
+                decision.RejectReason = "当前没有可承载导航的文件标签";
+                return decision;
+            }
+            if (decision.NavigateTab.FileSystemProvider is not DefaultFileSystemProvider)
+            {
+                decision.RejectReason = "目标标签是压缩包或远程连接，不接收拖放导航";
+                return decision;
+            }
+            if (decision.DropKind == "标签")
+            {
+                // 标签落点只接收文件夹：逐个校验后取第一个源路径作为导航目标
+                foreach (string sourcePath in decision.SourcePaths)
+                {
+                    if (!Directory.Exists(sourcePath))
+                    {
+                        decision.RejectReason = "标签落点只接收文件夹，文件不能拖到标签上：" + sourcePath;
+                        return decision;
+                    }
+                }
+                decision.TargetPath = decision.SourcePaths[0];
+            }
+            else
+            {
+                string firstSourcePath = decision.SourcePaths[0];
+                if (Directory.Exists(firstSourcePath))
+                {
+                    decision.TargetPath = firstSourcePath;
+                }
+                else
+                {
+                    decision.TargetPath = Path.GetDirectoryName(firstSourcePath) ?? string.Empty;
+                }
+                if (string.IsNullOrEmpty(decision.TargetPath))
+                {
+                    decision.RejectReason = "取不到所拖条目所在的目录";
+                    return decision;
+                }
+            }
+            decision.Effects = DragDropEffects.Move;
+            return decision;
+        }
+        if (string.IsNullOrEmpty(decision.TargetPath))
+        {
+            decision.RejectReason = "导航项没有可用的路径";
+            return decision;
+        }
+        if (!Directory.Exists(decision.TargetPath))
+        {
+            decision.RejectReason = "目标目录不存在（此电脑等虚拟项、远程路径或文件书签）";
+            return decision;
+        }
+        FileTabViewModel? providerTab = this.ViewModel?.SelectedFileTab;
+        if (providerTab == null)
+        {
+            decision.RejectReason = "当前没有打开的文件标签，无法解析文件系统提供者";
+            return decision;
+        }
+        if (providerTab.FileSystemProvider is not DefaultFileSystemProvider)
+        {
+            decision.RejectReason = "当前标签是压缩包或远程连接，不能把条目移入导航目标";
+            return decision;
+        }
+        if (!FileDropPolicy.IsDropTargetValid(decision.SourcePaths, decision.TargetPath, true))
+        {
+            decision.RejectReason = "目标目录与源条目同目录，或位于源文件夹自身内部";
+            return decision;
+        }
+        decision.ProviderTab = providerTab;
+        decision.Effects = FileDropPolicy.ResolveEffects(decision.SourcePaths[0], decision.TargetPath, e.KeyModifiers);
+        return decision;
+    }
+
+    /// <summary>执行窗口拖放：导航型直接在承载标签打开路径，其余按效果走共用的路径传输并刷新目标目录标签。</summary>
+    private void HandleWindowDrop(DragEventArgs e, WindowDropDecision decision)
+    {
+        MainWindowViewModel? viewModel = this.ViewModel;
+        if (decision.RejectReason != null || viewModel == null)
+        {
+            UiLogger.Log("程序行为", "窗口拖放执行：落点类型=" + decision.DropKind
+                + " 目标路径=" + decision.TargetPath
+                + " 拖放来源=" + (decision.IsInternalDrag ? "本程序发起" : "外部程序拖入")
+                + " 源条目数=" + decision.SourcePaths.Count
+                + " 源条目=" + string.Join("、", decision.SourcePaths)
+                + " 修饰键=" + FileDropPolicy.DescribeModifiers(e.KeyModifiers)
+                + " 效果=" + FileDropPolicy.DescribeEffects(decision.Effects)
+                + " 结果=失败，本次拖放未执行，原因：" + (decision.RejectReason ?? "未找到主窗口视图模型"));
+            return;
+        }
+        if (decision.IsNavigate)
+        {
+            if (decision.NavigateTab == null)
+            {
+                UiLogger.Log("程序行为", "窗口拖放执行：落点类型=" + decision.DropKind + " 结果=失败，当前没有可承载导航的文件标签，本次拖放未执行");
+                return;
+            }
+            string targetPath = decision.TargetPath;
+            decision.NavigateTab.OpenPath(targetPath);
+            if (decision.IsInternalDrag)
+            {
+                FileDropPolicy.LastInternalDropAction = "导航";
+            }
+            UiLogger.Log("程序行为", "窗口拖放执行：落点类型=" + decision.DropKind
+                + " 动作=导航（只切换目录，不移动也不复制） 导航路径=" + targetPath
+                + " 承载标签=" + (decision.NavigateTab.Title.Length == 0 ? "此电脑" : decision.NavigateTab.Title)
+                + " 拖放来源=" + (decision.IsInternalDrag ? "本程序发起" : "外部程序拖入")
+                + " 源条目数=" + decision.SourcePaths.Count
+                + " 源条目=" + string.Join("、", decision.SourcePaths)
+                + " 结果=已在承载标签打开该路径，未移动或复制任何条目");
+            return;
+        }
+        if (decision.ProviderTab == null)
+        {
+            UiLogger.Log("程序行为", "窗口拖放执行：落点类型=" + decision.DropKind + " 目标路径=" + decision.TargetPath + " 结果=失败，当前没有用于解析提供者的文件标签，本次拖放未执行");
+            return;
+        }
+        bool isMove = (decision.Effects & DragDropEffects.Move) != 0;
+        int successCount = viewModel.TransferPathsToDirectory(decision.ProviderTab, decision.TargetPath, decision.SourcePaths, isMove, out int failedCount);
+        foreach (object tab in viewModel.Tabs)
+        {
+            if (tab is FileTabViewModel fileTab && FileDropPolicy.IsSameDirectory(fileTab.CurrentPath, decision.TargetPath))
+            {
+                fileTab.Refresh();
+            }
+        }
+        string actionName = isMove ? "移动" : "复制";
+        if (decision.IsInternalDrag)
+        {
+            FileDropPolicy.LastInternalDropAction = actionName;
+        }
+        decision.ProviderTab.ShowMessage("拖放完成（" + actionName + "）：目标=" + decision.TargetPath + " 成功 " + successCount + " 项，失败 " + failedCount + " 项");
+        UiLogger.Log("程序行为", "窗口拖放执行：落点类型=" + decision.DropKind
+            + " 动作=" + actionName
+            + " 目标路径=" + decision.TargetPath
+            + " 拖放来源=" + (decision.IsInternalDrag ? "本程序发起" : "外部程序拖入")
+            + " 源条目数=" + decision.SourcePaths.Count
+            + " 源条目=" + string.Join("、", decision.SourcePaths)
+            + " 修饰键=" + FileDropPolicy.DescribeModifiers(e.KeyModifiers)
+            + " 效果=" + FileDropPolicy.DescribeEffects(decision.Effects)
+            + " 成功条数=" + successCount + " 失败条数=" + failedCount
+            + " 结果=已执行，已刷新位于目标目录的标签并提示用户");
+    }
+
+    /// <summary>判断控件是否位于指定容器内部（含容器自身）。</summary>
+    private static bool IsInsideVisual(Visual source, Visual container)
+    {
+        Visual? current = source;
+        while (current != null)
+        {
+            if (current == container)
+            {
+                return true;
+            }
+            current = current.GetVisualParent();
+        }
+        return false;
+    }
+
+    /// <summary>更新窗口级落点高亮：离开旧控件去掉 droptarget 样式，进入新控件挂上样式。</summary>
+    private void UpdateWindowDropHighlight(Control? target)
+    {
+        if (this.windowDropHighlight != target)
+        {
+            if (this.windowDropHighlight != null)
+            {
+                this.windowDropHighlight.Classes.Remove("droptarget");
+            }
+            this.windowDropHighlight = target;
+            target?.Classes.Add("droptarget");
+        }
     }
 
     /// <summary>按当前路径同步侧边栏两组列表的选中高亮。</summary>
@@ -1456,7 +1875,7 @@ public partial class MainWindow : Window
             return;
         }
         UiLogger.Log("程序行为", "打开设置窗口");
-        SettingsWindow window = new SettingsWindow(viewModel.Settings);
+        SettingsWindow window = new SettingsWindow(viewModel.Settings, viewModel.SystemContextMenus);
         await window.ShowDialog(this);
         UiLogger.Log("程序行为", "设置窗口已关闭，开始应用设置");
         App current = (App)App.Current!;

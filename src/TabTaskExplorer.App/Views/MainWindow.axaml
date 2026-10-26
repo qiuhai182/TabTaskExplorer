@@ -10,6 +10,7 @@
         ExtendClientAreaToDecorationsHint="True"
         ExtendClientAreaTitleBarHeightHint="36"
         WindowDecorations="None"
+        DragDrop.AllowDrop="True"
         KeyDown="OnWindowKeyDown">
 
   <Window.Resources>
@@ -314,7 +315,7 @@
         <Button Classes="nav tool" FontFamily="{StaticResource IconFont}" Content="&#xE72A;" Click="OnForwardClick" ToolTip.Tip="前进" />
         <Button Classes="nav tool" FontFamily="{StaticResource IconFont}" Content="&#xE74A;" Click="OnUpClick" ToolTip.Tip="上一级" />
       </StackPanel>
-      <Border Grid.Column="1" Margin="6,0,0,0" Background="{DynamicResource ChromeBrush}" CornerRadius="3" MinHeight="30"
+      <Border Grid.Column="1" x:Name="AddressBarBorder" Margin="6,0,0,0" Background="{DynamicResource ChromeBrush}" CornerRadius="3" MinHeight="30"
               BorderBrush="{DynamicResource AddressBarBorderBrush}" BorderThickness="1">
         <Grid ColumnDefinitions="*,Auto,Auto,Auto">
           <Panel Grid.Column="0">
@@ -368,10 +369,13 @@
               </ListBox.ItemTemplate>
             </ListBox>
 
-            <StackPanel Orientation="Horizontal" Spacing="6" Margin="4,14,4,2">
-              <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE7F8;" Foreground="{DynamicResource AccentGlyphBrush}" VerticalAlignment="Center" />
-              <TextBlock Text="此电脑" FontWeight="Medium" Foreground="{DynamicResource AccentGlyphBrush}" VerticalAlignment="Center" />
-            </StackPanel>
+            <!-- 此电脑分组标题：点击即可导航到此电脑根视图 -->
+            <Button Classes="nav" HorizontalAlignment="Stretch" Margin="4,14,4,2" Click="OnThisPcHeaderClick" ToolTip.Tip="导航到此电脑">
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE7F8;" Foreground="{DynamicResource AccentGlyphBrush}" VerticalAlignment="Center" />
+                <TextBlock Text="此电脑" FontWeight="Medium" Foreground="{DynamicResource AccentGlyphBrush}" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
             <ListBox x:Name="PcNavList" ItemsSource="{Binding ThisPcItems}" SelectionMode="Single"
                      Background="Transparent" BorderThickness="0" SelectionChanged="OnNavSelectionChanged"
                      PointerReleased="OnNavPointerReleased">

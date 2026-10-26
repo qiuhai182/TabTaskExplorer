@@ -4,7 +4,7 @@ namespace TabTaskExplorer.Kernel.Abstractions;
 
 /// <summary>
 /// 进程详情与调节服务：按需查询单个进程的详情，按需设置优先级与 CPU 亲和性。
-/// Windows 平台在适配层实现；其他平台此能力留空（见 NullProcessDetailService）。
+/// Windows、Linux、macOS 各自在适配层给出有效实现（WindowsProcessDetailService / LinuxProcessDetailService / MacOSProcessDetailService）。
 /// </summary>
 public interface IProcessDetailService
 {

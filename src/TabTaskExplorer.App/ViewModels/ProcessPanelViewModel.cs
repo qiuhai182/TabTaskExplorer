@@ -16,7 +16,7 @@ namespace TabTaskExplorer.App.ViewModels;
 /// 进程监控标签：系统资源摘要 + 进程树列表 + 每进程处理器占用 + 详情与优先级 / 亲和性调节 + 资源走势图。
 /// 只有处在台前（被选中的标签）时才周期刷新，切走立即停止，保持最小资源占用。
 /// </summary>
-public class ProcessPanelViewModel : INotifyPropertyChanged
+public class ProcessPanelViewModel : INotifyPropertyChanged, IColumnWidthViewModel
 {
     /// <summary>走势图保留的采样点数：每 2 秒一个点，约两分钟的历史。</summary>
     private const int TrendCapacity = 60;
@@ -26,6 +26,8 @@ public class ProcessPanelViewModel : INotifyPropertyChanged
     private readonly IProcessDetailService detailService;
     private readonly ProcessCpuUsageTracker cpuUsageTracker = new ProcessCpuUsageTracker();
     private readonly DispatcherTimer refreshTimer;
+    // 进程表头列宽：仅本次运行内有效，重启后恢复默认列宽
+    private string columnWidths = string.Empty;
 
     /// <summary>走势图缓冲：系统处理器占用。</summary>
     private readonly List<double> systemCpuTrend = new List<double>();
@@ -61,7 +63,7 @@ public class ProcessPanelViewModel : INotifyPropertyChanged
         get { return "进程监控"; }
     }
 
-    /// <summary>顶部资源摘要：处理器占用、内存占用与进程数量。</summary>
+    /// <summary>顶部资源摘要：处理器占用、内存占用（已用与总量）、进程数、线程总数与句柄总数。</summary>
     public string ResourceText
     {
         get { return this.resourceText; }
@@ -136,6 +138,17 @@ public class ProcessPanelViewModel : INotifyPropertyChanged
         get { return this.sortAscending; }
     }
 
+    /// <summary>进程表头列宽（逗号分隔的像素值）：同时通知表头与行模板两处网格刷新。</summary>
+    public string ColumnWidths
+    {
+        get { return this.columnWidths; }
+        set
+        {
+            this.columnWidths = value ?? string.Empty;
+            this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ColumnWidths)));
+        }
+    }
+
     /// <summary>走势图数据变化时间：每次追加或清空走势图数据时更新，图表控件订阅属性变化后重绘。</summary>
     public DateTime TrendUpdatedAt
     {
@@ -189,6 +202,25 @@ public class ProcessPanelViewModel : INotifyPropertyChanged
 
     /// <inheritdoc />
     public event PropertyChangedEventHandler? PropertyChanged;
+
+    /// <summary>把拖动得到的全像素列宽应用到界面（表头与所有行同时生效）。</summary>
+    /// <param name="widths">按列序号排列的列宽，单位像素。</param>
+    public void ApplyColumnWidths(double[] widths)
+    {
+        this.ColumnWidths = ColumnResize.FormatWidths(widths);
+    }
+
+    /// <summary>拖动结束后记录一条包含视图名与全部列宽的纯中文日志。</summary>
+    public void LogColumnWidths()
+    {
+        if (this.columnWidths.Length == 0)
+        {
+            UiLogger.Log("进程监控", "表头列宽拖动结束：本次没有产生列宽变化，仍为默认列宽");
+            return;
+        }
+        string[] parts = this.columnWidths.Split(',');
+        UiLogger.Log("进程监控", "表头列宽拖动完成：列数=" + parts.Length + " 调整后列宽=" + this.columnWidths + "像素 列宽仅本次运行有效，重启后恢复默认列宽");
+    }
 
     public ProcessPanelViewModel(
         ProcessSampleService sampleService,
@@ -626,13 +658,30 @@ public class ProcessPanelViewModel : INotifyPropertyChanged
         SystemSnapshot snapshot = sample.Snapshot;
 
         double memoryUsedPercent = 0;
+        long memoryUsedBytes = 0;
         if (snapshot.MemoryTotalBytes > 0)
         {
-            long memoryUsedBytes = snapshot.MemoryTotalBytes - snapshot.MemoryAvailableBytes;
+            memoryUsedBytes = snapshot.MemoryTotalBytes - snapshot.MemoryAvailableBytes;
             memoryUsedPercent = Math.Round(100.0 * memoryUsedBytes / snapshot.MemoryTotalBytes, 1);
         }
 
-        this.ResourceText = "处理器占用 " + snapshot.CpuUsagePercent + "%，内存占用 " + memoryUsedPercent + "%，进程数 " + sample.Processes.Count;
+        // 顶部总览指标：全部进程的线程总数与句柄总数（与进程数一起汇总展示）
+        int threadTotal = 0;
+        long handleTotal = 0;
+        foreach (ProcessInfo process in sample.Processes)
+        {
+            threadTotal += process.ThreadCount;
+            handleTotal += process.HandleCount;
+        }
+
+        if (snapshot.MemoryTotalBytes > 0)
+        {
+            this.ResourceText = "处理器占用 " + snapshot.CpuUsagePercent + "%，内存 " + FormatMemory(memoryUsedBytes) + " / " + FormatMemory(snapshot.MemoryTotalBytes) + "（已用 " + memoryUsedPercent + "%），进程数 " + sample.Processes.Count + "，线程总数 " + threadTotal + "，句柄总数 " + handleTotal;
+        }
+        else
+        {
+            this.ResourceText = "处理器占用 " + snapshot.CpuUsagePercent + "%，进程数 " + sample.Processes.Count + "，线程总数 " + threadTotal + "，句柄总数 " + handleTotal;
+        }
 
         // 每进程处理器占用：相邻两次采样的累计处理器时间差分（首轮只有基线，显示占位横杠）
         IReadOnlyDictionary<int, double> cpuUsageByProcessId =
@@ -665,6 +714,15 @@ public class ProcessPanelViewModel : INotifyPropertyChanged
             row.MemoryBytes = info.MemoryBytes;
             row.MemoryText = (info.MemoryBytes / 1024.0 / 1024.0).ToString("F1") + " MB";
             row.WindowTitle = info.WindowTitle;
+            // 进程详情列：用户 / 线程 / 句柄 / 优先级 / 读写流量 / 启动时间 / 命令行，读不到时显示占位横杠
+            row.UserNameText = FormatAccessText(info.UserName, info.IsAccessDenied);
+            row.ThreadText = info.ThreadCount > 0 ? info.ThreadCount.ToString() : "—";
+            row.HandleText = info.HandleCount > 0 ? info.HandleCount.ToString() : "—";
+            row.PriorityText = info.PriorityLevel.HasValue ? PriorityLevelName(info.PriorityLevel.Value) : "—";
+            long ioBytes = CalculateIoBytes(info);
+            row.IoText = ioBytes >= 0 ? (ioBytes / 1024.0 / 1024.0).ToString("F1") + " MB" : "—";
+            row.StartTimeText = info.StartTime.HasValue ? info.StartTime.Value.ToString("yyyy-MM-dd HH:mm") : "—";
+            row.CommandLineText = FormatAccessText(info.CommandLine, info.IsAccessDenied);
             builtRows.Add(row);
             if (keepProcessId.HasValue && info.ProcessId == keepProcessId.Value)
             {
@@ -841,6 +899,36 @@ public class ProcessPanelViewModel : INotifyPropertyChanged
         return result;
     }
 
+    /// <summary>把字节数格式化成 GB 显示文字（保留 1 位小数），顶部资源摘要使用。</summary>
+    private static string FormatMemory(long bytes)
+    {
+        return (bytes / 1024.0 / 1024.0 / 1024.0).ToString("F1") + " GB";
+    }
+
+    /// <summary>取读取到的文本值；为空时按权限状态返回"无权限"或占位横杠。</summary>
+    private static string FormatAccessText(string value, bool isAccessDenied)
+    {
+        if (!string.IsNullOrEmpty(value))
+        {
+            return value;
+        }
+        return isAccessDenied ? "无权限" : "—";
+    }
+
+    /// <summary>累计读写物理 I/O 字节数；读写两项都取不到时返回 -1 表示无法统计。</summary>
+    private static long CalculateIoBytes(ProcessInfo info)
+    {
+        bool hasRead = info.ReadIoBytes >= 0;
+        bool hasWrite = info.WriteIoBytes >= 0;
+        if (!hasRead && !hasWrite)
+        {
+            return -1;
+        }
+        long readBytes = hasRead ? info.ReadIoBytes : 0;
+        long writeBytes = hasWrite ? info.WriteIoBytes : 0;
+        return readBytes + writeBytes;
+    }
+
     /// <summary>优先级档位的显示名称（与优先级下拉框的选项文字一致）。</summary>
     public static string PriorityLevelName(ProcessPriorityLevel level)
     {
@@ -918,4 +1006,25 @@ public class ProcessRow
 
     /// <summary>主窗口标题。</summary>
     public string WindowTitle { get; set; } = string.Empty;
+
+    /// <summary>进程所属用户；读取失败时按权限状态为空、"无权限"或占位横杠。</summary>
+    public string UserNameText { get; set; } = string.Empty;
+
+    /// <summary>线程数的显示文字（读取不到时为占位横杠）。</summary>
+    public string ThreadText { get; set; } = "—";
+
+    /// <summary>句柄数的显示文字（读取不到时为占位横杠）。</summary>
+    public string HandleText { get; set; } = "—";
+
+    /// <summary>优先级档位的显示文字（读取不到时为占位横杠）。</summary>
+    public string PriorityText { get; set; } = "—";
+
+    /// <summary>累计读写物理 I/O 字节数的显示文字（无法统计时为占位横杠）。</summary>
+    public string IoText { get; set; } = "—";
+
+    /// <summary>启动时间的显示文字（读取不到时为占位横杠）。</summary>
+    public string StartTimeText { get; set; } = "—";
+
+    /// <summary>启动命令行；读取失败时按权限状态为空、"无权限"或占位横杠。</summary>
+    public string CommandLineText { get; set; } = "—";
 }

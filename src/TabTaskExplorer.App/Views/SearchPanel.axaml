@@ -1,5 +1,6 @@
 ﻿<UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:svc="using:TabTaskExplorer.App.Services"
              x:Class="TabTaskExplorer.App.Views.SearchPanel">
 
   <Grid RowDefinitions="Auto,Auto,*,Auto" Margin="8">
@@ -12,8 +13,16 @@
               IsEnabled="{Binding !IsSearching}" ToolTip.Tip="执行全局搜索" />
     </StackPanel>
 
-    <!-- 表头：与结果行同列结构，点击按该列排序 -->
-    <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto,Auto" Margin="2,0,2,4">
+    <!-- 表头：与结果行同列结构，点击按该列排序；星号名称列设上限，窗口过宽时右侧留白；拖动列边界调整列宽 -->
+    <Grid Grid.Row="1" Margin="2,0,2,4"
+          svc:ColumnResize.Enabled="True"
+          svc:ColumnResize.Widths="{Binding ColumnWidths}">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="Auto" />
+        <ColumnDefinition Width="*" MaxWidth="560" />
+        <ColumnDefinition Width="Auto" />
+        <ColumnDefinition Width="Auto" />
+      </Grid.ColumnDefinitions>
       <TextBlock Grid.Column="0" Width="21" FontSize="13" Margin="0,0,8,0" />
       <Button Grid.Column="1" Tag="Name" Click="OnSortClick" FontWeight="Medium" HorizontalAlignment="Left" Background="Transparent" Foreground="{DynamicResource TextMutedBrush}">
         <StackPanel Orientation="Horizontal">
@@ -47,7 +56,15 @@
                 <MenuItem Header="复制路径" Click="OnMenuCopyPathClick" />
               </ContextMenu>
             </Border.ContextMenu>
-            <Grid ColumnDefinitions="Auto,*,Auto,Auto" Margin="2,3" ToolTip.Tip="{Binding FullPath}">
+            <!-- 列定义与表头一致：星号名称列设上限，列宽拖动结果经附加属性同步到所有结果行 -->
+            <Grid Margin="2,3" ToolTip.Tip="{Binding FullPath}"
+                  svc:ColumnResize.Widths="{Binding DataContext.ColumnWidths, RelativeSource={RelativeSource AncestorType=ListBox}}">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" MaxWidth="560" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+              </Grid.ColumnDefinitions>
               <TextBlock Grid.Column="0" FontFamily="Segoe MDL2 Assets, Segoe Fluent Icons"
                          Text="{Binding IconGlyph}" Foreground="{Binding IconColor}"
                          FontSize="13" VerticalAlignment="Center" Margin="0,0,8,0" />

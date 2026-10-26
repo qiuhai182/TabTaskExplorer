@@ -1,6 +1,7 @@
 ﻿<UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:conv="using:Avalonia.Data.Converters"
+             xmlns:svc="using:TabTaskExplorer.App.Services"
              x:Class="TabTaskExplorer.App.Views.FileListPanel"
              Loaded="OnPanelLoaded">
 
@@ -10,9 +11,30 @@
     <!-- 列表区与信息窗格 -->
     <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="8,4,8,0">
 
-      <!-- 列表：双击空白处返回上一级 -->
+      <!-- 列表：双击空白处返回上一级，右键空白处弹出空白处菜单（右键条目时由条目自身菜单接管） -->
       <Grid Grid.Column="0" RowDefinitions="Auto,*" DoubleTapped="OnListBackgroundDoubleTapped">
-        <Grid Grid.Row="0" ColumnDefinitions="30,26,3*,140,130,110" Margin="0,0,12,4" IsVisible="{Binding IsDetailsLayout}">
+        <Grid.ContextMenu>
+          <ContextMenu Opening="OnBackgroundMenuOpening">
+            <MenuItem Header="刷新" Tag="MenuRefresh" Click="OnBackgroundRefreshClick" />
+            <MenuItem Header="返回上一级" Tag="MenuNavigateUp" Click="OnBackgroundNavigateUpClick" />
+            <MenuItem Header="粘贴" Tag="MenuPaste" Click="OnBackgroundPasteClick" />
+            <MenuItem Header="新建文件夹…" Tag="MenuNewFolder" Click="OnBackgroundNewFolderClick" />
+            <Separator />
+            <MenuItem Header="系统菜单项" IsVisible="False" Tag="SystemMenuItemsHost" />
+          </ContextMenu>
+        </Grid.ContextMenu>
+        <!-- 表头：星号名称列设上限，窗口过宽时右侧留白；启用列宽拖动，拖动结果经 ColumnWidths 同步到所有行 -->
+        <Grid Grid.Row="0" Margin="0,0,12,4" IsVisible="{Binding IsDetailsLayout}"
+              svc:ColumnResize.Enabled="True"
+              svc:ColumnResize.Widths="{Binding ColumnWidths}">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="30" />
+            <ColumnDefinition Width="26" />
+            <ColumnDefinition Width="3*" MaxWidth="560" />
+            <ColumnDefinition Width="140" />
+            <ColumnDefinition Width="130" />
+            <ColumnDefinition Width="110" />
+          </Grid.ColumnDefinitions>
           <TextBlock Grid.Column="0" />
           <TextBlock Grid.Column="1" />
           <Button Grid.Column="2" Tag="Name" Click="OnSortClick" FontWeight="Medium" HorizontalAlignment="Left" Background="Transparent" Foreground="{DynamicResource TextMutedBrush}">
@@ -40,8 +62,10 @@
             </StackPanel>
           </Button>
         </Grid>
-        <ScrollViewer Grid.Row="1">
-          <StackPanel>
+        <!-- 列表区：ListBox 直接占 star 行由自身滚动（与磁盘视图一致）。
+             若用外层 ScrollViewer + StackPanel 包裹，ListBox 内部 ScrollViewer 视口被撑到内容全高，
+             它会吞掉滚轮事件却无处可滚，外层也收不到滚轮，导致文件夹视图无法滚动；同时虚拟化也会失效。 -->
+        <Panel Grid.Row="1" x:Name="ListHost">
             <!-- 详细信息视图：ListBox 自带虚拟化，大目录也流畅 -->
             <ListBox x:Name="RowList" ItemsSource="{Binding VisibleRows}" IsVisible="{Binding IsRowStyleLayout}"
                      SelectionMode="Single" Background="Transparent" Padding="0" BorderThickness="0">
@@ -54,9 +78,10 @@
               </ListBox.ItemContainerTheme>
               <ListBox.ItemTemplate>
                 <DataTemplate>
-                  <Border Classes="row" Classes.checked="{Binding IsSelected, Mode=TwoWay}" DoubleTapped="OnRowDoubleTapped" Background="Transparent" Padding="2,3">
+                  <!-- 背景由 App.axaml 的 Border.row 系列样式提供：本地直接写 Background 会压过悬停、选中与拖放高亮样式 -->
+                  <Border Classes="row" Classes.checked="{Binding IsSelected, Mode=TwoWay}" DoubleTapped="OnRowDoubleTapped" Padding="2,3">
                     <Border.ContextMenu>
-                      <ContextMenu>
+                      <ContextMenu Opening="OnSystemMenuOpening">
                         <MenuItem Header="打开" Click="OnMenuOpenClick" />
                         <MenuItem Header="在新标签打开" Click="OnMenuOpenInNewTabClick" />
                         <MenuItem Header="复制" Click="OnMenuCopyClick" />
@@ -66,9 +91,20 @@
                         <MenuItem Header="重命名" Click="OnMenuRenameClick" />
                         <MenuItem Header="修改权限" Click="OnMenuChangePermissionsClick" />
                         <MenuItem Header="删除" Click="OnMenuDeleteClick" />
+                        <Separator />
+                        <MenuItem Header="系统菜单项" IsVisible="False" Tag="SystemMenuItemsHost" />
                       </ContextMenu>
                     </Border.ContextMenu>
-                    <Grid ColumnDefinitions="30,26,3*,140,130,110">
+                    <!-- 列定义与表头一致：星号名称列设上限避免窗口过宽时被拉满，列宽拖动结果经附加属性同步 -->
+                    <Grid svc:ColumnResize.Widths="{Binding DataContext.ColumnWidths, RelativeSource={RelativeSource AncestorType=ListBox}}">
+                      <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="30" />
+                        <ColumnDefinition Width="26" />
+                        <ColumnDefinition Width="3*" MaxWidth="560" />
+                        <ColumnDefinition Width="140" />
+                        <ColumnDefinition Width="130" />
+                        <ColumnDefinition Width="110" />
+                      </Grid.ColumnDefinitions>
                       <CheckBox Grid.Column="0" IsChecked="{Binding IsSelected, Mode=TwoWay}" Click="OnRowCheckChanged" />
                       <TextBlock Grid.Column="1" FontFamily="Segoe MDL2 Assets, Segoe Fluent Icons" Text="{Binding IconGlyph}" Foreground="{Binding IconColor}" FontSize="13" VerticalAlignment="Center" />
                       <TextBlock Grid.Column="2" Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
@@ -83,27 +119,31 @@
                 </DataTemplate>
               </ListBox.ItemTemplate>
             </ListBox>
-            <!-- 图标视图（大图标 / 中图标） -->
-            <ScrollViewer IsVisible="{Binding IsIconsLayout}">
-              <ItemsControl ItemsSource="{Binding VisibleRows}" Margin="0,0,12,0">
-                <ItemsControl.ItemsPanel>
-                  <ItemsPanelTemplate>
-                    <WrapPanel />
-                  </ItemsPanelTemplate>
-                </ItemsControl.ItemsPanel>
-                <ItemsControl.ItemTemplate>
-                  <DataTemplate>
+            <!-- 图标视图（大图标 / 中图标）：与详细信息视图同样使用 ListBox，保证鼠标悬停预变色与点击选中高亮行为一致 -->
+            <ListBox x:Name="TileList" ItemsSource="{Binding VisibleRows}" IsVisible="{Binding IsIconsLayout}"
+                     SelectionMode="Single" Background="Transparent" Padding="0" BorderThickness="0" Margin="0,0,12,0">
+              <ListBox.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <WrapPanel />
+                </ItemsPanelTemplate>
+              </ListBox.ItemsPanel>
+              <ListBox.ItemTemplate>
+                <DataTemplate>
                     <Border Classes="tile" Classes.checked="{Binding IsSelected, Mode=TwoWay}" Width="{Binding $parent[ItemsControl].DataContext.TileWidth}" DoubleTapped="OnRowDoubleTapped"
-                            Background="Transparent" Margin="4" Padding="6" HorizontalAlignment="Left">
+                            Margin="4" Padding="6" HorizontalAlignment="Left">
                       <Border.ContextMenu>
-                        <ContextMenu>
+                        <ContextMenu Opening="OnSystemMenuOpening">
                           <MenuItem Header="打开" Click="OnMenuOpenClick" />
                           <MenuItem Header="在新标签打开" Click="OnMenuOpenInNewTabClick" />
                           <MenuItem Header="复制" Click="OnMenuCopyClick" />
                           <MenuItem Header="剪切" Click="OnMenuCutClick" />
+                          <MenuItem Header="压缩为…" Click="OnMenuCompressClick" />
+                          <MenuItem Header="解压到…" Click="OnMenuExtractClick" />
                           <MenuItem Header="重命名" Click="OnMenuRenameClick" />
                           <MenuItem Header="修改权限" Click="OnMenuChangePermissionsClick" />
                           <MenuItem Header="删除" Click="OnMenuDeleteClick" />
+                          <Separator />
+                          <MenuItem Header="系统菜单项" IsVisible="False" Tag="SystemMenuItemsHost" />
                         </ContextMenu>
                       </Border.ContextMenu>
                       <StackPanel Spacing="4">
@@ -116,11 +156,9 @@
                       </StackPanel>
                     </Border>
                   </DataTemplate>
-                </ItemsControl.ItemTemplate>
-              </ItemsControl>
-            </ScrollViewer>
-          </StackPanel>
-        </ScrollViewer>
+                </ListBox.ItemTemplate>
+            </ListBox>
+        </Panel>
       </Grid>
 
       <!-- 信息窗格 -->

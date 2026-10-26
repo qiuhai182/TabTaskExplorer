@@ -114,6 +114,53 @@ public class ProcessPanelFeatureTests
         Assert.Empty(result);
     }
 
+    /// <summary>首轮采样时进程已启动：用累计处理器时间除以存活时长估算出非零占用。</summary>
+    [Fact]
+    public void 占用计算首轮按启动时间估算出非零结果()
+    {
+        ProcessCpuUsageTracker tracker = new ProcessCpuUsageTracker();
+        DateTime sampleTime = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+
+        // 已运行 100 秒的进程累计占用 4 秒处理器时间，单核折算为 4%
+        ProcessInfo process = MakeProcess(1, 0, 40000000L);
+        process.StartTime = sampleTime.AddSeconds(-100);
+
+        IReadOnlyDictionary<int, double> result = tracker.Update(new List<ProcessInfo> { process }, sampleTime, 4);
+
+        Assert.True(result.ContainsKey(1));
+        Assert.Equal(1.0, result[1], 1);
+    }
+
+    /// <summary>首轮采样时启动时间未知：无法估算存活时长，不产生占用结果。</summary>
+    [Fact]
+    public void 占用计算首轮启动时间未知时不产生结果()
+    {
+        ProcessCpuUsageTracker tracker = new ProcessCpuUsageTracker();
+        DateTime sampleTime = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+
+        ProcessInfo process = MakeProcess(1, 0, 40000000L);
+        process.StartTime = null;
+
+        IReadOnlyDictionary<int, double> result = tracker.Update(new List<ProcessInfo> { process }, sampleTime, 4);
+
+        Assert.Empty(result);
+    }
+
+    /// <summary>首轮采样时启动时间晚于采样时间：存活时长为负数属异常数据，不产生占用结果。</summary>
+    [Fact]
+    public void 占用计算首轮启动时间晚于采样时间不产生结果()
+    {
+        ProcessCpuUsageTracker tracker = new ProcessCpuUsageTracker();
+        DateTime sampleTime = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+
+        ProcessInfo process = MakeProcess(1, 0, 40000000L);
+        process.StartTime = sampleTime.AddSeconds(10);
+
+        IReadOnlyDictionary<int, double> result = tracker.Update(new List<ProcessInfo> { process }, sampleTime, 4);
+
+        Assert.Empty(result);
+    }
+
     /// <summary>第二轮按累计处理器时间差计算：0.4 秒处理器时间 / 2 秒墙钟 / 4 核 = 5%。</summary>
     [Fact]
     public void 占用计算按时间差除以墙钟与核心数()

@@ -4,6 +4,8 @@ using System.Collections.ObjectModel;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using TabTaskExplorer.App.Services;
+using TabTaskExplorer.Kernel.Abstractions;
+using TabTaskExplorer.Kernel.Models;
 using TabTaskExplorer.Kernel.Services;
 
 namespace TabTaskExplorer.App.Views;
@@ -11,6 +13,28 @@ namespace TabTaskExplorer.App.Views;
 /// <summary>设置窗口：模仿 TabX Explorer 设置中心的分页布局。</summary>
 public partial class SettingsWindow : Window
 {
+    /// <summary>右键菜单分页的一行数据：显示名、注册表路径、状态角标与启停开关。</summary>
+    private sealed class SystemMenuRow
+    {
+        /// <summary>菜单项显示名称。</summary>
+        public string Name { get; set; } = string.Empty;
+
+        /// <summary>完整注册表路径，用于界面展示与日志记录。</summary>
+        public string PathText { get; set; } = string.Empty;
+
+        /// <summary>状态角标文字：只读、需管理员、系统项、已启用或已禁用。</summary>
+        public string BadgeText { get; set; } = string.Empty;
+
+        /// <summary>开关是否可操作：只读条目不可启停。</summary>
+        public bool CanToggle { get; set; }
+
+        /// <summary>开关当前勾选状态，对应菜单项是否已启用。</summary>
+        public bool ToggleOn { get; set; }
+
+        /// <summary>对应的系统右键菜单条目，启停时用于写回注册表。</summary>
+        public SystemContextMenuEntry Entry { get; set; } = null!;
+    }
+
     private readonly ObservableCollection<FileOpenRule> openRules = new ObservableCollection<FileOpenRule>();
 
     // 网页端配置的编辑副本：窗口内改动只作用于副本，点击确定后才写回共享设置
@@ -24,6 +48,17 @@ public partial class SettingsWindow : Window
     private bool suppressWebSelection;
     private bool loadingWebFields;
 
+    // 系统右键菜单服务：由打开设置窗口一方注入，平台不支持时该分页只展示不支持提示
+    private readonly ISystemContextMenuService? systemContextMenus;
+    // 右键菜单分页的行数据，随筛选条件一起重建
+    private readonly ObservableCollection<SystemMenuRow> systemMenuRows = new ObservableCollection<SystemMenuRow>();
+    // 分页说明文字的初始内容：切到“不支持”提示后，下次加载时按此还原
+    private string rightMenuIntroText = string.Empty;
+    // 是否已完成首次加载，避免每次切回该分页都重新扫描
+    private bool systemMenuLoaded;
+    // 填充列表期间屏蔽开关事件，避免回填勾选状态被当成用户启停操作
+    private bool suppressSystemMenuToggle;
+
     public SettingsWindow()
     {
         this.InitializeComponent();
@@ -32,13 +67,16 @@ public partial class SettingsWindow : Window
         this.WebPortList.ItemsSource = this.webPortLabels;
         this.WebProfileList.ItemsSource = this.webProfileLabels;
         this.WebProfileBox.ItemsSource = this.webProfileChoices;
+        this.RightMenuList.ItemsSource = this.systemMenuRows;
+        this.rightMenuIntroText = this.RightMenuIntroText.Text ?? string.Empty;
         // 选中第一项必须在 XAML 初始化完成后进行：初始化阶段各分页容器尚未创建，此时触发分页切换会取到空引用
         this.SectionList.SelectedIndex = 0;
     }
 
-    /// <summary>绑定共享设置对象：改动即时生效，点确定保存到磁盘。</summary>
-    public SettingsWindow(AppSettings settings) : this()
+    /// <summary>绑定共享设置对象与系统右键菜单服务：改动即时生效，点确定保存到磁盘。</summary>
+    public SettingsWindow(AppSettings settings, ISystemContextMenuService systemContextMenus) : this()
     {
+        this.systemContextMenus = systemContextMenus;
         this.DataContext = settings;
         this.EditorFontSizeBox.Text = settings.EditorFontSize.ToString();
         this.EditorTabWidthBox.Text = settings.EditorTabWidth.ToString();
@@ -63,7 +101,7 @@ public partial class SettingsWindow : Window
         // XAML 初始化时 ListBox 会因第一项 IsSelected="True" 触发本事件，此时各分页容器尚未创建，直接跳过
         if (this.BasicPage == null || this.MousePage == null || this.FilePage == null
             || this.EditorPage == null || this.OpenWithPage == null
-            || this.WebPage == null || this.AboutPage == null)
+            || this.WebPage == null || this.RightMenuPage == null || this.AboutPage == null)
         {
             UiLogger.Log("设置窗口", "分页切换：初始化阶段分页容器尚未创建，跳过 index=" + index);
             return;
@@ -75,7 +113,16 @@ public partial class SettingsWindow : Window
         this.EditorPage.IsVisible = index == 3;
         this.OpenWithPage.IsVisible = index == 4;
         this.WebPage.IsVisible = index == 5;
-        this.AboutPage.IsVisible = index == 6;
+        this.RightMenuPage.IsVisible = index == 6;
+        this.AboutPage.IsVisible = index == 7;
+        if (index == 6 && !this.systemMenuLoaded)
+        {
+            this.LoadSystemMenuList();
+            UiLogger.Log("设置窗口", "分页切换：index=6 分组=" + this.GetSelectedGroupText()
+                + " 状态=" + this.GetSelectedStatusText()
+                + " 搜索词=" + this.GetSearchText()
+                + " 结果=成功，已首次加载系统右键菜单项列表");
+        }
     }
 
     /// <summary>新增一条按类型打开规则，并选中等待填写扩展名。</summary>
@@ -752,6 +799,275 @@ public partial class SettingsWindow : Window
             return string.Empty;
         }
         return string.Join(Environment.NewLine, values);
+    }
+
+    /// <summary>按当前分组、状态与搜索词重新填充右键菜单列表，返回填充条数。</summary>
+    private int LoadSystemMenuList()
+    {
+        if (this.RightMenuList == null || this.RightMenuEmptyText == null || this.RightMenuIntroText == null)
+        {
+            UiLogger.Log("设置窗口", "加载系统右键菜单项：分页控件尚未创建 结果=失败，未加载列表");
+            return 0;
+        }
+        this.suppressSystemMenuToggle = true;
+        try
+        {
+            this.systemMenuRows.Clear();
+            if (this.systemContextMenus == null || !this.systemContextMenus.IsSupported)
+            {
+                this.RightMenuIntroText.Text = "当前系统不支持系统右键菜单管理";
+                this.RightMenuEmptyText.IsVisible = false;
+                this.systemMenuLoaded = true;
+                UiLogger.Log("设置窗口", "加载系统右键菜单项：分组=" + this.GetSelectedGroupText()
+                    + " 状态=" + this.GetSelectedStatusText()
+                    + " 搜索词=" + this.GetSearchText()
+                    + " 条目总数=0 结果条数=0 结果=当前系统不支持系统右键菜单管理，列表已清空");
+                return 0;
+            }
+            this.RightMenuIntroText.Text = this.rightMenuIntroText;
+            SystemMenuGroup? selectedGroup = this.GetSelectedGroup();
+            int statusIndex = this.RightMenuStatusBox != null ? this.RightMenuStatusBox.SelectedIndex : 0;
+            string searchText = this.GetSearchText();
+            IReadOnlyList<SystemContextMenuEntry> allEntries = this.systemContextMenus.Enumerate();
+            foreach (SystemContextMenuEntry entry in allEntries)
+            {
+                // 分组、状态、名称三重筛选：Win11 新版菜单组只读展示，不受状态筛选影响
+                if ((!selectedGroup.HasValue || entry.Group == selectedGroup.Value)
+                    && (entry.Group == SystemMenuGroup.ModernMenu || statusIndex != 1 || entry.IsEnabled)
+                    && (entry.Group == SystemMenuGroup.ModernMenu || statusIndex != 2 || !entry.IsEnabled)
+                    && (searchText.Length <= 0 || entry.DisplayName.Contains(searchText, StringComparison.OrdinalIgnoreCase)))
+                {
+                    this.systemMenuRows.Add(CreateSystemMenuRow(entry));
+                }
+            }
+            this.RightMenuEmptyText.IsVisible = this.systemMenuRows.Count == 0;
+            this.systemMenuLoaded = true;
+            UiLogger.Log("设置窗口", "加载系统右键菜单项：分组=" + this.GetSelectedGroupText()
+                + " 状态=" + this.GetSelectedStatusText()
+                + " 搜索词=" + searchText
+                + " 条目总数=" + allEntries.Count
+                + " 结果条数=" + this.systemMenuRows.Count
+                + " 结果=成功，已按筛选条件重排列表");
+            return this.systemMenuRows.Count;
+        }
+        finally
+        {
+            this.suppressSystemMenuToggle = false;
+        }
+    }
+
+    /// <summary>把一条系统右键菜单条目转换成列表行数据：名称、注册表路径、状态角标与开关状态。</summary>
+    private static SystemMenuRow CreateSystemMenuRow(SystemContextMenuEntry entry)
+    {
+        SystemMenuRow row = new SystemMenuRow();
+        row.Name = entry.DisplayName;
+        row.PathText = entry.RegistryPath;
+        if (entry.IsReadOnly)
+        {
+            row.BadgeText = "只读";
+        }
+        else if (entry.RequiresAdministrator)
+        {
+            row.BadgeText = "需管理员";
+        }
+        else if (entry.IsSystemItem)
+        {
+            row.BadgeText = "系统项";
+        }
+        else
+        {
+            row.BadgeText = entry.IsEnabled ? "已启用" : "已禁用";
+        }
+        row.CanToggle = !entry.IsReadOnly;
+        row.ToggleOn = entry.IsEnabled;
+        row.Entry = entry;
+        return row;
+    }
+
+    /// <summary>取分组下拉框当前选中的分组；选中「全部」或控件未创建时返回空，表示不限分组。</summary>
+    private SystemMenuGroup? GetSelectedGroup()
+    {
+        if (this.RightMenuGroupBox == null)
+        {
+            return null;
+        }
+        return this.RightMenuGroupBox.SelectedIndex switch
+        {
+            1 => (SystemMenuGroup?)SystemMenuGroup.FileContext,
+            2 => (SystemMenuGroup?)SystemMenuGroup.DesktopContext,
+            3 => (SystemMenuGroup?)SystemMenuGroup.ShellNew,
+            4 => (SystemMenuGroup?)SystemMenuGroup.ModernMenu,
+            _ => null,
+        };
+    }
+
+    /// <summary>取分组下拉框当前选中项的文字，用于日志；取不到时按「全部」记录。</summary>
+    private string GetSelectedGroupText()
+    {
+        if (this.RightMenuGroupBox != null && this.RightMenuGroupBox.SelectedItem is ComboBoxItem { Content: string content })
+        {
+            return content;
+        }
+        return "全部";
+    }
+
+    /// <summary>取状态下拉框当前选中项的文字，用于日志；取不到时按「全部」记录。</summary>
+    private string GetSelectedStatusText()
+    {
+        if (this.RightMenuStatusBox != null && this.RightMenuStatusBox.SelectedItem is ComboBoxItem { Content: string content })
+        {
+            return content;
+        }
+        return "全部";
+    }
+
+    /// <summary>取搜索框当前关键字；控件未创建或未输入时返回空串，表示不按名称过滤。</summary>
+    private string GetSearchText()
+    {
+        if (this.RightMenuSearchBox == null)
+        {
+            return string.Empty;
+        }
+        return this.RightMenuSearchBox.Text ?? string.Empty;
+    }
+
+    /// <summary>判断右键菜单分页是否已创建并完成首次加载：未就绪时记录日志并拒绝重新筛选。</summary>
+    private bool CanReselectSystemMenus(string sourceName)
+    {
+        if (this.RightMenuList == null || this.RightMenuGroupBox == null || this.RightMenuStatusBox == null
+            || !this.systemMenuLoaded)
+        {
+            UiLogger.Log("设置窗口", sourceName + "：右键菜单分页尚未创建或尚未加载 结果=失败，未重新筛选列表");
+            return false;
+        }
+        return true;
+    }
+
+    /// <summary>点击刷新：丢弃缓存重新扫描系统右键菜单项，并按当前筛选条件重排列表。</summary>
+    private void OnRightMenuRefreshClick(object? sender, RoutedEventArgs e)
+    {
+        if (this.RightMenuList == null || this.RightMenuGroupBox == null)
+        {
+            UiLogger.Log("设置窗口", "点击刷新系统右键菜单：分页控件尚未创建 结果=失败，未刷新");
+            return;
+        }
+        int entryTotal = 0;
+        if (this.systemContextMenus != null && this.systemContextMenus.IsSupported)
+        {
+            this.systemContextMenus.Refresh();
+            entryTotal = this.systemContextMenus.Enumerate().Count;
+        }
+        int loadedCount = this.LoadSystemMenuList();
+        UiLogger.Log("设置窗口", "点击刷新系统右键菜单：分组=" + this.GetSelectedGroupText()
+            + " 状态=" + this.GetSelectedStatusText()
+            + " 搜索词=" + this.GetSearchText()
+            + " 条目总数=" + entryTotal
+            + " 结果条数=" + loadedCount
+            + " 结果=成功，已重新扫描并重排列表");
+    }
+
+    /// <summary>分组下拉框改变：按新分组重新筛选右键菜单列表。</summary>
+    private void OnRightMenuGroupChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (this.CanReselectSystemMenus("分组筛选"))
+        {
+            int loadedCount = this.LoadSystemMenuList();
+            UiLogger.Log("设置窗口", "右键菜单分组筛选：分组=" + this.GetSelectedGroupText()
+                + " 状态=" + this.GetSelectedStatusText()
+                + " 搜索词=" + this.GetSearchText()
+                + " 结果条数=" + loadedCount
+                + " 结果=成功，已按新分组重排列表");
+        }
+    }
+
+    /// <summary>状态下拉框改变：按新状态重新筛选右键菜单列表。</summary>
+    private void OnRightMenuStatusChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (this.CanReselectSystemMenus("状态筛选"))
+        {
+            int loadedCount = this.LoadSystemMenuList();
+            UiLogger.Log("设置窗口", "右键菜单状态筛选：分组=" + this.GetSelectedGroupText()
+                + " 状态=" + this.GetSelectedStatusText()
+                + " 搜索词=" + this.GetSearchText()
+                + " 结果条数=" + loadedCount
+                + " 结果=成功，已按新状态重排列表");
+        }
+    }
+
+    /// <summary>搜索关键字改变：按新关键字重新筛选右键菜单列表。</summary>
+    private void OnRightMenuSearchChanged(object? sender, TextChangedEventArgs e)
+    {
+        if (this.CanReselectSystemMenus("按名称搜索"))
+        {
+            int loadedCount = this.LoadSystemMenuList();
+            UiLogger.Log("设置窗口", "右键菜单按名称搜索：分组=" + this.GetSelectedGroupText()
+                + " 状态=" + this.GetSelectedStatusText()
+                + " 搜索词=" + this.GetSearchText()
+                + " 结果条数=" + loadedCount
+                + " 结果=成功，已按新搜索词重排列表");
+        }
+    }
+
+    /// <summary>切换某条系统右键菜单项的启用状态：写入注册表，失败或只读时把开关回退到实际状态。</summary>
+    private void OnRightMenuToggle(object? sender, RoutedEventArgs e)
+    {
+        if (this.suppressSystemMenuToggle)
+        {
+            return;
+        }
+        if (sender is ToggleSwitch { DataContext: SystemMenuRow row, IsChecked: var isChecked } toggleSwitch)
+        {
+            bool targetEnabled = isChecked == true;
+            if (targetEnabled == row.Entry.IsEnabled)
+            {
+                UiLogger.Log("设置窗口", "切换系统右键菜单项开关：菜单项名称=" + row.Name
+                    + " 注册表完整路径=" + row.PathText
+                    + " 目标状态=" + (targetEnabled ? "启用" : "禁用")
+                    + " 结果=开关回填与实际状态一致，未写入注册表");
+            }
+            else if (row.Entry.IsReadOnly)
+            {
+                this.suppressSystemMenuToggle = true;
+                toggleSwitch.IsChecked = row.Entry.IsEnabled;
+                this.suppressSystemMenuToggle = false;
+                UiLogger.Log("设置窗口", "切换系统右键菜单项开关：菜单项名称=" + row.Name
+                    + " 注册表完整路径=" + row.PathText
+                    + " 目标状态=" + (targetEnabled ? "启用" : "禁用")
+                    + " 结果=只读菜单项不可启停，已撤回开关");
+            }
+            else if (this.systemContextMenus == null)
+            {
+                this.suppressSystemMenuToggle = true;
+                toggleSwitch.IsChecked = row.Entry.IsEnabled;
+                this.suppressSystemMenuToggle = false;
+                UiLogger.Log("设置窗口", "切换系统右键菜单项开关：菜单项名称=" + row.Name
+                    + " 注册表完整路径=" + row.PathText
+                    + " 目标状态=" + (targetEnabled ? "启用" : "禁用")
+                    + " 结果=失败，系统右键菜单服务为空，已回退开关显示");
+            }
+            else if (this.systemContextMenus.SetEnabled(row.Entry, targetEnabled))
+            {
+                UiLogger.Log("设置窗口", "切换系统右键菜单项开关：菜单项名称=" + row.Name
+                    + " 注册表完整路径=" + row.PathText
+                    + " 目标状态=" + (targetEnabled ? "启用" : "禁用")
+                    + " 结果=成功，已写入注册表并重新加载列表");
+                this.LoadSystemMenuList();
+            }
+            else
+            {
+                this.suppressSystemMenuToggle = true;
+                toggleSwitch.IsChecked = row.Entry.IsEnabled;
+                this.suppressSystemMenuToggle = false;
+                UiLogger.Log("设置窗口", "切换系统右键菜单项开关：菜单项名称=" + row.Name
+                    + " 注册表完整路径=" + row.PathText
+                    + " 目标状态=" + (targetEnabled ? "启用" : "禁用")
+                    + " 结果=失败，注册表写入未成功，已回退开关显示");
+            }
+        }
+        else
+        {
+            UiLogger.Log("设置窗口", "切换系统右键菜单项开关：开关或菜单行为空 结果=失败，本次启停未执行");
+        }
     }
 
     private void OnCancelClick(object? sender, RoutedEventArgs e)

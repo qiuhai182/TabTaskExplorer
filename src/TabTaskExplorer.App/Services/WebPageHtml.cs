@@ -96,7 +96,7 @@ public static class WebPageHtml
   .infoLine { color:#808080; word-break:break-all; }
 
   /* ===== 列表与图标视图 ===== */
-  table { border-collapse:collapse; width:100%; }
+  table { border-collapse:collapse; table-layout:fixed; }
   th { text-align:left; font-weight:normal; color:#808080; border-bottom:1px solid #E0E0E0; padding:5px 10px; position:sticky; top:0; background:#fff; z-index:2; }
   th.sortable { cursor:pointer; }
   th.sortable:hover { background:#F5F7FA; }
@@ -108,6 +108,7 @@ public static class WebPageHtml
   tr.row.focus { outline:1px solid #4A8FD0; outline-offset:-1px; }
   td.name { display:flex; align-items:center; gap:7px; }
   td.name .text { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  td.clip { max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .dir { color:#2F6FD0; cursor:pointer; }
   .file { color:#1C1C1C; cursor:pointer; }
   .tiles { display:flex; flex-wrap:wrap; gap:6px; align-content:flex-start; }
@@ -517,6 +518,10 @@ let searchTimer = null;
 let lastContentSignature = '';
 let lastMessage = '';
 let lastMessageTime = 0;
+// 表头列宽拖动：拖出的列宽按表格键保存，1.5 秒轮询重绘后按此恢复（仅本次页面打开期间有效，不持久化）
+let tableColWidths = {};
+let colDrag = null;
+let suppressClickUntil = 0;
 
 function esc(value) {
   const div = document.createElement('div');
@@ -909,24 +914,52 @@ function sortArrow(tab, field) {
   return '<span class="arrow">' + (tab.sortAscending ? '&#9650;' : '&#9660;') + '</span>';
 }
 
+// ======== 表头列宽（默认按各视图默认像素列宽渲染，总宽小于容器时右侧留白；拖动后沿用拖出的列宽） ========
+function tableWidthsFor(key, defaults) {
+  const saved = tableColWidths[key];
+  if (saved && saved.length === defaults.length) { return saved.slice(); }
+  return defaults.slice();
+}
+
+function tableOpenHtml(key, defaults) {
+  const widths = tableWidthsFor(key, defaults);
+  let total = 0;
+  let cols = '';
+  for (let i = 0; i < widths.length; i++) {
+    total += widths[i];
+    cols += '<col style="width:' + widths[i] + 'px">';
+  }
+  //总宽小于容器时表格停在总宽、右侧留白；大于容器时按 max-width 收缩（与桌面端星号列收缩一致）
+  return '<table data-colkey="' + key + '" style="width:' + total + 'px;max-width:100%"><colgroup>' + cols + '</colgroup>';
+}
+
 function renderTable(tab) {
   const isSearch = tab.tabType === 'search';
   const mode = tab.viewMode || 'Details';
+  const colKey = (isSearch ? 'search' : 'file') + ':' + mode;
+  let defaults;
   let columns = '';
   if (mode === 'List') {
+    defaults = [34, 560];
     columns = '';
   } else if (mode === 'Content') {
+    defaults = [34, 560, 140];
     columns = '<th>类型</th>';
-  } else {
+  } else if (isSearch) {
     // 全局搜索与桌面一致只有名称 / 修改日期 / 大小三列，不展示类型列
+    defaults = [34, 560, 140, 110];
     columns = '<th class="sortable" onclick="clickBtn(null,\'sort\',\'Modified\')">修改日期' + sortArrow(tab, 'Modified') + '</th>'
-      + (isSearch ? '' : '<th class="sortable" onclick="clickBtn(null,\'sort\',\'Type\')">类型' + sortArrow(tab, 'Type') + '</th>')
+      + '<th class="sortable" onclick="clickBtn(null,\'sort\',\'Size\')">大小' + sortArrow(tab, 'Size') + '</th>';
+  } else {
+    defaults = [34, 560, 140, 130, 110];
+    columns = '<th class="sortable" onclick="clickBtn(null,\'sort\',\'Modified\')">修改日期' + sortArrow(tab, 'Modified') + '</th>'
+      + '<th class="sortable" onclick="clickBtn(null,\'sort\',\'Type\')">类型' + sortArrow(tab, 'Type') + '</th>'
       + '<th class="sortable" onclick="clickBtn(null,\'sort\',\'Size\')">大小' + sortArrow(tab, 'Size') + '</th>';
   }
-  let head = '<tr><th style="width:34px"></th><th class="sortable" style="width:46%" onclick="clickBtn(null,\'sort\',\'Name\')">名称'
+  let head = '<tr><th></th><th class="sortable" onclick="clickBtn(null,\'sort\',\'Name\')">名称'
     + sortArrow(tab, 'Name') + '</th>' + columns + '</tr>';
 
-  let html = '<table>' + head;
+  let html = tableOpenHtml(colKey, defaults) + head;
   if (!tab.rows || tab.rows.length === 0) {
     html += '<tr><td class="hint" colspan="6">' + (isSearch ? '没有匹配的搜索结果' : '空目录') + '</td></tr>';
   }
@@ -976,12 +1009,13 @@ function renderTiles(tab) {
 }
 
 function renderDiskTable(tab) {
-  let html = '<table><tr><th class="sortable" style="width:32%" onclick="clickBtn(null,\'sort\',\'Name\')">名称' + sortArrow(tab, 'Name') + '</th>'
+  let html = tableOpenHtml('disk', [440, 100, 260, 120, 80, 90])
+    + '<tr><th class="sortable" onclick="clickBtn(null,\'sort\',\'Name\')">名称' + sortArrow(tab, 'Name') + '</th>'
     + '<th class="sortable" onclick="clickBtn(null,\'sort\',\'Type\')">类型' + sortArrow(tab, 'Type') + '</th>'
-    + '<th class="sortable" style="width:120px" onclick="clickBtn(null,\'sort\',\'Size\')">大小' + sortArrow(tab, 'Size') + '</th>'
-    + '<th class="sortable" style="width:130px" onclick="clickBtn(null,\'sort\',\'Free\')">剩余' + sortArrow(tab, 'Free') + '</th>'
-    + '<th class="sortable" style="width:90px" onclick="clickBtn(null,\'sort\',\'Usage\')">使用率' + sortArrow(tab, 'Usage') + '</th>'
-    + '<th class="sortable" style="width:110px" onclick="clickBtn(null,\'sort\',\'FileSystem\')">文件系统' + sortArrow(tab, 'FileSystem') + '</th></tr>';
+    + '<th class="sortable" onclick="clickBtn(null,\'sort\',\'Size\')">大小' + sortArrow(tab, 'Size') + '</th>'
+    + '<th class="sortable" onclick="clickBtn(null,\'sort\',\'Free\')">剩余' + sortArrow(tab, 'Free') + '</th>'
+    + '<th class="sortable" onclick="clickBtn(null,\'sort\',\'Usage\')">使用率' + sortArrow(tab, 'Usage') + '</th>'
+    + '<th class="sortable" onclick="clickBtn(null,\'sort\',\'FileSystem\')">文件系统' + sortArrow(tab, 'FileSystem') + '</th></tr>';
   if (!tab.rows || tab.rows.length === 0) {
     html += '<tr><td class="hint" colspan="6">暂无磁盘数据，正在扫描……</td></tr>';
   }
@@ -1031,13 +1065,21 @@ function renderProcess(tab) {
   if (tab.resourceText) {
     html += '<div class="hint">' + esc(tab.resourceText) + '</div>';
   }
-  html += '<table><tr><th class="sortable" style="width:70px" onclick="clickBtn(null,\'sort\',\'Cpu\')">处理器' + sortArrow(tab, 'Cpu') + '</th>'
+  html += tableOpenHtml('process', [70, 170, 130, 64, 54, 58, 72, 96, 110, 132, 320, 220])
+    + '<tr><th class="sortable" onclick="clickBtn(null,\'sort\',\'Cpu\')">处理器' + sortArrow(tab, 'Cpu') + '</th>'
     + '<th class="sortable" onclick="clickBtn(null,\'sort\',\'Name\')">进程名称（树）' + sortArrow(tab, 'Name') + '</th>'
-    + '<th class="sortable" style="width:100px" onclick="clickBtn(null,\'sort\',\'Memory\')">内存' + sortArrow(tab, 'Memory') + '</th>'
-    + '<th class="sortable" style="width:70px" onclick="clickBtn(null,\'sort\',\'ProcessId\')">编号' + sortArrow(tab, 'ProcessId') + '</th>'
+    + '<th>用户名</th>'
+    + '<th class="sortable" onclick="clickBtn(null,\'sort\',\'ProcessId\')">编号' + sortArrow(tab, 'ProcessId') + '</th>'
+    + '<th>线程</th>'
+    + '<th>句柄</th>'
+    + '<th>优先级</th>'
+    + '<th class="sortable" onclick="clickBtn(null,\'sort\',\'Memory\')">内存' + sortArrow(tab, 'Memory') + '</th>'
+    + '<th>I/O 读写</th>'
+    + '<th>启动时间</th>'
+    + '<th>启动命令行</th>'
     + '<th class="sortable" onclick="clickBtn(null,\'sort\',\'WindowTitle\')">窗口标题' + sortArrow(tab, 'WindowTitle') + '</th></tr>';
   if (rows.length === 0) {
-    html += '<tr><td class="hint" colspan="5">暂无进程数据，正在刷新……</td></tr>';
+    html += '<tr><td class="hint" colspan="12">暂无进程数据，正在刷新……</td></tr>';
   }
   let rowIndex = 0;
   for (const row of rows) {
@@ -1047,9 +1089,16 @@ function renderProcess(tab) {
       + ' onclick="processSelect(' + row.processId + ')">'
       + '<td>' + esc(row.cpuText || '—') + '</td>'
       + '<td class="name"><span class="text" title="' + escAttr(displayName) + '">' + esc(displayName) + '</span></td>'
-      + '<td>' + esc(row.memoryText) + '</td>'
+      + '<td class="clip" title="' + escAttr(row.userNameText || '') + '">' + esc(row.userNameText || '—') + '</td>'
       + '<td>' + row.processId + '</td>'
-      + '<td title="' + escAttr(row.windowTitle) + '">' + esc(row.windowTitle) + '</td></tr>';
+      + '<td>' + esc(row.threadText || '—') + '</td>'
+      + '<td>' + esc(row.handleText || '—') + '</td>'
+      + '<td>' + esc(row.priorityText || '—') + '</td>'
+      + '<td>' + esc(row.memoryText) + '</td>'
+      + '<td>' + esc(row.ioText || '—') + '</td>'
+      + '<td>' + esc(row.startTimeText || '—') + '</td>'
+      + '<td class="clip" title="' + escAttr(row.commandLineText || '') + '">' + esc(row.commandLineText || '—') + '</td>'
+      + '<td class="clip" title="' + escAttr(row.windowTitle) + '">' + esc(row.windowTitle) + '</td></tr>';
     rowIndex++;
   }
   html += '</table>';
@@ -1209,7 +1258,7 @@ function renderBoard(tab) {
 }
 
 function renderConnections(tab) {
-  let html = '<table><tr><th style="width:30%">名称</th><th>摘要</th></tr>';
+  let html = tableOpenHtml('connections', [260, 700]) + '<tr><th>名称</th><th>摘要</th></tr>';
   const items = tab.connections || [];
   if (items.length === 0) { html += '<tr><td class="hint" colspan="2">暂无连接，可在桌面端添加</td></tr>'; }
   for (const item of items) {
@@ -1412,6 +1461,123 @@ function onContentCheck(event) {
   anchorIndex = index;
   refreshSelectionDom();
   sendCheck();
+}
+
+// ======== 表头列宽拖动（与桌面端规则一致：中间列此消彼长，末列只吃右侧留白，最小列宽 40 像素） ========
+function onTableColResizeDown(event) {
+  if (event.button !== 0) { return; }
+  const headerCell = event.target.closest('th');
+  if (!headerCell) { return; }
+  const table = headerCell.closest('table');
+  if (!table || !table.hasAttribute('data-colkey')) { return; }
+  const headRow = table.rows[0];
+  if (!headRow || !headRow.contains(headerCell)) { return; }
+  const cellBounds = headerCell.getBoundingClientRect();
+  if (event.clientX <= cellBounds.right - 7) {
+    // 不在表头右缘 7 像素的拖动区内：不启动列宽拖动，交由原有点击（排序等）处理
+    return;
+  }
+  const cells = Array.prototype.slice.call(headRow.cells);
+  const columnIndex = cells.indexOf(headerCell);
+  const columns = table.querySelectorAll('colgroup col');
+  if (columnIndex < 0 || columnIndex >= columns.length) {
+    return;
+  }
+  const startWidths = [];
+  for (let i = 0; i < cells.length; i++) { startWidths.push(cells[i].getBoundingClientRect().width); }
+  const parent = table.parentElement;
+  let maxTotal = 100000;
+  if (parent) {
+    const parentStyle = window.getComputedStyle(parent);
+    maxTotal = parent.clientWidth - parseFloat(parentStyle.paddingLeft || '0') - parseFloat(parentStyle.paddingRight || '0');
+  }
+  colDrag = {
+    table: table,
+    key: table.getAttribute('data-colkey'),
+    columns: columns,
+    index: columnIndex,
+    startX: event.clientX,
+    startWidths: startWidths,
+    maxTotal: maxTotal,
+    moved: false
+  };
+  document.body.style.cursor = 'col-resize';
+  event.preventDefault();
+}
+
+function onTableColResizeMove(event) {
+  if (!colDrag) { return; }
+  if (!document.contains(colDrag.table)) {
+    // 轮询重绘替换了表格：改挂到同键的新表格上继续拖动（列宽状态已随重绘带过去）
+    const liveTable = document.querySelector('table[data-colkey="' + colDrag.key + '"]');
+    if (!liveTable) { onTableColResizeAbort(); return; }
+    colDrag.table = liveTable;
+    colDrag.columns = liveTable.querySelectorAll('colgroup col');
+  }
+  const delta = event.clientX - colDrag.startX;
+  const widths = colDrag.startWidths.slice();
+  const index = colDrag.index;
+  if (index === widths.length - 1) {
+    // 末列：只允许吃掉右侧留白，不超过容器剩余宽度，不低于 40 像素
+    let otherTotal = 0;
+    for (let i = 0; i < widths.length - 1; i++) { otherTotal += widths[i]; }
+    let width = widths[index] + delta;
+    if (width > colDrag.maxTotal - otherTotal) { width = colDrag.maxTotal - otherTotal; }
+    if (width < 40) { width = 40; }
+    widths[index] = width;
+  } else {
+    // 中间列：本列变宽多少，右邻列等量变窄，总宽与右侧留白保持不变；右邻列碰到 40 像素下限时回退，保证两列之和守恒
+    let width = widths[index] + delta;
+    if (width < 40) { width = 40; }
+    const changed = width - widths[index];
+    widths[index] = width;
+    widths[index + 1] = colDrag.startWidths[index + 1] - changed;
+    if (widths[index + 1] < 40) {
+      widths[index + 1] = 40;
+      widths[index] = colDrag.startWidths[index] + colDrag.startWidths[index + 1] - 40;
+    }
+  }
+  let total = 0;
+  const saved = [];
+  for (let i = 0; i < widths.length; i++) {
+    const rounded = Math.round(widths[i]);
+    colDrag.columns[i].style.width = rounded + 'px';
+    total += rounded;
+    saved.push(rounded);
+  }
+  colDrag.table.style.width = total + 'px';
+  tableColWidths[colDrag.key] = saved;
+  colDrag.moved = true;
+}
+
+function onTableColResizeAbort() {
+  colDrag = null;
+  document.body.style.cursor = '';
+}
+
+function onTableColResizeUp(event) {
+  if (!colDrag) { return; }
+  const key = colDrag.key;
+  const moved = colDrag.moved;
+  const widths = tableColWidths[key];
+  colDrag = null;
+  document.body.style.cursor = '';
+  if (!moved || !widths) {
+    // 没有真正拖动：保持原有点击行为（表头排序等）
+    return;
+  }
+  // 拖动结束后的这次点击不再冒泡，防止误触表头排序
+  suppressClickUntil = performance.now() + 250;
+  let widthText = '';
+  for (let i = 0; i < widths.length; i++) { widthText += (i === 0 ? '' : ',') + widths[i]; }
+  doAction('colresize', key + '=' + widthText);
+}
+
+function suppressResizeClick(event) {
+  if (performance.now() < suppressClickUntil) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
 }
 
 function onContentContextMenu(event) {
@@ -2398,6 +2564,11 @@ document.getElementById('content').addEventListener('click', onContentClick);
 document.getElementById('content').addEventListener('dblclick', onContentDoubleClick);
 document.getElementById('content').addEventListener('change', onContentCheck);
 document.getElementById('content').addEventListener('contextmenu', onContentContextMenu);
+// 表头列宽拖动：按下判定拖动区，移动改列宽，松开记录日志并吞掉随后的点击
+document.getElementById('content').addEventListener('mousedown', onTableColResizeDown);
+document.addEventListener('mousemove', onTableColResizeMove);
+document.addEventListener('mouseup', onTableColResizeUp);
+document.addEventListener('click', suppressResizeClick, true);
 document.addEventListener('keydown', handleKeyDown);
 
 document.getElementById('editorText').addEventListener('keydown', function (event) {

@@ -15,7 +15,7 @@ namespace TabTaskExplorer.App.ViewModels;
 /// Windows 上优先使用 Everything 进程间通信搜索，Everything 不可用时自动回退内置遍历搜索。
 /// 搜索在后台线程执行，结果回到界面线程后再更新列表，避免大量结果冻结界面。
 /// </summary>
-public class SearchTabViewModel : INotifyPropertyChanged
+public class SearchTabViewModel : INotifyPropertyChanged, IColumnWidthViewModel
 {
     private readonly IFileSearchService searchService;
 
@@ -24,6 +24,8 @@ public class SearchTabViewModel : INotifyPropertyChanged
     private string sortField = string.Empty;
     private bool sortAscending = true;
     private bool isSearching;
+    // 结果表头列宽：仅本次运行内有效，重启后恢复默认列宽
+    private string columnWidths = string.Empty;
 
     // 分代令牌：新搜索开始后，旧搜索的迟到结果会被丢弃
     private int searchGeneration;
@@ -33,6 +35,25 @@ public class SearchTabViewModel : INotifyPropertyChanged
     public SearchTabViewModel(IFileSearchService searchService)
     {
         this.searchService = searchService;
+    }
+
+    /// <summary>把拖动得到的全像素列宽应用到界面（表头与所有行同时生效）。</summary>
+    /// <param name="widths">按列序号排列的列宽，单位像素。</param>
+    public void ApplyColumnWidths(double[] widths)
+    {
+        this.ColumnWidths = ColumnResize.FormatWidths(widths);
+    }
+
+    /// <summary>拖动结束后记录一条包含视图名与全部列宽的纯中文日志。</summary>
+    public void LogColumnWidths()
+    {
+        if (this.columnWidths.Length == 0)
+        {
+            UiLogger.Log("全盘搜索", "表头列宽拖动结束：本次没有产生列宽变化，仍为默认列宽");
+            return;
+        }
+        string[] parts = this.columnWidths.Split(',');
+        UiLogger.Log("全盘搜索", "表头列宽拖动完成：列数=" + parts.Length + " 调整后列宽=" + this.columnWidths + "像素 列宽仅本次运行有效，重启后恢复默认列宽");
     }
 
     /// <summary>标签标题。</summary>
@@ -87,6 +108,17 @@ public class SearchTabViewModel : INotifyPropertyChanged
     public bool SortAscending
     {
         get { return this.sortAscending; }
+    }
+
+    /// <summary>结果表头列宽（逗号分隔的像素值）：同时通知表头与行模板两处网格刷新。</summary>
+    public string ColumnWidths
+    {
+        get { return this.columnWidths; }
+        set
+        {
+            this.columnWidths = value ?? string.Empty;
+            this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ColumnWidths)));
+        }
     }
 
     /// <summary>点击表头排序：重复点击同一字段切换升序降序，点击新字段按升序排列。</summary>

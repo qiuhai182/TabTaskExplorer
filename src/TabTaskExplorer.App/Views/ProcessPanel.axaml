@@ -1,6 +1,7 @@
 ﻿<UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:views="using:TabTaskExplorer.App.Views"
+             xmlns:svc="using:TabTaskExplorer.App.Services"
              x:Class="TabTaskExplorer.App.Views.ProcessPanel">
 
   <Grid RowDefinitions="Auto,Auto,Auto,Auto,*,Auto,Auto,Auto" Margin="8,4,8,4">
@@ -34,8 +35,24 @@
     <!-- 资源摘要：处理器占用、内存占用与进程数量 -->
     <TextBlock Grid.Row="2" Margin="0,8,0,0" Text="{Binding ResourceText}" />
 
-    <!-- 表头：与行模板列宽保持一致；点击表头按该列排序，箭头显示当前排序方向 -->
-    <Grid Grid.Row="3" ColumnDefinitions="70,3*,100,70,3*" Margin="0,8,0,4">
+    <!-- 表头：与行模板列宽保持一致；点击表头按该列排序，箭头显示当前排序方向；命令行与窗口标题星号列设上限，窗口过宽时右侧留白；拖动列边界调整列宽 -->
+    <Grid Grid.Row="3" Margin="0,8,0,4"
+          svc:ColumnResize.Enabled="True"
+          svc:ColumnResize.Widths="{Binding ColumnWidths}">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="70" />
+        <ColumnDefinition Width="170" />
+        <ColumnDefinition Width="130" />
+        <ColumnDefinition Width="64" />
+        <ColumnDefinition Width="54" />
+        <ColumnDefinition Width="58" />
+        <ColumnDefinition Width="72" />
+        <ColumnDefinition Width="96" />
+        <ColumnDefinition Width="110" />
+        <ColumnDefinition Width="132" />
+        <ColumnDefinition Width="2*" MaxWidth="320" />
+        <ColumnDefinition Width="2*" MaxWidth="220" />
+      </Grid.ColumnDefinitions>
       <Button Grid.Column="0" Tag="Cpu" Click="OnSortClick" FontWeight="Medium" HorizontalAlignment="Left" Background="Transparent" Foreground="{DynamicResource TextMutedBrush}">
         <StackPanel Orientation="Horizontal">
           <TextBlock Text="处理器" />
@@ -48,19 +65,26 @@
           <TextBlock x:Name="ArrowName" Margin="4,0,0,0" />
         </StackPanel>
       </Button>
-      <Button Grid.Column="2" Tag="Memory" Click="OnSortClick" FontWeight="Medium" HorizontalAlignment="Left" Background="Transparent" Foreground="{DynamicResource TextMutedBrush}">
-        <StackPanel Orientation="Horizontal">
-          <TextBlock Text="内存" />
-          <TextBlock x:Name="ArrowMemory" Margin="4,0,0,0" />
-        </StackPanel>
-      </Button>
+      <TextBlock Grid.Column="2" FontWeight="Medium" Foreground="{DynamicResource TextMutedBrush}" Text="用户名" />
       <Button Grid.Column="3" Tag="ProcessId" Click="OnSortClick" FontWeight="Medium" HorizontalAlignment="Left" Background="Transparent" Foreground="{DynamicResource TextMutedBrush}">
         <StackPanel Orientation="Horizontal">
           <TextBlock Text="编号" />
           <TextBlock x:Name="ArrowProcessId" Margin="4,0,0,0" />
         </StackPanel>
       </Button>
-      <Button Grid.Column="4" Tag="WindowTitle" Click="OnSortClick" FontWeight="Medium" HorizontalAlignment="Left" Background="Transparent" Foreground="{DynamicResource TextMutedBrush}">
+      <TextBlock Grid.Column="4" FontWeight="Medium" Foreground="{DynamicResource TextMutedBrush}" Text="线程" />
+      <TextBlock Grid.Column="5" FontWeight="Medium" Foreground="{DynamicResource TextMutedBrush}" Text="句柄" />
+      <TextBlock Grid.Column="6" FontWeight="Medium" Foreground="{DynamicResource TextMutedBrush}" Text="优先级" />
+      <Button Grid.Column="7" Tag="Memory" Click="OnSortClick" FontWeight="Medium" HorizontalAlignment="Left" Background="Transparent" Foreground="{DynamicResource TextMutedBrush}">
+        <StackPanel Orientation="Horizontal">
+          <TextBlock Text="内存" />
+          <TextBlock x:Name="ArrowMemory" Margin="4,0,0,0" />
+        </StackPanel>
+      </Button>
+      <TextBlock Grid.Column="8" FontWeight="Medium" Foreground="{DynamicResource TextMutedBrush}" Text="I/O 读写" />
+      <TextBlock Grid.Column="9" FontWeight="Medium" Foreground="{DynamicResource TextMutedBrush}" Text="启动时间" />
+      <TextBlock Grid.Column="10" FontWeight="Medium" Foreground="{DynamicResource TextMutedBrush}" Text="启动命令行" />
+      <Button Grid.Column="11" Tag="WindowTitle" Click="OnSortClick" FontWeight="Medium" HorizontalAlignment="Left" Background="Transparent" Foreground="{DynamicResource TextMutedBrush}">
         <StackPanel Orientation="Horizontal">
           <TextBlock Text="窗口标题" />
           <TextBlock x:Name="ArrowWindowTitle" Margin="4,0,0,0" />
@@ -81,12 +105,35 @@
       </ListBox.ItemContainerTheme>
       <ListBox.ItemTemplate>
         <DataTemplate>
-          <Grid ColumnDefinitions="70,3*,100,70,3*" Margin="0,1">
+          <!-- 列定义与表头一致：命令行与窗口标题星号列设上限，列宽拖动结果经附加属性同步到所有行 -->
+          <Grid Margin="0,1"
+                svc:ColumnResize.Widths="{Binding DataContext.ColumnWidths, RelativeSource={RelativeSource AncestorType=ListBox}}">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="70" />
+              <ColumnDefinition Width="170" />
+              <ColumnDefinition Width="130" />
+              <ColumnDefinition Width="64" />
+              <ColumnDefinition Width="54" />
+              <ColumnDefinition Width="58" />
+              <ColumnDefinition Width="72" />
+              <ColumnDefinition Width="96" />
+              <ColumnDefinition Width="110" />
+              <ColumnDefinition Width="132" />
+              <ColumnDefinition Width="2*" MaxWidth="320" />
+              <ColumnDefinition Width="2*" MaxWidth="220" />
+            </Grid.ColumnDefinitions>
             <TextBlock Grid.Column="0" Text="{Binding CpuText}" />
             <TextBlock Grid.Column="1" Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" />
-            <TextBlock Grid.Column="2" Text="{Binding MemoryText}" />
+            <TextBlock Grid.Column="2" Text="{Binding UserNameText}" TextTrimming="CharacterEllipsis" />
             <TextBlock Grid.Column="3" Text="{Binding ProcessId}" />
-            <TextBlock Grid.Column="4" Text="{Binding WindowTitle}" TextTrimming="CharacterEllipsis" Opacity="0.8" />
+            <TextBlock Grid.Column="4" Text="{Binding ThreadText}" />
+            <TextBlock Grid.Column="5" Text="{Binding HandleText}" />
+            <TextBlock Grid.Column="6" Text="{Binding PriorityText}" />
+            <TextBlock Grid.Column="7" Text="{Binding MemoryText}" />
+            <TextBlock Grid.Column="8" Text="{Binding IoText}" />
+            <TextBlock Grid.Column="9" Text="{Binding StartTimeText}" />
+            <TextBlock Grid.Column="10" Text="{Binding CommandLineText}" TextTrimming="CharacterEllipsis" />
+            <TextBlock Grid.Column="11" Text="{Binding WindowTitle}" TextTrimming="CharacterEllipsis" Opacity="0.8" />
           </Grid>
         </DataTemplate>
       </ListBox.ItemTemplate>

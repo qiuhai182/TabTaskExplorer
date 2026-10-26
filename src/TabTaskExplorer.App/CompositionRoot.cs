@@ -66,6 +66,16 @@ public static class CompositionRoot
             services.AddSingleton<IWindowCaptionHider, NullWindowCaptionHider>();
         }
 
+        // 系统右键菜单：Windows 枚举真实系统菜单项；其他平台此能力留空
+        if (OperatingSystem.IsWindows())
+        {
+            services.AddSingleton<ISystemContextMenuService, WindowsSystemContextMenuService>();
+        }
+        else
+        {
+            services.AddSingleton<ISystemContextMenuService, NullSystemContextMenuService>();
+        }
+
         // 网页端服务：仅绑定本机回环地址，页面与程序界面实时同构
         services.AddSingleton<Services.WebServiceHost>();
 
@@ -94,17 +104,19 @@ public static class CompositionRoot
             services.AddSingleton<IDiskUsageProvider, DefaultDiskUsageProvider>();
             services.AddSingleton<FileSystemWalkSearchService>();
             services.AddSingleton<IFileSearchService, FileSystemWalkSearchService>();
-            // 进程详情与调节是 Windows 特有能力，其他平台此能力留空
-            services.AddSingleton<IProcessDetailService, NullProcessDetailService>();
             if (OperatingSystem.IsLinux())
             {
                 services.AddSingleton<IProcessProvider, LinuxProcessProvider>();
                 services.AddSingleton<ISystemMetricsProvider, LinuxSystemMetricsProvider>();
+                // 进程详情与调节（优先级、CPU 亲和性）：Linux 平台实现
+                services.AddSingleton<IProcessDetailService, LinuxProcessDetailService>();
             }
             else if (OperatingSystem.IsMacOS())
             {
                 services.AddSingleton<IProcessProvider, MacProcessProvider>();
                 services.AddSingleton<ISystemMetricsProvider, MacSystemMetricsProvider>();
+                // 进程详情与调节（优先级、CPU 亲和性）：macOS 平台实现
+                services.AddSingleton<IProcessDetailService, MacOSProcessDetailService>();
             }
         }
 

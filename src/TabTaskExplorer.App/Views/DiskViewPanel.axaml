@@ -1,5 +1,6 @@
 ﻿<UserControl xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:svc="using:TabTaskExplorer.App.Services"
         x:Class="TabTaskExplorer.App.Views.DiskViewPanel">
   <Grid RowDefinitions="Auto,Auto,*,Auto" Margin="12">
 
@@ -16,7 +17,18 @@
 
     <!-- 行 2：表头与占用列表 -->
     <Grid Grid.Row="2" RowDefinitions="Auto,*">
-      <Grid Grid.Row="0" ColumnDefinitions="2.6*,100,1.7*,120,80,90" Margin="0,0,0,4">
+      <!-- 表头：名称与大小两个星号列设上限，窗口过宽时右侧留白；拖动列边界调整列宽 -->
+      <Grid Grid.Row="0" Margin="0,0,0,4"
+            svc:ColumnResize.Enabled="True"
+            svc:ColumnResize.Widths="{Binding ColumnWidths}">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="2.6*" MaxWidth="440" />
+          <ColumnDefinition Width="100" />
+          <ColumnDefinition Width="1.7*" MaxWidth="260" />
+          <ColumnDefinition Width="120" />
+          <ColumnDefinition Width="80" />
+          <ColumnDefinition Width="90" />
+        </Grid.ColumnDefinitions>
         <Button Grid.Column="0" Tag="Name" Click="OnSortClick" FontWeight="Medium" HorizontalAlignment="Left" Background="Transparent" Foreground="{DynamicResource TextMutedBrush}">
           <StackPanel Orientation="Horizontal">
             <TextBlock Text="名称" />
@@ -65,7 +77,16 @@
                   <MenuItem Header="复制路径" Click="OnMenuCopyPathClick" />
                 </ContextMenu>
               </Border.ContextMenu>
-              <Grid ColumnDefinitions="2.6*,100,1.7*,120,80,90">
+              <!-- 列定义与表头一致：星号列设上限，列宽拖动结果经附加属性同步到所有行 -->
+              <Grid svc:ColumnResize.Widths="{Binding DataContext.ColumnWidths, RelativeSource={RelativeSource AncestorType=ListBox}}">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="2.6*" MaxWidth="440" />
+                  <ColumnDefinition Width="100" />
+                  <ColumnDefinition Width="1.7*" MaxWidth="260" />
+                  <ColumnDefinition Width="120" />
+                  <ColumnDefinition Width="80" />
+                  <ColumnDefinition Width="90" />
+                </Grid.ColumnDefinitions>
                 <Grid Grid.Column="0" Margin="{Binding IndentMargin}" ColumnDefinitions="16,*">
                   <TextBlock Grid.Column="0" Text="{Binding ExpandGlyph}" VerticalAlignment="Center" />
                   <TextBlock Grid.Column="1" Text="{Binding Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />

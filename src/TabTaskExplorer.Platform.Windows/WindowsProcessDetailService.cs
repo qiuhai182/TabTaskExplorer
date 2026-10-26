@@ -195,9 +195,9 @@ public class WindowsProcessDetailService : IProcessDetailService
 
     /// <summary>
     /// 读取进程所有者（域名\用户名）：打开进程令牌后从 WindowsIdentity 读取。
-    /// 读取失败返回空字符串。
+    /// 读取失败返回空字符串。进程列表采样时复用本方法，因此是 internal。
     /// </summary>
-    private static string ReadUserName(Process process)
+    internal static string ReadUserName(Process process)
     {
         IntPtr tokenHandle = IntPtr.Zero;
         try
@@ -226,9 +226,9 @@ public class WindowsProcessDetailService : IProcessDetailService
     }
 
     /// <summary>读取进程启动命令行：使用 NtQueryInformationProcess 的 ProcessCommandLineInformation（信息类 60）。
-    /// 读取失败返回空字符串。
+    /// 读取失败返回空字符串。进程列表采样时复用本方法，因此是 internal。
     /// </summary>
-    private static string ReadCommandLine(Process process)
+    internal static string ReadCommandLine(Process process)
     {
         IntPtr buffer = IntPtr.Zero;
         try

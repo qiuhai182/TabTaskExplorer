@@ -331,6 +331,27 @@ public class DebugProcessRow
     /// <summary>主窗口标题，无窗口的进程为空字符串。</summary>
     public string WindowTitle { get; set; } = string.Empty;
 
+    /// <summary>进程所属用户的显示文字（如"SYSTEM"，读取不到时为"—"）。</summary>
+    public string UserNameText { get; set; } = "—";
+
+    /// <summary>线程数的显示文字（读取不到时为"—"）。</summary>
+    public string ThreadText { get; set; } = "—";
+
+    /// <summary>句柄数的显示文字（读取不到时为"—"）。</summary>
+    public string HandleText { get; set; } = "—";
+
+    /// <summary>优先级的显示文字（如"正常"，读取不到时为"—"）。</summary>
+    public string PriorityText { get; set; } = "—";
+
+    /// <summary>读写流量（IO）的显示文字（读取不到时为"—"）。</summary>
+    public string IoText { get; set; } = "—";
+
+    /// <summary>进程启动时间的显示文字（读取不到时为"—"）。</summary>
+    public string StartTimeText { get; set; } = "—";
+
+    /// <summary>进程命令行的显示文字（读取不到时为"—"）。</summary>
+    public string CommandLineText { get; set; } = "—";
+
     /// <summary>是否被选中（与桌面单击选中同步）。</summary>
     public bool IsSelected { get; set; }
 }
