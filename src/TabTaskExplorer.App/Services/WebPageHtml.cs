@@ -84,6 +84,8 @@ public static class WebPageHtml
   .workarea { flex:1; display:flex; min-height:0; }
   .sidebar { width:200px; flex:none; border-right:1px solid #E9E9E9; overflow:auto; padding:6px 4px; }
   .navsec { display:flex; align-items:center; gap:6px; margin:8px 6px 4px; color:#2F6FD0; font-weight:500; font-size:12px; }
+  .navsec.clickable { cursor:pointer; border-radius:4px; }
+  .navsec.clickable:hover { background:#F5F7FA; }
   .navitem { display:flex; align-items:center; gap:7px; padding:4px 8px; border-radius:4px; cursor:pointer; font-size:12px; }
   .navitem:hover { background:#F5F7FA; }
   .navitem.selected { background:#E8F1FC; color:#1B5FA8; }
@@ -224,7 +226,7 @@ public static class WebPageHtml
   body.dark .tab:hover { background:#2E2E2E; }
   body.dark .tab.active { background:#191919; }
   body.dark .bookmarkbar, body.dark .toolbar, body.dark .navrow, body.dark .statusbar, body.dark .diagBox { border-color:#323232; }
-  body.dark .bmItem:hover, body.dark .btn:hover, body.dark .tbtn:hover, body.dark .seg:hover, body.dark .navitem:hover, body.dark .tile:hover { background:#2E2E2E; }
+  body.dark .bmItem:hover, body.dark .btn:hover, body.dark .tbtn:hover, body.dark .seg:hover, body.dark .navitem:hover, body.dark .tile:hover, body.dark .navsec.clickable:hover { background:#2E2E2E; }
   body.dark .menu, body.dark .pop, body.dark .ctx { background:#242424; border-color:#3C3C3C; }
   body.dark .menu .item:hover, body.dark .pop .item:hover, body.dark .ctx .item:hover { background:#2E2E2E; }
   body.dark .menu .sep { background:#3C3C3C; }
@@ -780,8 +782,8 @@ function renderBookmarks() {
 
 function renderSidebar() {
   let html = '';
-  html += navSection('快捷访问', '&#xE735;', state.navPinned);
-  html += navSection('此电脑', '&#xE7F8;', state.navPc);
+  html += navSection('快捷访问', '&#xE735;', state.navPinned, false);
+  html += navSection('此电脑', '&#xE7F8;', state.navPc, true);
   html += '<div class="navsec"><span class="ico">&#xE968;</span>网络</div>'
     + '<div class="navitem" onclick="clickBtn(null,\'openconnections\')"><span class="ico">&#xE968;</span>连接管理</div>'
     + '<div class="navitem" onclick="clickBtn(null,\'opensearch\')"><span class="ico">&#xE721;</span>全局搜索</div>'
@@ -790,8 +792,11 @@ function renderSidebar() {
   document.getElementById('sidebar').innerHTML = html;
 }
 
-function navSection(title, glyph, items) {
-  let html = '<div class="navsec"><span class="ico">' + glyph + '</span>' + title + '</div>';
+function navSection(title, glyph, items, clickable) {
+  // 分组标题可点击时：导航当前文件标签到此电脑根视图（无文件标签时自动新建），与桌面端 OnThisPcHeaderClick 一致
+  let html = '<div class="navsec' + (clickable ? ' clickable' : '') + '"'
+    + (clickable ? ' onclick="openPath(\'\')" title="导航到此电脑"' : '')
+    + '><span class="ico">' + glyph + '</span>' + title + '</div>';
   if (!items || items.length === 0) {
     return html;
   }
@@ -1604,6 +1609,7 @@ function showContextMenu(event, row) {
     + '<div class="item" data-ctx="newtab">在新标签打开</div>'
     + '<div class="item" data-ctx="copy">复制</div>'
     + (canEdit ? '<div class="item" data-ctx="cut">剪切</div>' : '')
+    + (canEdit && row.isDirectory ? '<div class="item" data-ctx="pasteto">粘贴到该文件夹</div>' : '')
     + (canEdit ? '<div class="item" data-ctx="rename">重命名</div>' : '')
     + (permissions.canModify ? '<div class="item" data-ctx="chmod">修改权限</div>' : '')
     + (canEdit ? '<div class="item" data-ctx="delete">删除</div>' : '');
@@ -1623,6 +1629,7 @@ function showContextMenu(event, row) {
     }
     else if (kind === 'copy') { doAction('copy'); }
     else if (kind === 'cut') { clickBtn('btnCut', 'cut'); }
+    else if (kind === 'pasteto') { doAction('pasteto', row.fullPath); }
     else if (kind === 'rename') { renameEntry(row.fullPath); }
     else if (kind === 'chmod') { changePermissions(row.fullPath); }
     else if (kind === 'delete') { deleteEntry(row.fullPath); }

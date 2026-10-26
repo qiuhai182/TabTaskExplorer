@@ -397,7 +397,7 @@ public class WebServiceHost
         /// <summary>按动作判定所需权限：增删类要放行新建与删除，改配置与写文件类要放行修改。</summary>
         private bool CheckActionPermission(NetworkStream stream, WebAccessProfile profile, HttpRequest request, string action)
         {
-            bool needCreateDelete = action == "cut" || action == "paste" || action == "deletechecked"
+            bool needCreateDelete = action == "cut" || action == "paste" || action == "pasteto" || action == "deletechecked"
                 || action == "batchrename" || action == "encodepreview" || action == "encodeapply";
             bool needModify = action == "togglehidden" || action == "toggleextensions" || action == "pin" || action == "unpin" || action == "chmod"
                 || action == "idetext" || action == "idesave" || action == "idesaveall" || action == "idereplace" || action == "idereplaceall"

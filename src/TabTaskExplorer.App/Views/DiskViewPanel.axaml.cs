@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
@@ -70,6 +71,33 @@ public partial class DiskViewPanel : UserControl
             UiLogger.Log("程序行为", "右键菜单复制路径：行路径=" + row.FullPath
                 + " 结果=成功，已把该路径放入剪贴板，粘贴时生效");
         }
+    }
+
+    /// <summary>右键菜单"粘贴"：文件夹条目粘贴进该文件夹，文件条目粘贴进它所在的文件夹。</summary>
+    private async void OnMenuPasteClick(object? sender, RoutedEventArgs e)
+    {
+        MainWindowViewModel? mainViewModel = this.MainViewModel;
+        if (mainViewModel == null)
+        {
+            UiLogger.Log("程序行为", "磁盘视图右键菜单粘贴：未找到主窗口视图模型 结果=失败，本次粘贴取消");
+            return;
+        }
+        if (sender is not MenuItem menuItem || menuItem.DataContext is not DiskRow row)
+        {
+            UiLogger.Log("程序行为", "磁盘视图右键菜单粘贴：菜单项未关联磁盘行数据 结果=失败，本次粘贴取消");
+            return;
+        }
+        string targetDirectory = row.IsDirectory
+            ? row.FullPath
+            : (Path.GetDirectoryName(row.FullPath) ?? string.Empty);
+        if (targetDirectory.Length == 0)
+        {
+            UiLogger.Log("程序行为", "磁盘视图右键菜单粘贴：行路径=" + row.FullPath + " 目标目录=未取到 结果=失败，本次粘贴取消");
+            return;
+        }
+        await mainViewModel.PasteFromClipboardAsync(targetDirectory);
+        UiLogger.Log("程序行为", "磁盘视图右键菜单粘贴：行路径=" + row.FullPath + " 条目类型=" + (row.IsDirectory ? "目录" : "文件")
+            + " 目标目录=" + targetDirectory + " 结果=已请求把剪贴板条目粘贴到该目录（剪贴板为空或目录不可写时由界面提示）");
     }
 
     /// <summary>打开行路径的公共逻辑：目录进入文件夹视图（新标签或当前标签），文件用系统默认程序打开。</summary>

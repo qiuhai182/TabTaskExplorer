@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.IO;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.LogicalTree;
@@ -106,12 +107,21 @@ public partial class FileListPanel : UserControl
     /// <summary>条目与空白处右键菜单里系统菜单项占位子菜单的标记。</summary>
     private const string SystemMenuHostTag = "SystemMenuItemsHost";
 
+    /// <summary>条目右键菜单里「粘贴」菜单项的标记（只在文件夹条目上显示，粘贴进该文件夹）。</summary>
+    private const string PasteToFolderTag = "MenuPasteToFolder";
+
     /// <summary>条目右键菜单打开时记录的右键条目，供系统菜单项点击时兜底使用。</summary>
     private FileRow? systemMenuContextRow;
+
+    /// <summary>上次实测到的纵向滚动条宽度，用于按实测值调整表头右边距并避免重复刷日志。</summary>
+    private double lastScrollBarWidth = -1.0;
 
     public FileListPanel()
     {
         this.InitializeComponent();
+        // 列表模板里的滚动条要等布局完成后才存在；图标视图的滚动条要等切换到图标视图后才创建，
+        // 因此持续监听布局更新，把新出现的滚动条逐个改为常驻占位
+        this.ListHost.LayoutUpdated += this.OnListHostLayoutUpdated;
         this.AddHandler(InputElement.PointerPressedEvent, this.OnPointerPressedForDrag, RoutingStrategies.Bubble, handledEventsToo: true);
         this.AddHandler(InputElement.PointerMovedEvent, this.OnPointerMovedForDrag, RoutingStrategies.Bubble, handledEventsToo: true);
         this.AddHandler(InputElement.PointerReleasedEvent, this.OnPointerReleasedForDrag, RoutingStrategies.Bubble, handledEventsToo: true);
@@ -165,6 +175,15 @@ public partial class FileListPanel : UserControl
         if (!properties.IsLeftButtonPressed)
         {
             UiLogger.Log("程序行为", "列表按下鼠标按键=" + DescribePressedButtons(properties) + " 结果=不是鼠标左键，不进入拖动与框选流程");
+            return;
+        }
+        ScrollBar? pressedScrollBar = FindPressedScrollBar(e.Source as Visual);
+        if (pressedScrollBar != null)
+        {
+            Point scrollBarPoint = e.GetPosition(this);
+            UiLogger.Log("程序行为", "列表滚动条上按下左键：滚动条方向=" + (pressedScrollBar.Orientation == Avalonia.Layout.Orientation.Vertical ? "纵向" : "横向")
+                + " 按下位置=横坐标" + scrollBarPoint.X + "、纵坐标" + scrollBarPoint.Y
+                + " 结果=已忽略，不记录框选起点也不记录拖拽按下，避免拖动滚动条时触发表格行拖动选中");
             return;
         }
         Border? border = FindRowBorder(e.Source as Visual, out bool pressedOnCheckBox);
@@ -876,7 +895,7 @@ public partial class FileListPanel : UserControl
     }
 
     /// <summary>空白处右键菜单“粘贴”：把剪贴板条目粘贴到当前目录。</summary>
-    private void OnBackgroundPasteClick(object? sender, RoutedEventArgs e)
+    private async void OnBackgroundPasteClick(object? sender, RoutedEventArgs e)
     {
         MainWindowViewModel? mainViewModel = this.MainViewModel;
         FileTabViewModel? viewModel = this.ViewModel;
@@ -886,7 +905,7 @@ public partial class FileListPanel : UserControl
             return;
         }
         string directoryText = viewModel.CurrentPath.Length == 0 ? "此电脑" : viewModel.CurrentPath;
-        mainViewModel.PasteFromClipboard();
+        await mainViewModel.PasteFromClipboardAsync(viewModel.CurrentPath);
         UiLogger.Log("程序行为", "空白处右键菜单粘贴：目标目录=" + directoryText
             + " 结果=已请求把剪贴板条目粘贴到该目录（剪贴板为空或目录不可写时由界面提示）");
     }
@@ -1013,6 +1032,30 @@ public partial class FileListPanel : UserControl
             UiLogger.Log("程序行为", "右键菜单剪切：行路径=" + row.FullPath
                 + " 结果=成功，已把该路径放入剪贴板，粘贴时将移动该条目");
         }
+    }
+
+    /// <summary>右键菜单"粘贴"：把剪贴板条目粘贴进该文件夹。</summary>
+    private async void OnMenuPasteToFolderClick(object? sender, RoutedEventArgs e)
+    {
+        MainWindowViewModel? mainViewModel = this.MainViewModel;
+        if (mainViewModel == null)
+        {
+            UiLogger.Log("程序行为", "右键菜单粘贴到该文件夹：未找到主窗口视图模型 结果=失败，本次粘贴取消");
+            return;
+        }
+        if (sender is not MenuItem menuItem || menuItem.DataContext is not FileRow row)
+        {
+            UiLogger.Log("程序行为", "右键菜单粘贴到该文件夹：菜单项未关联列表条目 结果=失败，本次粘贴取消");
+            return;
+        }
+        if (!row.IsDirectory)
+        {
+            UiLogger.Log("程序行为", "右键菜单粘贴到该文件夹：行路径=" + row.FullPath + " 条目类型=文件 结果=失败，文件不能作为粘贴目标，本次粘贴取消");
+            return;
+        }
+        await mainViewModel.PasteFromClipboardAsync(row.FullPath);
+        UiLogger.Log("程序行为", "右键菜单粘贴到该文件夹：目标目录=" + row.FullPath
+            + " 结果=已请求把剪贴板条目粘贴到该目录（剪贴板为空或目录不可写时由界面提示）");
     }
 
     /// <summary>右键"压缩为…"：选择保存位置后把选中（或右键）条目压缩为新压缩包。</summary>
@@ -1246,6 +1289,14 @@ public partial class FileListPanel : UserControl
             UiLogger.Log("程序行为", "右键菜单打开：行路径=未取到 条目类型=未知 结果=失败，菜单未关联列表条目，未添加系统菜单项");
             return;
         }
+        // 「粘贴」只在文件夹条目上显示：粘贴目标是该文件夹本身
+        MenuItem? pasteToFolderItem = FindMenuItemByTag(menu, PasteToFolderTag);
+        if (pasteToFolderItem != null)
+        {
+            pasteToFolderItem.IsVisible = row.IsDirectory;
+            UiLogger.Log("程序行为", "右键菜单打开：行路径=" + row.FullPath + " 条目类型=" + (row.IsDirectory ? "目录" : "文件")
+                + " 粘贴菜单项=" + (row.IsDirectory ? "显示，点击后粘贴进该文件夹" : "隐藏，文件不能作为粘贴目标") + " 结果=成功");
+        }
         MenuItem? systemMenuHost = FindSystemMenuHost(menu);
         if (systemMenuHost == null)
         {
@@ -1367,6 +1418,76 @@ public partial class FileListPanel : UserControl
     private void OnPanelLoaded(object? sender, RoutedEventArgs e)
     {
         this.UpdateSortArrows();
+    }
+
+    /// <summary>布局更新时把列表内部的滚动条改为常驻占位，并按实测滚动条宽度对齐表头右边距：
+    /// 滚动条自动隐藏时模板会让内容跨到滚动条所在列、把表格压在滚动条下面，
+    /// 关闭自动隐藏后滚动条独占右侧所需宽度，表格内容不再与滚动条重叠；
+    /// 图标视图的滚动条在切换到图标视图后才创建，因此这里持续监听、逐个处理。</summary>
+    private void OnListHostLayoutUpdated(object? sender, EventArgs e)
+    {
+        int foundCount = 0;
+        int reservedCount = 0;
+        double verticalScrollBarWidth = 0.0;
+        foreach (ScrollViewer viewer in this.ListHost.GetVisualDescendants().OfType<ScrollViewer>())
+        {
+            foundCount++;
+            if (viewer.AllowAutoHide)
+            {
+                viewer.AllowAutoHide = false;
+                reservedCount++;
+                UiLogger.Log("程序行为", "列表滚动条关闭自动隐藏：所在列表=" + DescribeOwnerList(viewer)
+                    + " 结果=滚动条改为常驻占位，独占右侧所需宽度，不再与表格内容重叠");
+            }
+            foreach (ScrollBar scrollBar in viewer.GetVisualDescendants().OfType<ScrollBar>())
+            {
+                if (scrollBar.Orientation == Avalonia.Layout.Orientation.Vertical && scrollBar.Bounds.Width > verticalScrollBarWidth)
+                {
+                    verticalScrollBarWidth = scrollBar.Bounds.Width;
+                }
+            }
+        }
+        if (verticalScrollBarWidth <= 0.0 || verticalScrollBarWidth == this.lastScrollBarWidth)
+        {
+            return;
+        }
+        // 表头右边距按实测滚动条宽度设置：滚动条占多宽，表头就让多宽，保证表头与表格右边缘对齐；
+        // 列表不出现滚动条时实测宽度为 0，表头右边距也回到 0
+        this.lastScrollBarWidth = verticalScrollBarWidth;
+        this.HeaderGrid.Margin = new Thickness(0.0, 0.0, verticalScrollBarWidth, 4.0);
+        UiLogger.Log("程序行为", "列表滚动条宽度实测：纵向滚动条宽度=" + verticalScrollBarWidth + "像素"
+            + " 已发现内部滚动条数量=" + foundCount + " 本轮新占位滚动条数量=" + reservedCount
+            + " 结果=表头右边距已按该宽度设置，表头与表格右边缘对齐");
+    }
+
+    /// <summary>给出滚动条所在的列表名称，用于日志说明。</summary>
+    private static string DescribeOwnerList(ScrollViewer viewer)
+    {
+        for (Control? current = viewer; current != null; current = current.Parent as Control)
+        {
+            if (current.Name == "RowList")
+            {
+                return "详细信息视图列表";
+            }
+            if (current.Name == "TileList")
+            {
+                return "图标视图列表";
+            }
+        }
+        return "未知列表";
+    }
+
+    /// <summary>沿可视化树向上找按下目标所属的滚动条（含滑块与轨道），找不到返回空。</summary>
+    private static ScrollBar? FindPressedScrollBar(Visual? source)
+    {
+        for (Visual? current = source; current != null; current = current.GetVisualParent())
+        {
+            if (current is ScrollBar scrollBar)
+            {
+                return scrollBar;
+            }
+        }
+        return null;
     }
 
     /// <summary>按当前排序状态刷新四个表头的升序 / 降序箭头（未排序的列不显示箭头）。</summary>

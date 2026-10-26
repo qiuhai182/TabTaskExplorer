@@ -436,6 +436,28 @@ public partial class MainWindow : Window
             }
             e.Handled = true;
         }
+        // 输入框获得焦点时的复制 / 剪切 / 粘贴交给输入框自己处理，不触发文件条目的复制粘贴
+        else if (e.Source is not TextBox && this.MatchesHotkey(viewModel, "Copy", e))
+        {
+            UiLogger.Log("程序行为", "快捷键：复制勾选条目 结果=已请求把勾选条目放入剪贴板（内部剪贴板与系统剪贴板同时写入）");
+            viewModel.CopyCheckedToClipboard();
+            e.Handled = true;
+        }
+        else if (e.Source is not TextBox && this.MatchesHotkey(viewModel, "Cut", e))
+        {
+            UiLogger.Log("程序行为", "快捷键：剪切勾选条目 结果=已请求把勾选条目放入剪贴板，粘贴时将移动（内部剪贴板与系统剪贴板同时写入）");
+            viewModel.CutCheckedToClipboard();
+            e.Handled = true;
+        }
+        else if (e.Source is not TextBox && this.MatchesHotkey(viewModel, "Paste", e))
+        {
+            FileTabViewModel? pasteTab = viewModel.SelectedFileTab;
+            UiLogger.Log("程序行为", "快捷键：粘贴 目标目录="
+                + (pasteTab == null || string.IsNullOrEmpty(pasteTab.CurrentPath) ? "此电脑" : pasteTab.CurrentPath)
+                + " 结果=已请求把剪贴板条目粘贴到目标目录（剪贴板为空或目录不可写时由界面提示）");
+            _ = viewModel.PasteFromClipboardAsync(null);
+            e.Handled = true;
+        }
     }
 
     /// <summary>IDE 模式快捷键：保存 / 全部保存 / 关闭编辑器 / 快速打开 / 查找，按键组合取自自定义快捷键配置。</summary>
@@ -1637,7 +1659,7 @@ public partial class MainWindow : Window
     }
 
     /// <summary>工具栏粘贴：粘贴剪贴板内容到当前目录。</summary>
-    private void OnToolbarPasteClick(object? sender, RoutedEventArgs e)
+    private async void OnToolbarPasteClick(object? sender, RoutedEventArgs e)
     {
         FileTabViewModel? tab = this.ViewModel?.SelectedFileTab;
         if (tab == null)
@@ -1648,7 +1670,54 @@ public partial class MainWindow : Window
         UiLogger.Log("程序行为", "点击工具栏粘贴按钮：目标目录="
             + (string.IsNullOrEmpty(tab.CurrentPath) ? "此电脑" : tab.CurrentPath)
             + " 结果=已请求粘贴剪贴板内容（剪贴板为空或目标目录不可写时由界面提示）");
-        this.ViewModel?.PasteFromClipboard();
+        if (this.ViewModel != null)
+        {
+            await this.ViewModel.PasteFromClipboardAsync(null);
+        }
+    }
+
+    /// <summary>标签右键菜单"粘贴"：把剪贴板条目粘贴进该标签所在目录。</summary>
+    private async void OnTabMenuPasteClick(object? sender, RoutedEventArgs e)
+    {
+        MainWindowViewModel? viewModel = this.ViewModel;
+        if (viewModel == null)
+        {
+            UiLogger.Log("程序行为", "点击标签菜单粘贴：当前没有可用的主窗口视图模型，未粘贴");
+            return;
+        }
+        if (sender is not MenuItem menuItem || menuItem.DataContext is not FileTabViewModel tab)
+        {
+            UiLogger.Log("程序行为", "点击标签菜单粘贴：菜单项未关联标签 结果=失败，未粘贴");
+            return;
+        }
+        await viewModel.PasteFromClipboardAsync(tab.CurrentPath);
+        UiLogger.Log("程序行为", "点击标签菜单粘贴：目标目录="
+            + (string.IsNullOrEmpty(tab.CurrentPath) ? "此电脑" : tab.CurrentPath)
+            + " 结果=已请求把剪贴板条目粘贴到该目录（剪贴板为空或目录不可写时由界面提示）");
+    }
+
+    /// <summary>导航栏条目右键菜单"粘贴到该文件夹"：把剪贴板条目粘贴进该导航条目对应的目录。</summary>
+    private async void OnNavMenuPasteClick(object? sender, RoutedEventArgs e)
+    {
+        MainWindowViewModel? viewModel = this.ViewModel;
+        if (viewModel == null)
+        {
+            UiLogger.Log("程序行为", "点击导航栏粘贴到该文件夹：当前没有可用的主窗口视图模型，未粘贴");
+            return;
+        }
+        if (sender is not MenuItem menuItem || menuItem.DataContext is not QuickAccessItem item)
+        {
+            UiLogger.Log("程序行为", "点击导航栏粘贴到该文件夹：菜单项未关联导航条目 结果=失败，未粘贴");
+            return;
+        }
+        if (string.IsNullOrEmpty(item.Path))
+        {
+            UiLogger.Log("程序行为", "点击导航栏粘贴到该文件夹：导航条目=" + item.Name + " 目标目录=空 结果=失败，该条目没有对应目录，未粘贴");
+            return;
+        }
+        await viewModel.PasteFromClipboardAsync(item.Path);
+        UiLogger.Log("程序行为", "点击导航栏粘贴到该文件夹：导航条目=" + item.Name + " 目标目录=" + item.Path
+            + " 结果=已请求把剪贴板条目粘贴到该目录（剪贴板为空或目录不可写时由界面提示）");
     }
 
     /// <summary>标签右键菜单：新建标签。</summary>

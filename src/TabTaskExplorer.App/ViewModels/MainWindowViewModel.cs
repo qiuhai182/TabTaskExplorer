@@ -979,15 +979,17 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
         this.SetClipboardPaths(paths, true);
     }
 
-    /// <summary>写入内部剪贴板状态。</summary>
+    /// <summary>写入内部剪贴板状态，并把同样的内容写进系统剪贴板供外部程序粘贴。</summary>
     private void SetClipboardPaths(IReadOnlyList<string> paths, bool isCut)
     {
         if (paths.Count == 0)
         {
+            UiLogger.Log("程序行为", "写入剪贴板：路径列表=空 结果=失败，未写入任何剪贴板");
             return;
         }
         this.clipboardPaths = new List<string>(paths);
         this.clipboardIsCut = isCut;
+        this.WriteToSystemClipboard(paths, isCut);
         FileTabViewModel? tab = this.SelectedFileTab;
         if (tab != null)
         {
@@ -995,33 +997,146 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
         }
     }
 
-    /// <summary>把剪贴板中的条目复制或移动到当前目录。</summary>
-    public void PasteFromClipboard()
+    /// <summary>把复制 / 剪切的路径写进系统剪贴板，让资源管理器等外部程序也能粘贴。</summary>
+    private void WriteToSystemClipboard(IReadOnlyList<string> paths, bool isCut)
+    {
+        ISystemClipboardService? systemClipboard = this.services.GetService<ISystemClipboardService>();
+        if (systemClipboard == null)
+        {
+            UiLogger.Log("程序行为", "写入系统剪贴板：系统剪贴板服务=未注册 结果=失败，仅内部剪贴板生效");
+            return;
+        }
+        try
+        {
+            _ = systemClipboard.WriteAsync(paths, isCut);
+            UiLogger.Log("程序行为", "写入系统剪贴板：路径总数=" + paths.Count + " 路径列表=" + string.Join("、", paths)
+                + " 方式=" + (isCut ? "剪切" : "复制") + " 结果=已提交写入，具体结果见系统剪贴板服务日志");
+        }
+        catch (Exception error)
+        {
+            UiLogger.LogError("程序行为", "写入系统剪贴板：路径总数=" + paths.Count
+                + " 方式=" + (isCut ? "剪切" : "复制") + " 结果=失败，仅内部剪贴板生效", error);
+        }
+    }
+
+    /// <summary>
+    /// 把剪贴板中的条目复制或移动到目标目录：先读系统剪贴板（含外部程序复制的内容），
+    /// 按「我方状态标记 → 外部文件列表 → 内部剪贴板」的顺序判定粘贴内容与移动 / 复制方式（判定逻辑在内核层，桌面与网页共用）。
+    /// 剪切落地成功后清掉剪切状态，与资源管理器行为一致。
+    /// </summary>
+    /// <param name="targetDirectory">目标目录；为空时用当前选中标签的当前目录。</param>
+    public async Task PasteFromClipboardAsync(string? targetDirectory = null)
     {
         FileTabViewModel? tab = this.SelectedFileTab;
+        string target = string.IsNullOrEmpty(targetDirectory)
+            ? (tab == null ? string.Empty : tab.CurrentPath)
+            : targetDirectory;
         if (tab == null)
         {
-            return;
-        }
-        if (this.clipboardPaths == null || this.clipboardPaths.Count == 0)
-        {
-            tab.ShowMessage("剪贴板为空，请先复制或剪切");
-            return;
-        }
-        if (string.IsNullOrEmpty(tab.CurrentPath))
-        {
-            tab.ShowMessage("请先进入目标文件夹");
+            UiLogger.Log("程序行为", "粘贴：选中标签=无 结果=失败，未执行粘贴");
             return;
         }
 
-        int successCount = this.TransferPathsToDirectory(tab, tab.CurrentPath, this.clipboardPaths,
-            this.clipboardIsCut, out int failedCount);
-        if (this.clipboardIsCut)
+        ClipboardContent? content = null;
+        ISystemClipboardService? systemClipboard = this.services.GetService<ISystemClipboardService>();
+        if (systemClipboard == null)
         {
-            this.clipboardPaths = null;
+            UiLogger.Log("程序行为", "粘贴：系统剪贴板服务=未注册 结果=按内部剪贴板判定");
         }
-        tab.ShowMessage("粘贴完成：成功 " + successCount + " 项，失败 " + failedCount + " 项");
-        tab.Refresh();
+        else
+        {
+            try
+            {
+                content = await systemClipboard.ReadAsync();
+            }
+            catch (Exception error)
+            {
+                UiLogger.LogError("程序行为", "粘贴：读取系统剪贴板 结果=失败，按内部剪贴板判定", error);
+            }
+        }
+
+        ClipboardPasteDecision decision = ClipboardPastePolicy.Decide(content, this.clipboardPaths, this.clipboardIsCut);
+        string categoryDescription;
+        if (decision.Category == ClipboardPasteCategory.StateFormat) { categoryDescription = "我方状态标记"; }
+        else if (decision.Category == ClipboardPasteCategory.SystemFiles) { categoryDescription = "外部程序的文件列表"; }
+        else if (decision.Category == ClipboardPasteCategory.InternalFallback) { categoryDescription = "内部剪贴板"; }
+        else if (decision.Category == ClipboardPasteCategory.NoFileData) { categoryDescription = "剪贴板有数据但没有文件"; }
+        else { categoryDescription = "剪贴板为空"; }
+        UiLogger.Log("程序行为", "粘贴判定：目标目录=" + (target.Length == 0 ? "（未进入任何目录）" : target)
+            + " 判定分类=" + categoryDescription + " 待粘贴路径数=" + decision.Paths.Count
+            + " 待粘贴路径=" + (decision.Paths.Count == 0 ? "（无）" : string.Join("、", decision.Paths))
+            + " 方式=" + (decision.IsCut ? "移动" : "复制"));
+
+        if (decision.Category == ClipboardPasteCategory.NoFileData)
+        {
+            tab.ShowMessage("剪贴板里没有可粘贴的文件");
+            UiLogger.Log("程序行为", "粘贴：判定分类=剪贴板有数据但没有文件 结果=失败，未执行粘贴");
+            return;
+        }
+        if (decision.Category == ClipboardPasteCategory.Empty)
+        {
+            tab.ShowMessage("剪贴板为空，请先复制或剪切");
+            UiLogger.Log("程序行为", "粘贴：判定分类=剪贴板为空 结果=失败，未执行粘贴");
+            return;
+        }
+        if (string.IsNullOrEmpty(target))
+        {
+            tab.ShowMessage("请先进入目标文件夹");
+            UiLogger.Log("程序行为", "粘贴：目标目录=未取到 结果=失败，未执行粘贴");
+            return;
+        }
+
+        int successCount = 0;
+        int failedCount = 0;
+        bool isCut = decision.IsCut;
+        IReadOnlyList<string> paths = decision.Paths;
+        bool usedStateFormat = decision.Category == ClipboardPasteCategory.StateFormat;
+        await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            successCount = this.TransferPathsToDirectory(tab, target, paths, isCut, out failedCount);
+            if (isCut)
+            {
+                this.clipboardPaths = null;
+            }
+            tab.ShowMessage("粘贴完成：成功 " + successCount + " 项，失败 " + failedCount + " 项");
+            UiLogger.Log("程序行为", "粘贴落地：目标目录=" + target + " 路径总数=" + paths.Count
+                + " 方式=" + (isCut ? "移动" : "复制") + " 成功条数=" + successCount + " 失败条数=" + failedCount
+                + " 结果=" + (failedCount == 0 ? "全部成功" : "部分或全部失败"));
+            this.RefreshTabsAtPath(target, tab);
+        });
+
+        // 剪切落地后清掉剪贴板里的剪切状态，与资源管理器一致：粘贴走的剪切文件不再留在剪贴板
+        if (isCut && systemClipboard != null && usedStateFormat)
+        {
+            try
+            {
+                await systemClipboard.ClearAsync();
+                UiLogger.Log("程序行为", "粘贴后清理剪贴板：判定分类=我方状态标记 方式=移动 结果=已清空系统剪贴板");
+            }
+            catch (Exception error)
+            {
+                UiLogger.LogError("程序行为", "粘贴后清理剪贴板：方式=移动 结果=失败", error);
+            }
+        }
+    }
+
+    /// <summary>粘贴落地后刷新目标目录所在的标签页；没有标签正好停在该目录时刷新当前选中标签。</summary>
+    private void RefreshTabsAtPath(string targetDirectory, FileTabViewModel fallbackTab)
+    {
+        bool refreshedAny = false;
+        foreach (object item in this.Tabs)
+        {
+            if (item is FileTabViewModel fileTab
+                && string.Equals(fileTab.CurrentPath, targetDirectory, StringComparison.OrdinalIgnoreCase))
+            {
+                fileTab.Refresh();
+                refreshedAny = true;
+            }
+        }
+        if (!refreshedAny)
+        {
+            fallbackTab.Refresh();
+        }
     }
 
     /// <summary>
@@ -1532,7 +1647,16 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
         if (action == "paste")
         {
             if (fileTab == null) { return "当前标签不是文件列表"; }
-            this.PasteFromClipboard();
+            // 网页端跟随桌面模式由后台线程调用，这里同步等待粘贴完成，界面刷新统一在界面线程执行
+            this.PasteFromClipboardAsync(null).GetAwaiter().GetResult();
+            return string.Empty;
+        }
+        if (action == "pasteto")
+        {
+            if (fileTab == null) { return "当前标签不是文件列表"; }
+            if (string.IsNullOrEmpty(argument)) { return "未指定粘贴目标文件夹"; }
+            // 网页端跟随桌面模式由后台线程调用，这里同步等待粘贴完成，界面刷新统一在界面线程执行
+            this.PasteFromClipboardAsync(argument).GetAwaiter().GetResult();
             return string.Empty;
         }
         if (action == "deletechecked")
@@ -2267,23 +2391,23 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
         }
     }
 
-    /// <summary>把勾选条目路径放入内部剪贴板。</summary>
+    /// <summary>把勾选条目路径放入剪贴板（内部剪贴板 + 系统剪贴板）。</summary>
     private void SetClipboard(bool isCut)
     {
         FileTabViewModel? tab = this.SelectedFileTab;
         if (tab == null)
         {
+            UiLogger.Log("程序行为", "写入剪贴板：选中标签=无 结果=失败，未写入任何剪贴板");
             return;
         }
         List<string> paths = tab.GetCheckedPaths();
         if (paths.Count == 0)
         {
             tab.ShowMessage(isCut ? "请先勾选要剪切的条目" : "请先勾选要复制的条目");
+            UiLogger.Log("程序行为", "写入剪贴板：勾选路径数=0 方式=" + (isCut ? "剪切" : "复制") + " 结果=失败，未写入任何剪贴板");
             return;
         }
-        this.clipboardPaths = paths;
-        this.clipboardIsCut = isCut;
-        tab.ShowMessage((isCut ? "已剪切 " : "已复制 ") + paths.Count + " 项，按 Ctrl+V 粘贴到目标文件夹");
+        this.SetClipboardPaths(paths, isCut);
     }
 
     /// <summary>同步界面可见性设置。</summary>

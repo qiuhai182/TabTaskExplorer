@@ -23,8 +23,9 @@
             <MenuItem Header="系统菜单项" IsVisible="False" Tag="SystemMenuItemsHost" />
           </ContextMenu>
         </Grid.ContextMenu>
-        <!-- 表头：星号名称列设上限，窗口过宽时右侧留白；启用列宽拖动，拖动结果经 ColumnWidths 同步到所有行 -->
-        <Grid Grid.Row="0" Margin="0,0,12,4" IsVisible="{Binding IsDetailsLayout}"
+        <!-- 表头：星号名称列设上限，窗口过宽时右侧留白；启用列宽拖动，拖动结果经 ColumnWidths 同步到所有行。
+             右边距由代码按实测滚动条宽度设置（滚动条独占右侧一列），保证表头与表格右边缘对齐 -->
+        <Grid x:Name="HeaderGrid" Grid.Row="0" Margin="0,0,0,4" IsVisible="{Binding IsDetailsLayout}"
               svc:ColumnResize.Enabled="True"
               svc:ColumnResize.Widths="{Binding ColumnWidths}">
           <Grid.ColumnDefinitions>
@@ -86,6 +87,7 @@
                         <MenuItem Header="在新标签打开" Click="OnMenuOpenInNewTabClick" />
                         <MenuItem Header="复制" Click="OnMenuCopyClick" />
                         <MenuItem Header="剪切" Click="OnMenuCutClick" />
+                        <MenuItem Header="粘贴" Tag="MenuPasteToFolder" Click="OnMenuPasteToFolderClick" />
                         <MenuItem Header="压缩为…" Click="OnMenuCompressClick" />
                         <MenuItem Header="解压到…" Click="OnMenuExtractClick" />
                         <MenuItem Header="重命名" Click="OnMenuRenameClick" />
@@ -120,8 +122,9 @@
               </ListBox.ItemTemplate>
             </ListBox>
             <!-- 图标视图（大图标 / 中图标）：与详细信息视图同样使用 ListBox，保证鼠标悬停预变色与点击选中高亮行为一致 -->
+            <!-- 不再手工留右侧边距：滚动条已常驻独占右侧一列，条目不会被压在滚动条下面 -->
             <ListBox x:Name="TileList" ItemsSource="{Binding VisibleRows}" IsVisible="{Binding IsIconsLayout}"
-                     SelectionMode="Single" Background="Transparent" Padding="0" BorderThickness="0" Margin="0,0,12,0">
+                     SelectionMode="Single" Background="Transparent" Padding="0" BorderThickness="0">
               <ListBox.ItemsPanel>
                 <ItemsPanelTemplate>
                   <WrapPanel />
@@ -137,6 +140,7 @@
                           <MenuItem Header="在新标签打开" Click="OnMenuOpenInNewTabClick" />
                           <MenuItem Header="复制" Click="OnMenuCopyClick" />
                           <MenuItem Header="剪切" Click="OnMenuCutClick" />
+                          <MenuItem Header="粘贴" Tag="MenuPasteToFolder" Click="OnMenuPasteToFolderClick" />
                           <MenuItem Header="压缩为…" Click="OnMenuCompressClick" />
                           <MenuItem Header="解压到…" Click="OnMenuExtractClick" />
                           <MenuItem Header="重命名" Click="OnMenuRenameClick" />

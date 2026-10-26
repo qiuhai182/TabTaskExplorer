@@ -75,6 +75,7 @@
                   <MenuItem Header="打开" Click="OnMenuOpenClick" />
                   <MenuItem Header="在新标签打开" Click="OnMenuOpenInNewTabClick" />
                   <MenuItem Header="复制路径" Click="OnMenuCopyPathClick" />
+                  <MenuItem Header="粘贴" Click="OnMenuPasteClick" />
                 </ContextMenu>
               </Border.ContextMenu>
               <!-- 列定义与表头一致：星号列设上限，列宽拖动结果经附加属性同步到所有行 -->

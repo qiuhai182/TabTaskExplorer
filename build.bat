@@ -13,6 +13,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "$utf8Bom = New-Object Sy
 if errorlevel 1 (
     echo.
     echo 存在字符已丢失的文件（含 U+FFFD），已中止构建，请先修复上述文件
+    pause
     exit /b 1
 )
 
@@ -33,6 +34,7 @@ if errorlevel 1 (
     echo [原因] 输出文件被占用：%OUTPUT%\TabTaskExplorer.exe 正被运行中的程序独占，新的可执行文件无法写入。
     echo [处理] 正在运行的通常是托盘常驻的 TabTaskExplorer 实例，请先执行 stop.bat 结束它，然后重新执行 build.bat。
     echo =====================================================
+    pause
     exit /b 1
 )
 
@@ -51,6 +53,7 @@ del "%OUTPUT%\*.pdb" 2>nul
 echo.
 echo 构建完成：%OUTPUT%\TabTaskExplorer.exe
 echo 完整构建日志：%BUILD_LOG%
+pause
 endlocal
 exit /b 0
 
@@ -84,5 +87,6 @@ echo ------------------ 错误明细 ------------------
 findstr /R /C:": error " /C:"error NU" /C:"error MSB" "%BUILD_LOG%"
 echo =====================================================
 echo 完整构建日志：%BUILD_LOG%
+pause
 endlocal
 exit /b 1

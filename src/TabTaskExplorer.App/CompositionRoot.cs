@@ -76,6 +76,9 @@ public static class CompositionRoot
             services.AddSingleton<ISystemContextMenuService, NullSystemContextMenuService>();
         }
 
+        // 系统剪贴板：三平台共用同一套 Avalonia 实现，复制 / 剪切与外部程序双向互通
+        services.AddSingleton<ISystemClipboardService, AvaloniaSystemClipboardService>();
+
         // 网页端服务：仅绑定本机回环地址，页面与程序界面实时同构
         services.AddSingleton<Services.WebServiceHost>();
 

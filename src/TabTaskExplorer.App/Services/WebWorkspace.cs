@@ -545,7 +545,13 @@ public class WebWorkspace
         if (action == "paste")
         {
             if (fileTab == null) { return "当前标签不是文件列表"; }
-            return this.PasteClipboard(fileTab);
+            return this.PasteClipboard(fileTab, fileTab.CurrentPath);
+        }
+        if (action == "pasteto")
+        {
+            if (fileTab == null) { return "当前标签不是文件列表"; }
+            if (string.IsNullOrEmpty(argument)) { return "未指定粘贴目标文件夹"; }
+            return this.PasteClipboard(fileTab, argument);
         }
         if (action == "deletechecked")
         {
@@ -698,14 +704,20 @@ public class WebWorkspace
         return "未知动作：" + action;
     }
 
-    /// <summary>把剪贴板中的条目复制或移动到当前目录（独立工作区自己的剪贴板）。</summary>
+    /// <summary>把剪贴板中的条目复制或移动到该标签当前目录（独立工作区自己的剪贴板）。</summary>
     private string PasteClipboard(FileTabViewModel fileTab)
+    {
+        return this.PasteClipboard(fileTab, fileTab.CurrentPath);
+    }
+
+    /// <summary>把剪贴板中的条目复制或移动到指定目录（独立工作区自己的剪贴板），供当前目录粘贴与「粘贴到该文件夹」共用。</summary>
+    private string PasteClipboard(FileTabViewModel fileTab, string targetDirectory)
     {
         if (this.clipboardPaths == null || this.clipboardPaths.Count == 0)
         {
             return "剪贴板为空，请先复制或剪切";
         }
-        if (string.IsNullOrEmpty(fileTab.CurrentPath))
+        if (string.IsNullOrEmpty(targetDirectory))
         {
             return "请先进入目标文件夹";
         }
@@ -722,11 +734,11 @@ public class WebWorkspace
             {
                 if (this.clipboardIsCut)
                 {
-                    fileSystem.Move(path, fileTab.CurrentPath);
+                    fileSystem.Move(path, targetDirectory);
                 }
                 else
                 {
-                    fileSystem.Copy(path, fileTab.CurrentPath);
+                    fileSystem.Copy(path, targetDirectory);
                 }
                 successCount++;
             }
@@ -735,10 +747,17 @@ public class WebWorkspace
                 failedCount++;
             }
         }
+        string landedPathsText = string.Join("、", this.clipboardPaths);
+        bool landedIsCut = this.clipboardIsCut;
         if (this.clipboardIsCut)
         {
             this.clipboardPaths = null;
         }
+        UiLogger.Log("网页端工作区", "工作区=" + this.Id + " 粘贴落地：目标目录=" + targetDirectory
+            + " 路径列表=" + landedPathsText
+            + " 方式=" + (landedIsCut ? "移动" : "复制")
+            + " 成功条数=" + successCount + " 失败条数=" + failedCount
+            + " 结果=" + (failedCount == 0 ? "全部成功" : "部分或全部失败"));
         fileTab.ShowMessage("粘贴完成：成功 " + successCount + " 项，失败 " + failedCount + " 项");
         fileTab.Refresh();
         return "粘贴完成：成功 " + successCount + " 项，失败 " + failedCount + " 项";
