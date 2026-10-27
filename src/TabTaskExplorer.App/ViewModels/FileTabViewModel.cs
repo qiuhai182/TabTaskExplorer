@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Avalonia.Threading;
@@ -69,6 +70,13 @@ public class FileTabViewModel : INotifyPropertyChanged, IColumnWidthViewModel
     private int fetchGeneration = -1;
     private List<FileRow> fetchedRows = new List<FileRow>();
     private int fetchedGeneration = -1;
+
+    // 已经在界面线程应用到 allRows 的加载分代：必须与 fetchedGeneration 区分，
+    // 后者由后台线程先写入、界面行数还没填充，用它判断会误认为“列表已就绪”
+    private int appliedGeneration = -1;
+
+    // 系统唤起“在文件夹中显示”挂起的待选中条目：列表加载完成后自动应用
+    private string? pendingSelectPath;
 
     // 目录大小回填：切路径、刷新或关闭标签时取消，只让本订阅者退出共享计算
     private CancellationTokenSource? sizeBackfillCancellation;
@@ -961,6 +969,68 @@ public class FileTabViewModel : INotifyPropertyChanged, IColumnWidthViewModel
         }
     }
 
+    /// <summary>
+    /// 系统唤起“在文件夹中显示”：选中指定条目。
+    /// 目录列表尚未加载完成时先挂起，待本次加载结果应用后再勾选。
+    /// </summary>
+    public void SelectEntry(string fullPath)
+    {
+        this.pendingSelectPath = fullPath;
+        bool listIsCurrent = this.appliedGeneration == this.loadGeneration;
+        UiLogger.Log("文件标签", "系统唤起选中条目登记：路径=" + fullPath + " 标签路径=" + this.currentPath
+            + " 列表已是最新结果=" + listIsCurrent + " 当前行数=" + this.allRows.Count);
+        this.TryApplyPendingSelect();
+    }
+
+    /// <summary>尝试应用挂起的条目选中：列表已是当前路径的最新结果时立即生效或清除。</summary>
+    private void TryApplyPendingSelect()
+    {
+        string? want = this.pendingSelectPath;
+        if (want == null)
+        {
+            return;
+        }
+        bool listIsCurrent = this.appliedGeneration == this.loadGeneration;
+        foreach (FileRow row in this.allRows)
+        {
+            if (!string.Equals(row.FullPath, want, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+            this.pendingSelectPath = null;
+            foreach (FileRow other in this.allRows)
+            {
+                other.IsSelected = object.ReferenceEquals(other, row);
+            }
+            this.SummaryText = "已选中 " + row.DisplayName;
+            UiLogger.Log("文件标签", "系统唤起选中条目：路径=" + want + " 标签路径=" + this.currentPath);
+            return;
+        }
+        if (listIsCurrent)
+        {
+            // 列表已是最新结果但没有该条目（文件已不在目录中）：清除挂起，避免污染下次加载
+            this.pendingSelectPath = null;
+            UiLogger.Log("文件标签", "系统唤起选中条目未找到，本次不选中：路径=" + want
+                + " 标签路径=" + this.currentPath + " 当前行数=" + this.allRows.Count
+                + " 前三行=" + string.Join(" ; ", SamplePaths(3)));
+        }
+    }
+
+    /// <summary>取前 N 行路径样本，供选中失败时的诊断日志定位路径不一致问题。</summary>
+    private string SamplePaths(int count)
+    {
+        StringBuilder builder = new StringBuilder();
+        for (int i = 0; i < this.allRows.Count && i < count; i++)
+        {
+            if (i > 0)
+            {
+                builder.Append(" ; ");
+            }
+            builder.Append(this.allRows[i].FullPath);
+        }
+        return builder.ToString();
+    }
+
     /// <summary>全选当前目录全部条目。</summary>
     public void SelectAll()
     {
@@ -1045,7 +1115,9 @@ public class FileTabViewModel : INotifyPropertyChanged, IColumnWidthViewModel
         }
 
         this.allRows = new List<FileRow>(this.fetchedRows);
+        this.appliedGeneration = this.loadGeneration;
         this.ApplyFilter();
+        this.TryApplyPendingSelect();
         this.StartSizeBackfill();
 
         if (this.allRows.Count == 0 && !string.IsNullOrEmpty(this.currentPath))

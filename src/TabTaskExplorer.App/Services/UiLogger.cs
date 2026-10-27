@@ -95,6 +95,8 @@ public static class UiLogger
         window.AddHandler(InputElement.PointerReleasedEvent, UiLogger.OnPointerReleased, RoutingStrategies.Tunnel, true);
         window.AddHandler(InputElement.KeyDownEvent, UiLogger.OnKeyDown, RoutingStrategies.Tunnel, true);
         window.AddHandler(InputElement.TextInputEvent, UiLogger.OnTextInput, RoutingStrategies.Tunnel, true);
+        // 滚轮在隧道阶段不拦，挂到冒泡末端并忽略已处理标记，用来判断滚轮是否到达窗口、是否被内层控件吞掉
+        window.AddHandler(InputElement.PointerWheelChangedEvent, UiLogger.OnPointerWheelChanged, RoutingStrategies.Bubble, true);
         window.Opened += UiLogger.OnWindowOpened;
         window.Closed += UiLogger.OnWindowClosed;
     }
@@ -154,6 +156,14 @@ public static class UiLogger
     private static void OnKeyDown(object? sender, KeyEventArgs e)
     {
         UiLogger.Log("键盘按下", "按键=" + e.Key + " 修饰键=" + UiLogger.DescribeModifiers(e.KeyModifiers) + " 来源=" + UiLogger.DescribeSource(e.Source));
+    }
+
+    /// <summary>记录一次鼠标滚轮：写明滚动增量、落点控件，以及事件是否已被内层控件处理（已处理说明外层滚动容器收不到）。</summary>
+    private static void OnPointerWheelChanged(object? sender, PointerWheelEventArgs e)
+    {
+        UiLogger.Log("鼠标滚轮", "滚动增量=" + e.Delta.Y
+            + " 来源=" + UiLogger.DescribeSource(e.Source)
+            + " 是否已被内层控件处理=" + e.Handled);
     }
 
     private static void LogPointer(object? sender, PointerEventArgs e, string action)

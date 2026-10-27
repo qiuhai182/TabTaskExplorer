@@ -2006,6 +2006,7 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
     {
         UiLogger.Log("程序行为", "系统唤起打开路径：来源=" + source + " 原始路径=" + path);
         string target = NormalizePath(path);
+        string? selectFile = null;
         if (string.IsNullOrEmpty(target))
         {
             UiLogger.Log("程序行为", "系统唤起路径规范化后为空，本次唤起不打开任何标签：来源=" + source + " 原始路径=" + path);
@@ -2015,9 +2016,10 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
         {
             if (File.Exists(target))
             {
-                // 唤起对象是文件时打开其所在目录
+                // 唤起对象是文件时打开其所在目录，并在加载完成后选中该文件（微信“在文件夹中显示”的期望效果）
+                selectFile = target;
                 string directory = NormalizePath(Path.GetDirectoryName(target) ?? target);
-                UiLogger.Log("程序行为", "系统唤起对象是文件，程序选择改为打开其所在目录：来源=" + source
+                UiLogger.Log("程序行为", "系统唤起对象是文件，程序选择改为打开其所在目录并选中该文件：来源=" + source
                     + " 文件路径=" + target + " 所在目录=" + directory);
                 target = directory;
             }
@@ -2060,6 +2062,10 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
                 window.WindowState = Avalonia.Controls.WindowState.Normal;
                 window.Activate();
                 viewModel.SelectedTab = fileTab;
+                if (selectFile != null)
+                {
+                    fileTab.SelectEntry(selectFile);
+                }
                 UiLogger.Log("程序行为", "系统唤起最终行为：命中既有标签，激活所在窗口并跳转，未新建标签"
                     + " 来源=" + source + " 路径=" + target
                     + " 命中窗口序号=" + WindowRegistry.GetWindowIndex(window)
@@ -2082,13 +2088,31 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
             mainViewModel = this;
         }
         int previousTabCount = mainViewModel.Tabs.Count;
+        // 承接窗口若被最小化/隐藏，标签建了也看不见（系统唤起后窗口仍最小化的根因）
+        bool primaryWasVisible = primaryWindow?.IsVisible ?? false;
+        Avalonia.Controls.WindowState primaryPreviousState = primaryWindow?.WindowState ?? Avalonia.Controls.WindowState.Normal;
+        if (primaryWindow != null)
+        {
+            primaryWindow.Show();
+            primaryWindow.WindowState = Avalonia.Controls.WindowState.Normal;
+            primaryWindow.Activate();
+        }
         UiLogger.Log("程序行为", "系统唤起最终行为：未命中既有标签，在主窗口新建标签"
             + " 来源=" + source + " 路径=" + target
             + " 新建目标窗口序号=" + (primaryWindow != null ? WindowRegistry.GetWindowIndex(primaryWindow) : -1)
             + " 新建前该窗口标签数=" + previousTabCount
+            + " 承接窗口唤起前可见=" + primaryWasVisible
+            + " 承接窗口唤起前状态=" + primaryPreviousState
+            + " 承接窗口唤起后可见=" + (primaryWindow?.IsVisible ?? false)
+            + " 承接窗口唤起后状态=" + (primaryWindow?.WindowState.ToString() ?? "无窗口")
             + " 本次扫描窗口数=" + scannedWindowCount
             + " 本次扫描标签数=" + scannedTabCount);
         mainViewModel.AddTab(target);
+        if (selectFile != null && mainViewModel.Tabs.Count > previousTabCount
+            && mainViewModel.Tabs[mainViewModel.Tabs.Count - 1] is FileTabViewModel newFileTab)
+        {
+            newFileTab.SelectEntry(selectFile);
+        }
     }
 
     /// <summary>按保存的设置应用主题（程序启动时调用）。</summary>

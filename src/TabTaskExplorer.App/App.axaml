@@ -119,6 +119,9 @@
   </Application.Resources>
 
   <Application.Styles>
+    <!-- FluentTheme 提供 ContextMenu 等基础控件模板（FluentAvalonia 主题不含 ContextMenu 模板，缺失时菜单无模板测量为 0×0 不可见）；
+         放在 FluentAvaloniaTheme 之前，冲突时仍由后者覆盖 -->
+    <FluentTheme />
     <styling:FluentAvaloniaTheme />
 
     <!-- ======== TabX 风格交互：悬停 / 选中随主题字典切换 ======== -->
