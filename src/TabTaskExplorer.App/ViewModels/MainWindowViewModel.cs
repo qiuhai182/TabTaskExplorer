@@ -490,6 +490,42 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
         UiLogger.Log("网页端服务", "跟随桌面打开磁盘视图标签：标签总数=" + this.Tabs.Count);
     }
 
+    /// <summary>按标签类型打开视图：网页端与桌面端共用同一套 kind 标识，新增视图只在此登记。</summary>
+    public void OpenView(string kind)
+    {
+        if (kind == TabKinds.File)
+        {
+            this.AddTab(string.Empty);
+            return;
+        }
+        if (kind == TabKinds.Board)
+        {
+            this.OpenTaskBoardTab();
+            return;
+        }
+        if (kind == TabKinds.Search)
+        {
+            this.OpenSearchTab();
+            return;
+        }
+        if (kind == TabKinds.Connections)
+        {
+            this.OpenConnectionsTab();
+            return;
+        }
+        if (kind == TabKinds.Disk)
+        {
+            this.OpenDiskViewTab();
+            return;
+        }
+        if (kind == TabKinds.Process)
+        {
+            this.OpenProcessMonitorTab();
+            return;
+        }
+        UiLogger.Log("程序行为", "打开视图被忽略：无法识别的标签类型=" + kind + " 结果=未打开任何标签");
+    }
+
     /// <summary>跟随桌面：网页端请求操作桌面磁盘视图；空路径回到根视图，其余路径原地展开或收起。</summary>
     public void NavigateDesktopDisk(string path)
     {
@@ -1512,6 +1548,101 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
         });
     }
 
+    /// <summary>执行网页端连接管理动作（跟随桌面模式）：选择、保存、删除、测试、一键导入、打开远程目录或终端。</summary>
+    private string ExecuteConnectionAction(string action, string argument)
+    {
+        ConnectionManagerViewModel? tab = this.FindConnectionsTab();
+        if (tab == null)
+        {
+            UiLogger.Log("网页端访问", "连接动作被忽略：桌面端没有连接管理标签 动作=" + action + " 参数=" + argument);
+            return "请先在左侧导航中打开连接管理";
+        }
+        if (action == "connselect")
+        {
+            RemoteConnectionProfile? profile = WebWorkspace.FindConnection(tab, argument);
+            if (profile == null)
+            {
+                return "没有找到该连接，可能已被删除";
+            }
+            tab.SelectedConnection = profile;
+            return "已选择连接：" + profile.Name;
+        }
+        if (action == "connsave")
+        {
+            return WebWorkspace.SaveConnectionFromWeb(tab, argument);
+        }
+        if (action == "conndelete")
+        {
+            RemoteConnectionProfile? profile = WebWorkspace.FindConnection(tab, argument);
+            if (profile == null)
+            {
+                return "没有找到要删除的连接";
+            }
+            tab.Delete(profile.Id);
+            UiLogger.Log("网页端访问", "删除连接：名称=" + profile.Name + " 服务器=" + profile.Host);
+            return "已删除连接：" + profile.Name;
+        }
+        if (action == "conntest")
+        {
+            RemoteConnectionProfile? profile = WebWorkspace.FindConnection(tab, argument);
+            if (profile == null)
+            {
+                return "请先选择要测试的连接";
+            }
+            ConnectionTestResult result = tab.TestAsync(profile, TcpConnectivityTester.DefaultTimeoutMilliseconds)
+                .GetAwaiter().GetResult();
+            UiLogger.Log("网页端访问", "测试连接：名称=" + profile.Name + " 服务器=" + profile.Host
+                + " 端口=" + profile.GetEffectivePort() + " 耗时=" + result.LatencyMilliseconds + " 毫秒 结果=" + result.Message);
+            return (result.Success ? "测试成功：" : "测试失败：") + result.Message;
+        }
+        if (action == "connimport")
+        {
+            XshellImportSummary summary = tab.ImportInstalled();
+            UiLogger.Log("网页端访问", "一键导入已安装配置：配置目录数=" + summary.RootsScanned.Count
+                + " 新增=" + summary.Imported + " 更新=" + summary.Updated + " 跳过=" + summary.Skipped.Count);
+            if (summary.RootsScanned.Count == 0)
+            {
+                return "未发现 Xshell / Xftp 配置目录";
+            }
+            return "一键导入完成：新增 " + summary.Imported + " 个、更新 " + summary.Updated + " 个连接"
+                + (summary.Skipped.Count > 0 ? "；跳过 " + summary.Skipped.Count + " 个" : string.Empty);
+        }
+        if (action == "connopenfolder")
+        {
+            RemoteConnectionProfile? profile = WebWorkspace.FindConnection(tab, argument);
+            if (profile == null)
+            {
+                return "请先选择要打开的连接";
+            }
+            this.OpenRemoteFolderTab(profile);
+            return "已请求在桌面端打开远程文件夹标签：" + profile.Name;
+        }
+        if (action == "connopenterminal")
+        {
+            RemoteConnectionProfile? profile = WebWorkspace.FindConnection(tab, argument);
+            if (profile == null)
+            {
+                return "请先选择要打开的连接";
+            }
+            this.OpenTerminalTab(profile);
+            return "已请求在桌面端打开终端标签：" + profile.Name;
+        }
+        return "未知动作：" + action;
+    }
+
+    /// <summary>查找桌面端已有的连接管理标签；没有返回 null。</summary>
+    private ConnectionManagerViewModel? FindConnectionsTab()
+    {
+        foreach (object tab in this.Tabs)
+        {
+            if (tab is ConnectionManagerViewModel connections)
+            {
+                return connections;
+            }
+        }
+        return null;
+    }
+
     /// <summary>在 UI 线程执行网页端动作（必须在 UI 线程调用），返回给页面的提示文字，空文本表示无提示。</summary>
     private string ExecuteWebActionOnUiThread(string action, string argument)
     {
@@ -1751,29 +1882,14 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
             this.Unpin(argument);
             return "已从书签移除";
         }
-        if (action == "openboard")
+        if (action.StartsWith("conn", StringComparison.Ordinal))
         {
-            this.OpenTaskBoardTab();
-            return string.Empty;
+            return this.ExecuteConnectionAction(action, argument);
         }
-        if (action == "opensearch")
+        string? viewKind = TabKinds.FromOpenAction(action);
+        if (viewKind != null)
         {
-            this.OpenSearchTab();
-            return string.Empty;
-        }
-        if (action == "openconnections")
-        {
-            this.OpenConnectionsTab();
-            return string.Empty;
-        }
-        if (action == "opendisk")
-        {
-            this.OpenDiskViewTab();
-            return string.Empty;
-        }
-        if (action == "openprocess")
-        {
-            this.OpenProcessMonitorTab();
+            this.OpenView(viewKind);
             return string.Empty;
         }
         ProcessPanelViewModel? processTab = this.SelectedTab as ProcessPanelViewModel;
@@ -1832,16 +1948,6 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
             return string.Empty;
         }
         return "未知动作：" + action;
-    }
-
-    /// <summary>把走势图序列复制到快照列表（复制而非引用，避免快照与界面状态竞争）。</summary>
-    private static void CopyTrendList(IReadOnlyList<double> source, List<double> target)
-    {
-        target.Clear();
-        for (int index = 0; index < source.Count; index++)
-        {
-            target.Add(source[index]);
-        }
     }
 
     /// <summary>把"每行一个路径"的文本拆成路径列表（去掉空行与行尾回车）。</summary>
@@ -2181,166 +2287,8 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
             DebugTabState tabState = new DebugTabState();
             tabState.Index = index;
             tabState.Selected = object.ReferenceEquals(tab, this.SelectedTab);
-            FileTabViewModel? fileTab = tab as FileTabViewModel;
-            TaskBoardViewModel? board = tab as TaskBoardViewModel;
-            ConnectionManagerViewModel? connections = tab as ConnectionManagerViewModel;
-            DiskViewPanelViewModel? diskViewTab = tab as DiskViewPanelViewModel;
-            ProcessPanelViewModel? processPanelTab = tab as ProcessPanelViewModel;
-            SearchTabViewModel? searchTab = tab as SearchTabViewModel;
-            if (fileTab != null)
-            {
-                tabState.TabType = "file";
-                tabState.Title = fileTab.Title;
-                tabState.CurrentPath = fileTab.CurrentPath;
-                tabState.SortField = fileTab.SortField;
-                tabState.SortAscending = fileTab.SortAscending;
-                tabState.SearchText = fileTab.SearchText;
-                tabState.ViewMode = fileTab.ViewMode.ToString();
-                tabState.ShowInfoPane = fileTab.ShowInfoPane;
-                tabState.CanGoBack = fileTab.CanGoBack;
-                tabState.CanGoForward = fileTab.CanGoForward;
-                tabState.CheckedCount = fileTab.GetCheckedRows().Count;
-                tabState.SummaryText = fileTab.SummaryText;
-                foreach (FileRow row in fileTab.VisibleRows)
-                {
-                    DebugFileRow mirror = new DebugFileRow();
-                    mirror.Name = row.DisplayName;
-                    mirror.IsDirectory = row.IsDirectory;
-                    mirror.FullPath = row.FullPath;
-                    mirror.Type = row.TypeText;
-                    mirror.Size = row.SizeText;
-                    mirror.Modified = row.ModifiedText;
-                    mirror.IsSelected = row.IsSelected;
-                    mirror.IconGlyph = row.IconGlyph;
-                    mirror.IconColor = row.IconColor;
-                    tabState.Rows.Add(mirror);
-                }
-            }
-            else if (board != null)
-            {
-                tabState.TabType = "board";
-                tabState.Title = board.Title;
-                foreach (TaskItem item in board.TodoItems)
-                {
-                    tabState.Todo.Add(item.Title);
-                }
-                foreach (TaskItem item in board.InProgressItems)
-                {
-                    tabState.InProgress.Add(item.Title);
-                }
-                foreach (TaskItem item in board.DoneItems)
-                {
-                    tabState.Done.Add(item.Title);
-                }
-            }
-            else if (connections != null)
-            {
-                tabState.TabType = "connections";
-                tabState.Title = connections.Title;
-                foreach (RemoteConnectionProfile profile in connections.Connections)
-                {
-                    tabState.Connections.Add(new string[] { profile.Name, profile.Summary });
-                }
-                tabState.SelectedConnection = connections.SelectedConnection != null ? connections.SelectedConnection.Name : string.Empty;
-            }
-            else if (diskViewTab != null)
-            {
-                tabState.TabType = "disk";
-                tabState.Title = diskViewTab.Title;
-                tabState.CurrentPath = diskViewTab.RootPathInput;
-                tabState.SummaryText = diskViewTab.SummaryText;
-                tabState.TotalRows = diskViewTab.Rows.Count;
-                tabState.SortField = diskViewTab.SortField;
-                tabState.SortAscending = diskViewTab.SortAscending;
-                foreach (DiskRow row in diskViewTab.Rows)
-                {
-                    DebugFileRow mirror = new DebugFileRow();
-                    mirror.Name = row.Name;
-                    mirror.IsDirectory = row.IsDirectory;
-                    mirror.FullPath = row.FullPath;
-                    mirror.Type = row.EntryTypeText;
-                    mirror.Size = row.SizeText;
-                    mirror.Free = row.FreeText;
-                    mirror.Usage = row.UsageText;
-                    mirror.FileSystem = row.FileSystemText;
-                    mirror.Level = row.Level;
-                    mirror.Expanded = row.IsExpanded;
-                    tabState.Rows.Add(mirror);
-                }
-            }
-            else if (processPanelTab != null)
-            {
-                // 进程监控标签：摘要、详情、调节项、走势图与进程行镜像，网页端按同一套界面展示
-                tabState.TabType = "process";
-                tabState.Title = processPanelTab.Title;
-                tabState.ResourceText = processPanelTab.ResourceText;
-                tabState.SummaryText = processPanelTab.SummaryText;
-                tabState.TotalRows = processPanelTab.Rows.Count;
-                tabState.DetailText = processPanelTab.DetailText;
-                tabState.AffinityInput = processPanelTab.AffinityInput;
-                tabState.PriorityIndex = processPanelTab.SelectedPriorityIndex;
-                tabState.DetailSupported = processPanelTab.IsDetailSupported;
-                tabState.TrendVersion = processPanelTab.TrendUpdatedAt.Ticks;
-                tabState.SortField = processPanelTab.SortField;
-                tabState.SortAscending = processPanelTab.SortAscending;
-                CopyTrendList(processPanelTab.SystemCpuTrend, tabState.SystemCpuTrend);
-                CopyTrendList(processPanelTab.SystemMemoryTrend, tabState.SystemMemoryTrend);
-                CopyTrendList(processPanelTab.SelectedCpuTrend, tabState.SelectedCpuTrend);
-                int processLimit = tabState.TotalRows > 1000 ? 1000 : tabState.TotalRows;
-                for (int processIndex = 0; processIndex < processLimit; processIndex++)
-                {
-                    ProcessRow row = processPanelTab.Rows[processIndex];
-                    DebugProcessRow mirror = new DebugProcessRow();
-                    mirror.ProcessId = row.ProcessId;
-                    mirror.IndentText = row.IndentText;
-                    mirror.Name = row.Name;
-                    mirror.CpuText = row.CpuText;
-                    mirror.MemoryText = row.MemoryText;
-                    mirror.WindowTitle = row.WindowTitle;
-                    mirror.UserNameText = row.UserNameText;
-                    mirror.ThreadText = row.ThreadText;
-                    mirror.HandleText = row.HandleText;
-                    mirror.PriorityText = row.PriorityText;
-                    mirror.IoText = row.IoText;
-                    mirror.StartTimeText = row.StartTimeText;
-                    mirror.CommandLineText = row.CommandLineText;
-                    mirror.IsSelected = object.ReferenceEquals(row, processPanelTab.SelectedRow);
-                    tabState.ProcessRows.Add(mirror);
-                }
-            }
-            else if (searchTab != null)
-            {
-                // 全局搜索标签：结果行与文件列表同构，网页端按同一套表格展示
-                tabState.TabType = "search";
-                tabState.Title = searchTab.Title;
-                tabState.SearchText = searchTab.QueryText;
-                tabState.SummaryText = searchTab.StatusText;
-                tabState.TotalRows = searchTab.Results.Count;
-                tabState.SortField = searchTab.SortField;
-                tabState.SortAscending = searchTab.SortAscending;
-                int searchLimit = tabState.TotalRows > 1000 ? 1000 : tabState.TotalRows;
-                for (int resultIndex = 0; resultIndex < searchLimit; resultIndex++)
-                {
-                    FileRow row = searchTab.Results[resultIndex];
-                    DebugFileRow mirror = new DebugFileRow();
-                    mirror.Name = row.DisplayName;
-                    mirror.IsDirectory = row.IsDirectory;
-                    mirror.FullPath = row.FullPath;
-                    mirror.Type = row.TypeText;
-                    mirror.Size = row.SizeText;
-                    mirror.Modified = row.ModifiedText;
-                    mirror.IsSelected = row.IsSelected;
-                    mirror.IconGlyph = row.IconGlyph;
-                    mirror.IconColor = row.IconColor;
-                    tabState.Rows.Add(mirror);
-                }
-            }
-            else
-            {
-                // 终端、传输、编辑器等标签：网页端不渲染内容，但标题要与桌面标签条一致
-                tabState.TabType = "unknown";
-                tabState.Title = MainWindowViewModel.DescribeTabTitle(tab);
-            }
+            tabState.Title = MainWindowViewModel.DescribeTabTitle(tab);
+            TabSnapshotBuilder.Fill(tab, tabState);
             state.Tabs.Add(tabState);
             index++;
         }

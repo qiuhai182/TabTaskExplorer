@@ -398,7 +398,8 @@ public class WebServiceHost
         private bool CheckActionPermission(NetworkStream stream, WebAccessProfile profile, HttpRequest request, string action)
         {
             bool needCreateDelete = action == "cut" || action == "paste" || action == "pasteto" || action == "deletechecked"
-                || action == "batchrename" || action == "encodepreview" || action == "encodeapply";
+                || action == "batchrename" || action == "encodepreview" || action == "encodeapply"
+                || action == "connsave" || action == "conndelete" || action == "connimport";
             bool needModify = action == "togglehidden" || action == "toggleextensions" || action == "pin" || action == "unpin" || action == "chmod"
                 || action == "idetext" || action == "idesave" || action == "idesaveall" || action == "idereplace" || action == "idereplaceall"
                 || action == "processkill" || action == "processpriority" || action == "processaffinity";

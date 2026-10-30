@@ -16,6 +16,7 @@ namespace TabTaskExplorer.App;
 public class App : Application
 {
     private TrayIcon? trayIcon;
+    private NativeMenuItem? copyWebAddressItem;
     private IServiceProvider? appServices;
 
     public override void Initialize()
@@ -224,7 +225,7 @@ public class App : Application
         Services.UiLogger.Log("程序退出", "进程退出：退出码=" + Environment.ExitCode);
     }
 
-    /// <summary>创建托盘常驻图标与右键菜单：显示主窗口、开机自启、退出。</summary>
+    /// <summary>创建托盘常驻图标与右键菜单：显示主窗口、打开网页、复制网页地址、开机自启、退出。</summary>
     private void CreateTrayIcon()
     {
         WindowIcon? trayWindowIcon = null;
@@ -252,6 +253,14 @@ public class App : Application
         NativeMenuItem openWebItem = new NativeMenuItem("打开网页");
         openWebItem.Click += this.OnTrayOpenWebClick;
         menu.Add(openWebItem);
+
+        NativeMenuItem copyWebAddressItem = new NativeMenuItem(BuildCopyWebAddressHeader(this.GetWebServiceAddress()));
+        copyWebAddressItem.Click += this.OnTrayCopyWebAddressClick;
+        menu.Add(copyWebAddressItem);
+        this.copyWebAddressItem = copyWebAddressItem;
+
+        // 菜单每次弹出前刷新标题里的当前地址：网页端服务可能中途启停
+        menu.NeedsUpdate += this.OnTrayMenuNeedsUpdate;
 
         NativeMenuItem autoStartItem = new NativeMenuItem("开机自启：关");
         autoStartItem.Click += this.OnTrayAutoStartClick;
@@ -339,12 +348,7 @@ public class App : Application
     /// <summary>托盘菜单：用系统默认浏览器打开本机网页端服务页面。</summary>
     public void OnTrayOpenWebClick(object? sender, EventArgs e)
     {
-        Services.WebServiceHost? webHost = null;
-        if (this.appServices != null)
-        {
-            webHost = this.appServices.GetService<Services.WebServiceHost>();
-        }
-        string address = webHost != null && webHost.ListenUrls.Count > 0 ? webHost.ListenUrls[0] : string.Empty;
+        string address = this.GetWebServiceAddress();
         if (string.IsNullOrEmpty(address))
         {
             Services.UiLogger.Log("网页端服务", "托盘打开网页失败：网页端服务未启动");
@@ -365,6 +369,77 @@ public class App : Application
             Services.UiLogger.LogError("网页端服务", "托盘打开网页失败：" + address, error);
             MessageDialog.Show(this.CurrentMainWindow, "打开失败", "无法用系统默认浏览器打开网页端地址：" + address);
         }
+    }
+
+    /// <summary>取本机网页端服务地址；服务未启动时返回空字符串。</summary>
+    private string GetWebServiceAddress()
+    {
+        Services.WebServiceHost? webHost = null;
+        if (this.appServices != null)
+        {
+            webHost = this.appServices.GetService<Services.WebServiceHost>();
+        }
+        return webHost != null && webHost.ListenUrls.Count > 0 ? webHost.ListenUrls[0] : string.Empty;
+    }
+
+    /// <summary>组装“复制网页地址”菜单项标题：直接展示当前地址，服务未启动时展示提示文字。</summary>
+    private static string BuildCopyWebAddressHeader(string address)
+    {
+        if (string.IsNullOrEmpty(address))
+        {
+            return "复制网页地址：网页端未启动";
+        }
+        return "复制网页地址：" + address;
+    }
+
+    /// <summary>托盘菜单弹出前：刷新“复制网页地址”菜单项标题里的当前地址。</summary>
+    private void OnTrayMenuNeedsUpdate(object? sender, EventArgs e)
+    {
+        if (this.copyWebAddressItem == null)
+        {
+            return;
+        }
+        string address = this.GetWebServiceAddress();
+        this.copyWebAddressItem.Header = BuildCopyWebAddressHeader(address);
+        Services.UiLogger.Log("网页端服务", "托盘菜单刷新复制网页地址：地址="
+            + (string.IsNullOrEmpty(address) ? "（网页端未启动）" : address));
+    }
+
+    /// <summary>托盘菜单：把当前网页端地址复制到系统剪贴板。</summary>
+    public void OnTrayCopyWebAddressClick(object? sender, EventArgs e)
+    {
+        string address = this.GetWebServiceAddress();
+        if (string.IsNullOrEmpty(address))
+        {
+            Services.UiLogger.Log("网页端服务", "托盘复制网页地址失败：网页端服务未启动");
+            MessageDialog.Show(this.CurrentMainWindow, "网页端未启动",
+                "网页端服务当前未启动。请在设置中心开启「随程序启动网页端服务」，或检查配置的端口是否被占用。");
+            return;
+        }
+        ISystemClipboardService? systemClipboard = this.appServices == null
+            ? null
+            : this.appServices.GetService<ISystemClipboardService>();
+        if (systemClipboard == null)
+        {
+            Services.UiLogger.Log("程序行为", "托盘复制网页地址：系统剪贴板服务=未注册 结果=失败，未写入剪贴板");
+            MessageDialog.Show(this.CurrentMainWindow, "复制失败", "系统剪贴板服务不可用，无法复制网页地址。");
+            return;
+        }
+        Services.UiLogger.Log("程序行为", "托盘复制网页地址：地址=" + address
+            + " 结果=已提交写入，具体结果见系统剪贴板服务日志");
+        _ = this.CopyWebAddressAsync(systemClipboard, address);
+    }
+
+    /// <summary>执行网页端地址的剪贴板写入，失败时提示用户。</summary>
+    private async System.Threading.Tasks.Task CopyWebAddressAsync(ISystemClipboardService systemClipboard, string address)
+    {
+        bool success = await systemClipboard.WriteTextAsync(address);
+        if (success)
+        {
+            return;
+        }
+        Services.UiLogger.Log("程序行为", "托盘复制网页地址：地址=" + address + " 结果=失败，未写入剪贴板");
+        MessageDialog.Show(this.CurrentMainWindow, "复制失败", "无法把网页地址写入系统剪贴板：" + address);
     }
 
     /// <summary>

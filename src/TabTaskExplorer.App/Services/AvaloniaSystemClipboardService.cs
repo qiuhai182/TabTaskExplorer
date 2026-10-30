@@ -67,6 +67,14 @@ public class AvaloniaSystemClipboardService : ISystemClipboardService
         return Dispatcher.UIThread.InvokeAsync(() => WriteOnUIThreadAsync(paths, isCut));
     }
 
+    /// <summary>把一段纯文本写入系统剪贴板（例如网页端地址），供粘贴到浏览器地址栏等场景使用。</summary>
+    /// <param name="text">要写入剪贴板的文本。</param>
+    /// <returns>写入成功返回 true，失败或不支持返回 false。</returns>
+    public Task<bool> WriteTextAsync(string text)
+    {
+        return Dispatcher.UIThread.InvokeAsync(() => WriteTextOnUIThreadAsync(text));
+    }
+
     /// <summary>
     /// 读取系统剪贴板内容：先读我方状态标记，再读外部文件列表与各平台剪切标记。
     /// </summary>
@@ -156,6 +164,39 @@ public class AvaloniaSystemClipboardService : ISystemClipboardService
         {
             UiLogger.LogError("系统剪贴板", "写入剪贴板：路径总数=" + paths.Count
                 + " 方式=" + (isCut ? "剪切" : "复制") + " 结果=失败，上层回退内部剪贴板", error);
+            return false;
+        }
+    }
+
+    /// <summary>在界面线程上把纯文本写入系统剪贴板。</summary>
+    private static async Task<bool> WriteTextOnUIThreadAsync(string text)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            UiLogger.Log("系统剪贴板", "写入文本：文本内容=空 结果=失败，未写入任何内容");
+            return false;
+        }
+        TopLevel? owner = GetOwnerTopLevel();
+        IClipboard? clipboard = owner == null ? null : owner.Clipboard;
+        if (clipboard == null)
+        {
+            UiLogger.Log("系统剪贴板", "写入文本：主窗口或剪贴板对象=未取到 结果=失败，未写入任何内容");
+            return false;
+        }
+
+        try
+        {
+            await clipboard.SetTextAsync(text);
+            // 刷新后程序退出时外部程序仍能读到剪贴板内容（其他平台为空操作）
+            await clipboard.FlushAsync();
+            UiLogger.Log("系统剪贴板", "写入文本：文本长度=" + text.Length + " 文本内容=" + text
+                + " 结果=成功，系统剪贴板已更新");
+            return true;
+        }
+        catch (Exception error)
+        {
+            UiLogger.LogError("系统剪贴板", "写入文本：文本长度=" + text.Length + " 文本内容=" + text
+                + " 结果=失败，未写入任何内容", error);
             return false;
         }
     }

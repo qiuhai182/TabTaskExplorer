@@ -140,6 +140,76 @@ public class ConnectionManager
         File.WriteAllText(filePath, json);
     }
 
+    /// <summary>
+    /// 一键导入本机已安装的 Xshell / Xftp 会话配置。
+    /// 按连接名称合并：同名连接只更新连接参数并保留原有编号、密码、私钥路径与创建时间。
+    /// </summary>
+    /// <param name="homeDirectory">用于定位配置目录的用户主目录；为空时取当前登录用户的主目录。</param>
+    public XshellImportSummary ImportInstalledXshellSessions(string? homeDirectory = null)
+    {
+        XshellImportSummary summary = new XshellImportSummary();
+        XshellDiscoveryResult discovery = XshellSessionImporter.DiscoverInstalledSessions(homeDirectory);
+        summary.RootsScanned.AddRange(discovery.RootsScanned);
+        summary.Skipped.AddRange(discovery.Skipped);
+        if (discovery.Sessions.Count == 0)
+        {
+            return summary;
+        }
+
+        List<RemoteConnectionProfile> all = new List<RemoteConnectionProfile>(this.store.LoadAll());
+        int importedCount = 0;
+        int updatedCount = 0;
+        foreach (XshellSessionEntry entry in discovery.Sessions)
+        {
+            RemoteConnectionProfile? source = entry.Profile;
+            if (source == null)
+            {
+                continue;
+            }
+
+            int existingIndex = -1;
+            for (int index = 0; index < all.Count; index++)
+            {
+                if (all[index].Name == source.Name)
+                {
+                    existingIndex = index;
+                    break;
+                }
+            }
+
+            if (existingIndex < 0)
+            {
+                DateTime now = DateTime.Now;
+                source.Id = Guid.NewGuid().ToString("N");
+                source.CreatedTime = now;
+                source.ModifiedTime = now;
+                all.Add(source);
+                importedCount++;
+            }
+            else
+            {
+                RemoteConnectionProfile existing = all[existingIndex];
+                existing.Group = source.Group;
+                existing.Protocol = source.Protocol;
+                existing.Host = source.Host;
+                existing.Port = source.Port;
+                existing.Username = source.Username;
+                existing.AuthType = source.AuthType;
+                existing.ModifiedTime = DateTime.Now;
+                updatedCount++;
+            }
+            summary.Names.Add(source.Name);
+        }
+
+        if (importedCount > 0 || updatedCount > 0)
+        {
+            this.store.SaveAll(all);
+        }
+        summary.Imported = importedCount;
+        summary.Updated = updatedCount;
+        return summary;
+    }
+
     /// <summary>从 JSON 文件导入连接配置，编号已存在的条目跳过。</summary>
     /// <returns>实际导入的条目数量。</returns>
     public int ImportFrom(string filePath)

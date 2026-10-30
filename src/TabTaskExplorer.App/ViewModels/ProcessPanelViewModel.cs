@@ -16,8 +16,20 @@ namespace TabTaskExplorer.App.ViewModels;
 /// 进程监控标签：系统资源摘要 + 进程树列表 + 每进程处理器占用 + 详情与优先级 / 亲和性调节 + 资源走势图。
 /// 只有处在台前（被选中的标签）时才周期刷新，切走立即停止，保持最小资源占用。
 /// </summary>
-public class ProcessPanelViewModel : INotifyPropertyChanged, IColumnWidthViewModel
+public class ProcessPanelViewModel : INotifyPropertyChanged, IColumnWidthViewModel, ITabView
 {
+    /// <summary>标签类型标识：进程监控。</summary>
+    public string Kind
+    {
+        get { return TabKinds.Process; }
+    }
+
+    /// <summary>把进程监控状态写入网页端快照（桌面与网页共用）。</summary>
+    public void FillSnapshot(DebugTabState tabState)
+    {
+        TabSnapshotFiller.FillProcess(this, tabState);
+    }
+
     /// <summary>走势图保留的采样点数：每 2 秒一个点，约两分钟的历史。</summary>
     private const int TrendCapacity = 60;
 

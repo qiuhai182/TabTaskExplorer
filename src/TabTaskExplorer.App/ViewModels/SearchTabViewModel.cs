@@ -15,8 +15,20 @@ namespace TabTaskExplorer.App.ViewModels;
 /// Windows 上优先使用 Everything 进程间通信搜索，Everything 不可用时自动回退内置遍历搜索。
 /// 搜索在后台线程执行，结果回到界面线程后再更新列表，避免大量结果冻结界面。
 /// </summary>
-public class SearchTabViewModel : INotifyPropertyChanged, IColumnWidthViewModel
+public class SearchTabViewModel : INotifyPropertyChanged, IColumnWidthViewModel, ITabView
 {
+    /// <summary>标签类型标识：全局搜索。</summary>
+    public string Kind
+    {
+        get { return TabKinds.Search; }
+    }
+
+    /// <summary>把搜索状态与结果写入网页端快照（桌面与网页共用）。</summary>
+    public void FillSnapshot(DebugTabState tabState)
+    {
+        TabSnapshotFiller.FillSearch(this, tabState);
+    }
+
     private readonly IFileSearchService searchService;
 
     private string queryText = string.Empty;

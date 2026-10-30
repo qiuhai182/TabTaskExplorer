@@ -34,6 +34,9 @@ public class RemoteConnectionProfile
     /// <summary>连接显示名称。</summary>
     public string Name { get; set; } = string.Empty;
 
+    /// <summary>连接分组（从 Xshell / Xftp 导入时取会话所在分组，其他来源默认为空串）。</summary>
+    public string Group { get; set; } = string.Empty;
+
     /// <summary>连接协议。</summary>
     public RemoteProtocol Protocol { get; set; } = RemoteProtocol.Ssh;
 

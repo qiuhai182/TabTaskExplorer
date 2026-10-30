@@ -7,6 +7,7 @@ using Avalonia.Threading;
 using Microsoft.Extensions.DependencyInjection;
 using TabTaskExplorer.App.ViewModels;
 using TabTaskExplorer.Kernel.Abstractions;
+using TabTaskExplorer.Kernel.Models;
 using TabTaskExplorer.Kernel.Services;
 
 namespace TabTaskExplorer.App.Services;
@@ -187,6 +188,110 @@ public class WebWorkspace
         this.SyncTabForeground();
     }
 
+    /// <summary>新建任务看板标签（同一工作区只保留一个）。</summary>
+    public void AddTaskBoardTab()
+    {
+        int existingIndex = this.IndexOfTab(typeof(TaskBoardViewModel));
+        if (existingIndex >= 0)
+        {
+            this.selectedIndex = existingIndex;
+            UiLogger.Log("网页端工作区", "工作区=" + this.Id + " 任务看板标签已存在：直接切换到该标签 序号=" + existingIndex);
+            this.SyncTabForeground();
+            return;
+        }
+        TaskBoardViewModel tab = new TaskBoardViewModel(this.services.GetRequiredService<ITaskStore>());
+        this.tabs.Add(tab);
+        this.selectedIndex = this.tabs.Count - 1;
+        UiLogger.Log("网页端工作区", "工作区=" + this.Id + " 新建任务看板标签：标签总数=" + this.tabs.Count);
+        this.SyncTabForeground();
+    }
+
+    /// <summary>新建全局搜索标签（同一工作区只保留一个）。</summary>
+    public void AddSearchTab()
+    {
+        int existingIndex = this.IndexOfTab(typeof(SearchTabViewModel));
+        if (existingIndex >= 0)
+        {
+            this.selectedIndex = existingIndex;
+            UiLogger.Log("网页端工作区", "工作区=" + this.Id + " 全局搜索标签已存在：直接切换到该标签 序号=" + existingIndex);
+            this.SyncTabForeground();
+            return;
+        }
+        SearchTabViewModel tab = new SearchTabViewModel(this.services.GetRequiredService<IFileSearchService>());
+        this.tabs.Add(tab);
+        this.selectedIndex = this.tabs.Count - 1;
+        UiLogger.Log("网页端工作区", "工作区=" + this.Id + " 新建全局搜索标签：标签总数=" + this.tabs.Count);
+        this.SyncTabForeground();
+    }
+
+    /// <summary>新建连接管理标签（同一工作区只保留一个）。</summary>
+    public void AddConnectionsTab()
+    {
+        int existingIndex = this.IndexOfTab(typeof(ConnectionManagerViewModel));
+        if (existingIndex >= 0)
+        {
+            this.selectedIndex = existingIndex;
+            UiLogger.Log("网页端工作区", "工作区=" + this.Id + " 连接管理标签已存在：直接切换到该标签 序号=" + existingIndex);
+            this.SyncTabForeground();
+            return;
+        }
+        ConnectionManagerViewModel tab = new ConnectionManagerViewModel(
+            this.services.GetRequiredService<ConnectionManager>());
+        this.tabs.Add(tab);
+        this.selectedIndex = this.tabs.Count - 1;
+        UiLogger.Log("网页端工作区", "工作区=" + this.Id + " 新建连接管理标签：标签总数=" + this.tabs.Count);
+        this.SyncTabForeground();
+    }
+
+    /// <summary>按标签类型打开视图：与桌面共用同一套 kind 标识。</summary>
+    public void OpenView(string kind)
+    {
+        if (kind == TabKinds.File)
+        {
+            this.AddFileTab(string.Empty);
+            return;
+        }
+        if (kind == TabKinds.Board)
+        {
+            this.AddTaskBoardTab();
+            return;
+        }
+        if (kind == TabKinds.Search)
+        {
+            this.AddSearchTab();
+            return;
+        }
+        if (kind == TabKinds.Connections)
+        {
+            this.AddConnectionsTab();
+            return;
+        }
+        if (kind == TabKinds.Disk)
+        {
+            this.AddDiskViewTab();
+            return;
+        }
+        if (kind == TabKinds.Process)
+        {
+            this.AddProcessTab();
+            return;
+        }
+        UiLogger.Log("网页端工作区", "工作区=" + this.Id + " 打开视图被忽略：无法识别的标签类型=" + kind);
+    }
+
+    /// <summary>查找指定类型标签的下标；不存在返回 -1。</summary>
+    private int IndexOfTab(Type tabType)
+    {
+        for (int index = 0; index < this.tabs.Count; index++)
+        {
+            if (this.tabs[index].GetType() == tabType)
+            {
+                return index;
+            }
+        }
+        return -1;
+    }
+
     /// <summary>选中指定下标的标签；下标非法时忽略。</summary>
     public void SelectTab(int index)
     {
@@ -278,6 +383,26 @@ public class WebWorkspace
     {
         ProcessPanelViewModel? processTab = this.tabs[this.selectedIndex] as ProcessPanelViewModel;
         return processTab;
+    }
+
+    /// <summary>取当前选中的全局搜索标签；没有时返回 null。</summary>
+    private SearchTabViewModel? CurrentSearchTab()
+    {
+        if (this.selectedIndex < 0 || this.selectedIndex >= this.tabs.Count)
+        {
+            return null;
+        }
+        return this.tabs[this.selectedIndex] as SearchTabViewModel;
+    }
+
+    /// <summary>取当前选中的连接管理标签；没有时返回 null。</summary>
+    private ConnectionManagerViewModel? CurrentConnectionsTab()
+    {
+        if (this.selectedIndex < 0 || this.selectedIndex >= this.tabs.Count)
+        {
+            return null;
+        }
+        return this.tabs[this.selectedIndex] as ConnectionManagerViewModel;
     }
 
     /// <summary>在当前文件标签中打开路径；没有文件标签时自动新建；压缩包路径开预览标签。</summary>
@@ -415,6 +540,12 @@ public class WebWorkspace
                 sortProcessTab.SetSortField(argument);
                 return "已按 " + argument + (sortProcessTab.SortAscending ? " 升序" : " 降序") + " 排列";
             }
+            SearchTabViewModel? sortSearchTab = this.CurrentSearchTab();
+            if (sortSearchTab != null)
+            {
+                sortSearchTab.SetSortField(argument);
+                return "已按 " + argument + (sortSearchTab.SortAscending ? " 升序" : " 降序") + " 排列";
+            }
             return "当前标签不支持排序";
         }
         // 表头列宽拖动：网页端回传"表格键=列宽列表"，这里识别所属视图并记录完成日志；
@@ -482,6 +613,13 @@ public class WebWorkspace
         }
         if (action == "search")
         {
+            SearchTabViewModel? searchTab = this.CurrentSearchTab();
+            if (searchTab != null)
+            {
+                searchTab.QueryText = argument;
+                searchTab.ExecuteSearch();
+                return "全局搜索关键字=" + argument;
+            }
             if (fileTab == null) { return "当前标签不是文件列表"; }
             fileTab.SearchText = argument;
             return string.IsNullOrEmpty(argument) ? "已清空搜索" : "搜索关键字=" + argument;
@@ -632,18 +770,14 @@ public class WebWorkspace
         {
             return "独立工作区不与桌面共享书签，该操作不可用";
         }
-        if (action == "openboard" || action == "opensearch" || action == "openconnections")
+        if (action.StartsWith("conn", StringComparison.Ordinal))
         {
-            return "独立工作区暂不支持该视图，请在跟随桌面模式下打开";
+            return this.ExecuteConnectionAction(action, argument);
         }
-        if (action == "opendisk")
+        string? viewKind = TabKinds.FromOpenAction(action);
+        if (viewKind != null)
         {
-            this.AddDiskViewTab();
-            return string.Empty;
-        }
-        if (action == "openprocess")
-        {
-            this.AddProcessTab();
+            this.OpenView(viewKind);
             return string.Empty;
         }
         ProcessPanelViewModel? processTab = this.CurrentProcessTab();
@@ -702,6 +836,195 @@ public class WebWorkspace
             return string.Empty;
         }
         return "未知动作：" + action;
+    }
+
+    /// <summary>执行网页端连接管理动作（选择、保存、删除、测试、一键导入、打开远程文件夹）。</summary>
+    private string ExecuteConnectionAction(string action, string argument)
+    {
+        ConnectionManagerViewModel? tab = this.CurrentConnectionsTab();
+        if (tab == null)
+        {
+            UiLogger.Log("网页端工作区", "工作区=" + this.Id + " 连接动作被忽略：当前标签不是连接管理 动作=" + action + " 参数=" + argument);
+            return "请先在左侧导航中打开连接管理";
+        }
+        if (action == "connselect")
+        {
+            RemoteConnectionProfile? profile = WebWorkspace.FindConnection(tab, argument);
+            if (profile == null)
+            {
+                return "没有找到该连接，可能已被删除";
+            }
+            tab.SelectedConnection = profile;
+            return "已选择连接：" + profile.Name;
+        }
+        if (action == "connsave")
+        {
+            return WebWorkspace.SaveConnectionFromWeb(tab, argument);
+        }
+        if (action == "conndelete")
+        {
+            RemoteConnectionProfile? profile = WebWorkspace.FindConnection(tab, argument);
+            if (profile == null)
+            {
+                return "没有找到要删除的连接";
+            }
+            tab.Delete(profile.Id);
+            UiLogger.Log("网页端工作区", "工作区=" + this.Id + " 删除连接：名称=" + profile.Name + " 服务器=" + profile.Host);
+            return "已删除连接：" + profile.Name;
+        }
+        if (action == "conntest")
+        {
+            RemoteConnectionProfile? profile = WebWorkspace.FindConnection(tab, argument);
+            if (profile == null)
+            {
+                return "请先选择要测试的连接";
+            }
+            ConnectionTestResult result = tab.TestAsync(profile, TcpConnectivityTester.DefaultTimeoutMilliseconds)
+                .GetAwaiter().GetResult();
+            UiLogger.Log("网页端工作区", "工作区=" + this.Id + " 测试连接：名称=" + profile.Name + " 服务器=" + profile.Host
+                + " 端口=" + profile.GetEffectivePort() + " 耗时=" + result.LatencyMilliseconds + " 毫秒 结果=" + result.Message);
+            return (result.Success ? "测试成功：" : "测试失败：") + result.Message;
+        }
+        if (action == "connimport")
+        {
+            XshellImportSummary summary = tab.ImportInstalled();
+            string rootsText = string.Join("、", summary.RootsScanned);
+            string skippedText = string.Join("、", summary.Skipped);
+            UiLogger.Log("网页端工作区", "工作区=" + this.Id + " 一键导入已安装配置：配置目录数=" + summary.RootsScanned.Count
+                + " 配置目录=" + rootsText + " 新增=" + summary.Imported + " 更新=" + summary.Updated
+                + " 跳过=" + summary.Skipped.Count + " 跳过清单=" + skippedText);
+            if (summary.RootsScanned.Count == 0)
+            {
+                return "未发现 Xshell / Xftp 配置目录";
+            }
+            return "一键导入完成：新增 " + summary.Imported + " 个、更新 " + summary.Updated + " 个连接"
+                + (summary.Skipped.Count > 0 ? "；跳过 " + summary.Skipped.Count + " 个：" + skippedText : string.Empty);
+        }
+        if (action == "connopenfolder")
+        {
+            RemoteConnectionProfile? profile = WebWorkspace.FindConnection(tab, argument);
+            if (profile == null)
+            {
+                return "请先选择要打开的连接";
+            }
+            this.OpenRemoteFolder(profile);
+            return "正在连接 " + profile.Host + "，远程目录标签将在连接成功后出现";
+        }
+        if (action == "connopenterminal")
+        {
+            return "网页端暂不展示终端会话，请在桌面端打开终端";
+        }
+        return "未知动作：" + action;
+    }
+
+    /// <summary>按编号查找连接管理标签中的连接配置；找不到返回 null。</summary>
+    public static RemoteConnectionProfile? FindConnection(ConnectionManagerViewModel tab, string id)
+    {
+        if (string.IsNullOrEmpty(id))
+        {
+            return null;
+        }
+        foreach (RemoteConnectionProfile profile in tab.Connections)
+        {
+            if (profile.Id == id)
+            {
+                return profile;
+            }
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// 解析网页端保存连接的参数并写入存储。参数为换行分隔的 11 段：
+    /// 编号、名称、分组、协议、主机、端口、用户名、认证方式、私钥路径、保活秒数、密码（末尾可空）。
+    /// </summary>
+    public static string SaveConnectionFromWeb(ConnectionManagerViewModel tab, string argument)
+    {
+        string[] parts = argument.Split(new char[] { '\n' }, 11);
+        if (parts.Length < 10)
+        {
+            return "保存参数不完整，至少需要编号、名称、分组、协议、主机、端口、用户名、认证方式、私钥路径与保活秒数";
+        }
+        string id = parts[0].Trim();
+        string name = parts[1].Trim();
+        if (name.Length == 0)
+        {
+            return "请填写连接名称";
+        }
+        string host = parts[4].Trim();
+        if (host.Length == 0)
+        {
+            return "请填写主机地址";
+        }
+
+        RemoteConnectionProfile? profile = WebWorkspace.FindConnection(tab, id);
+        if (profile == null)
+        {
+            profile = tab.CreateDraft();
+        }
+        profile.Name = name;
+        profile.Group = parts[2].Trim();
+        profile.Protocol = parts[3].Trim() == "FTP" ? RemoteProtocol.Ftp : RemoteProtocol.Ssh;
+        profile.Host = host;
+        int port = 0;
+        if (int.TryParse(parts[5].Trim(), out int parsedPort))
+        {
+            port = parsedPort;
+        }
+        profile.Port = port;
+        profile.Username = parts[6].Trim();
+        profile.AuthType = parts[7].Trim() == "PrivateKey" ? RemoteAuthType.PrivateKey : RemoteAuthType.Password;
+        profile.PrivateKeyPath = parts[8].Trim();
+        int keepAlive = 15;
+        if (int.TryParse(parts[9].Trim(), out int parsedKeepAlive) && parsedKeepAlive >= 0)
+        {
+            keepAlive = parsedKeepAlive;
+        }
+        profile.KeepAliveSeconds = keepAlive;
+        string secret = parts.Length > 10 ? parts[10] : string.Empty;
+        tab.Save(profile, secret);
+        return "已保存连接：" + profile.Name;
+    }
+
+    /// <summary>在后台线程建立远程文件系统连接，成功后回到界面线程新建远程文件夹标签。</summary>
+    private void OpenRemoteFolder(RemoteConnectionProfile profile)
+    {
+        string secret = this.services.GetRequiredService<ConnectionManager>().GetSecret(profile);
+        IRemoteSessionFactory factory = this.services.GetRequiredService<IRemoteSessionFactory>();
+        WebWorkspace workspace = this;
+        Task.Run(delegate
+        {
+            try
+            {
+                IFileSystemProvider provider = factory.OpenFileSystem(profile, secret);
+                Dispatcher.UIThread.Post(delegate
+                {
+                    for (int index = 0; index < workspace.tabs.Count; index++)
+                    {
+                        FileTabViewModel? existing = workspace.tabs[index] as FileTabViewModel;
+                        if (existing != null && existing.AttachedProfileId == profile.Id)
+                        {
+                            workspace.selectedIndex = index;
+                            UiLogger.Log("网页端工作区", "工作区=" + workspace.Id + " 远程文件夹标签已存在：直接切换到该标签 连接=" + profile.Name);
+                            workspace.SyncTabForeground();
+                            return;
+                        }
+                    }
+                    FileTabViewModel newTab = new FileTabViewModel(provider, workspace.settings, "/", null,
+                        workspace.services.GetRequiredService<IArchiveService>());
+                    newTab.AttachedProfileId = profile.Id;
+                    workspace.tabs.Add(newTab);
+                    workspace.selectedIndex = workspace.tabs.Count - 1;
+                    UiLogger.Log("网页端工作区", "工作区=" + workspace.Id + " 打开远程文件夹标签：连接=" + profile.Name
+                        + " 服务器=" + profile.Host + " 端口=" + profile.GetEffectivePort() + " 标签总数=" + workspace.tabs.Count);
+                    workspace.SyncTabForeground();
+                });
+            }
+            catch (Exception error)
+            {
+                UiLogger.LogError("网页端工作区", "打开远程文件夹失败：连接=" + profile.Name + " 服务器=" + profile.Host, error);
+            }
+        });
     }
 
     /// <summary>把剪贴板中的条目复制或移动到该标签当前目录（独立工作区自己的剪贴板）。</summary>
@@ -918,16 +1241,6 @@ public class WebWorkspace
         File.WriteAllBytes(path, content);
     }
 
-    /// <summary>把走势图序列复制到快照列表（复制而非引用，避免快照与界面状态竞争）。</summary>
-    private static void CopyTrend(IReadOnlyList<double> source, List<double> target)
-    {
-        target.Clear();
-        for (int index = 0; index < source.Count; index++)
-        {
-            target.Add(source[index]);
-        }
-    }
-
     /// <summary>在 UI 线程构建当前工作区快照。</summary>
     public Task<DebugUiState> BuildStateAsync()
     {
@@ -955,106 +1268,19 @@ public class WebWorkspace
             tabState.Index = index;
             tabState.Selected = index == this.selectedIndex;
             tabState.Title = this.DescribeTitle(tab);
-            FileTabViewModel? fileTab = tab as FileTabViewModel;
-            if (fileTab != null)
+            TabSnapshotBuilder.Fill(tab, tabState);
+            if (tabState.Selected)
             {
-                tabState.TabType = "file";
-                tabState.CurrentPath = fileTab.CurrentPath;
-                tabState.SortField = fileTab.SortField;
-                tabState.SortAscending = fileTab.SortAscending;
-                tabState.SearchText = fileTab.SearchText;
-                tabState.ViewMode = fileTab.ViewMode.ToString();
-                tabState.ShowInfoPane = fileTab.ShowInfoPane;
-                tabState.CanGoBack = fileTab.CanGoBack;
-                tabState.CanGoForward = fileTab.CanGoForward;
-                tabState.CheckedCount = fileTab.GetCheckedRows().Count;
-                tabState.SummaryText = fileTab.SummaryText;
-                tabState.TotalRows = fileTab.VisibleRows.Count;
-                int limit = tabState.TotalRows > 1000 ? 1000 : tabState.TotalRows;
-                for (int rowIndex = 0; rowIndex < limit; rowIndex++)
+                // 网页端台前心跳：页面仍在轮询时保持台前周期刷新/探测，页面关闭后自动停止
+                ProcessPanelViewModel? heartbeatProcess = tab as ProcessPanelViewModel;
+                if (heartbeatProcess != null)
                 {
-                    FileRow row = fileTab.VisibleRows[rowIndex];
-                    DebugFileRow debugRow = new DebugFileRow();
-                    debugRow.Name = row.DisplayName;
-                    debugRow.IsDirectory = row.IsDirectory;
-                    debugRow.FullPath = row.FullPath;
-                    debugRow.Type = row.TypeText;
-                    debugRow.Size = row.SizeText;
-                    debugRow.Modified = row.ModifiedText;
-                    debugRow.IsSelected = row.IsSelected;
-                    debugRow.IconGlyph = row.IconGlyph;
-                    debugRow.IconColor = row.IconColor;
-                    tabState.Rows.Add(debugRow);
+                    heartbeatProcess.NotifyVisible();
                 }
-            }
-            else
-            {
-                DiskViewPanelViewModel? diskTab = tab as DiskViewPanelViewModel;
-                ProcessPanelViewModel? processTab = tab as ProcessPanelViewModel;
-                if (processTab != null)
+                DiskViewPanelViewModel? heartbeatDisk = tab as DiskViewPanelViewModel;
+                if (heartbeatDisk != null)
                 {
-                    tabState.TabType = "process";
-                    tabState.ResourceText = processTab.ResourceText;
-                    tabState.SummaryText = processTab.SummaryText;
-                    tabState.TotalRows = processTab.Rows.Count;
-                    tabState.DetailText = processTab.DetailText;
-                    tabState.AffinityInput = processTab.AffinityInput;
-                    tabState.PriorityIndex = processTab.SelectedPriorityIndex;
-                    tabState.DetailSupported = processTab.IsDetailSupported;
-                    tabState.TrendVersion = processTab.TrendUpdatedAt.Ticks;
-                    tabState.SortField = processTab.SortField;
-                    tabState.SortAscending = processTab.SortAscending;
-                    CopyTrend(processTab.SystemCpuTrend, tabState.SystemCpuTrend);
-                    CopyTrend(processTab.SystemMemoryTrend, tabState.SystemMemoryTrend);
-                    CopyTrend(processTab.SelectedCpuTrend, tabState.SelectedCpuTrend);
-                    if (tabState.Selected)
-                    {
-                        // 网页端台前心跳：页面仍在轮询时保持台前周期刷新，页面关闭后自动停止
-                        processTab.NotifyVisible();
-                    }
-                    int processLimit = tabState.TotalRows > 1000 ? 1000 : tabState.TotalRows;
-                    for (int processIndex = 0; processIndex < processLimit; processIndex++)
-                    {
-                        ProcessRow row = processTab.Rows[processIndex];
-                        DebugProcessRow debugRow = new DebugProcessRow();
-                        debugRow.ProcessId = row.ProcessId;
-                        debugRow.IndentText = row.IndentText;
-                        debugRow.Name = row.Name;
-                        debugRow.CpuText = row.CpuText;
-                        debugRow.MemoryText = row.MemoryText;
-                        debugRow.WindowTitle = row.WindowTitle;
-                        debugRow.IsSelected = object.ReferenceEquals(row, processTab.SelectedRow);
-                        tabState.ProcessRows.Add(debugRow);
-                    }
-                }
-                else if (diskTab != null)
-                {
-                    tabState.TabType = "disk";
-                    tabState.CurrentPath = diskTab.RootPathInput;
-                    tabState.SummaryText = diskTab.SummaryText;
-                    tabState.TotalRows = diskTab.Rows.Count;
-                    tabState.SortField = diskTab.SortField;
-                    tabState.SortAscending = diskTab.SortAscending;
-                    if (tabState.Selected)
-                    {
-                        // 网页端台前心跳：页面仍在轮询时保持台前探测，页面关闭后探测自动停止
-                        diskTab.NotifyVisible();
-                    }
-                    foreach (DiskRow row in diskTab.Rows)
-                    {
-                        DebugFileRow debugRow = new DebugFileRow();
-                        debugRow.Name = row.Name;
-                        debugRow.IsDirectory = row.IsDirectory;
-                        debugRow.FullPath = row.FullPath;
-                        debugRow.Type = row.EntryTypeText;
-                        debugRow.Size = row.SizeText;
-                        debugRow.Free = row.FreeText;
-                        debugRow.Usage = row.UsageText;
-                        debugRow.FileSystem = row.FileSystemText;
-                        debugRow.Level = row.Level;
-                        debugRow.Expanded = row.IsExpanded;
-                        tabState.Rows.Add(debugRow);
-                    }
+                    heartbeatDisk.NotifyVisible();
                 }
             }
             state.Tabs.Add(tabState);
@@ -1121,6 +1347,26 @@ public class WebWorkspace
         if (diskTab != null)
         {
             return diskTab.Title;
+        }
+        ProcessPanelViewModel? processTab = tab as ProcessPanelViewModel;
+        if (processTab != null)
+        {
+            return processTab.Title;
+        }
+        SearchTabViewModel? searchTab = tab as SearchTabViewModel;
+        if (searchTab != null)
+        {
+            return searchTab.Title;
+        }
+        ConnectionManagerViewModel? connectionsTab = tab as ConnectionManagerViewModel;
+        if (connectionsTab != null)
+        {
+            return connectionsTab.Title;
+        }
+        TaskBoardViewModel? boardTab = tab as TaskBoardViewModel;
+        if (boardTab != null)
+        {
+            return boardTab.Title;
         }
         return tab.GetType().Name;
     }

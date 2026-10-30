@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using TabTaskExplorer.App.Services;
 using TabTaskExplorer.Kernel.Abstractions;
 using TabTaskExplorer.Kernel.Models;
 
@@ -10,8 +11,20 @@ namespace TabTaskExplorer.App.ViewModels;
 /// <summary>
 /// 任务看板：待办、进行中、已完成三列，数据经内核 ITaskStore 持久化。
 /// </summary>
-public class TaskBoardViewModel : INotifyPropertyChanged
+public class TaskBoardViewModel : INotifyPropertyChanged, ITabView
 {
+    /// <summary>标签类型标识：任务看板。</summary>
+    public string Kind
+    {
+        get { return TabKinds.Board; }
+    }
+
+    /// <summary>把三列任务标题写入网页端快照（桌面与网页共用）。</summary>
+    public void FillSnapshot(DebugTabState tabState)
+    {
+        TabSnapshotFiller.FillBoard(this, tabState);
+    }
+
     private readonly ITaskStore taskStore;
 
     public event PropertyChangedEventHandler? PropertyChanged;

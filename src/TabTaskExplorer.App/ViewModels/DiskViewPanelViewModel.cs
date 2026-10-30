@@ -20,8 +20,20 @@ namespace TabTaskExplorer.App.ViewModels;
 /// 构造时不扫描，只有进入台前后才请求扫描并启动周期探测（约每 5 秒比较一次目录修改时间）；
 /// 离开台前立即停止全部扫描与探测。文件夹只支持原地展开或收起，不再进入下一级。
 /// </summary>
-public class DiskViewPanelViewModel : INotifyPropertyChanged, IColumnWidthViewModel
+public class DiskViewPanelViewModel : INotifyPropertyChanged, IColumnWidthViewModel, ITabView
 {
+    /// <summary>标签类型标识：磁盘视图。</summary>
+    public string Kind
+    {
+        get { return TabKinds.Disk; }
+    }
+
+    /// <summary>把磁盘视图状态写入网页端快照（桌面与网页共用）。</summary>
+    public void FillSnapshot(DebugTabState tabState)
+    {
+        TabSnapshotFiller.FillDisk(this, tabState);
+    }
+
     private readonly IDiskUsageProvider diskUsageProvider;
     private readonly DiskScanService scanService;
     private readonly string ownerId;

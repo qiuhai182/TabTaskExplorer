@@ -75,6 +75,12 @@ public static class WebPageHtml
   .addrBtns { display:flex; }
   .searchBox { width:200px; border:1px solid #D5D5D5; border-radius:3px; padding:5px 8px; font:13px 'Segoe UI','Microsoft YaHei'; outline:none; background:#fff; color:inherit; }
   .searchBox:focus, .addrInput:focus { border-color:#4A8FD0; }
+  .connToolbar { padding:6px 2px; display:flex; gap:6px; flex-wrap:wrap; }
+  .connForm { padding:8px 2px; display:grid; grid-template-columns:80px minmax(140px,1fr) 80px minmax(140px,1fr); gap:6px 8px; max-width:760px; align-items:center; }
+  .connForm label { font-size:12px; opacity:.85; }
+  .connForm input, .connForm select { border:1px solid #D5D5D5; border-radius:3px; padding:4px 6px; font:13px 'Segoe UI','Microsoft YaHei'; outline:none; background:#fff; color:inherit; min-width:0; }
+  .connForm .wide { grid-column:span 3; }
+  body.dark .connForm input, body.dark .connForm select { background:#202020; border-color:#3C3C3C; }
   .pop { position:absolute; top:100%; right:0; margin-top:3px; background:#fff; border:1px solid #DCDCDC; border-radius:6px; box-shadow:0 6px 18px rgba(0,0,0,.14); padding:4px; z-index:30; min-width:360px; max-height:320px; overflow:auto; }
   .pop .item { padding:5px 8px; border-radius:4px; cursor:pointer; font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .pop .item:hover { background:#F0F6FF; }
@@ -531,6 +537,10 @@ function esc(value) {
   return div.innerHTML;
 }
 
+function escAttr(value) {
+  return esc(value).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
 function url(path, params) {
   const query = new URLSearchParams(params || {});
   if (workspaceId) { query.set('w', workspaceId); }
@@ -671,9 +681,13 @@ async function post(path, params) {
 
 async function doAction(action, argument) {
   const params = { a: action };
-  if (argument !== undefined && argument !== null && argument !== '') { params.arg = argument; }
+  let body;
+  if (argument !== undefined && argument !== null && argument !== '') {
+    // 短参数走查询串；长参数（连接表单、批量计划）改走请求体，避免地址栏长度上限
+    if (argument.length > 600) { body = argument; } else { params.arg = argument; }
+  }
   try {
-    const response = await fetch(url('/api/action', params), { method: 'POST' });
+    const response = await fetch(url('/api/action', params), { method: 'POST', body: body });
     const text = await response.text();
     if (!response.ok) {
       flash(text || ('操作失败，状态码=' + response.status));
@@ -788,7 +802,8 @@ function renderSidebar() {
     + '<div class="navitem" onclick="clickBtn(null,\'openconnections\')"><span class="ico">&#xE968;</span>连接管理</div>'
     + '<div class="navitem" onclick="clickBtn(null,\'opensearch\')"><span class="ico">&#xE721;</span>全局搜索</div>'
     + '<div class="navitem" onclick="clickBtn(null,\'opendisk\')"><span class="ico">&#xE9F4;</span>磁盘视图</div>'
-    + '<div class="navitem" onclick="clickBtn(null,\'openprocess\')"><span class="ico">&#xE9F5;</span>进程监控</div>';
+    + '<div class="navitem" onclick="clickBtn(null,\'openprocess\')"><span class="ico">&#xE9F5;</span>进程监控</div>'
+    + '<div class="navitem" onclick="clickBtn(null,\'openboard\')"><span class="ico">&#xE9D5;</span>任务看板</div>';
   document.getElementById('sidebar').innerHTML = html;
 }
 
@@ -836,6 +851,7 @@ function renderToolbarState() {
 
   const searchBox = document.getElementById('searchBox');
   searchBox.disabled = !(isFile || isSearch);
+  searchBox.placeholder = isSearch ? '全局搜索（按回车执行）' : '搜索当前目录';
   if (document.activeElement !== searchBox) {
     searchBox.value = (currentTab && currentTab.searchText) ? currentTab.searchText : '';
   }
@@ -867,7 +883,7 @@ function renderContent(tab) {
   const signature = tab.index + '|' + tab.tabType + '|' + tab.viewMode + '|' + tab.showInfoPane
     + '|' + permissions.canCreateDelete + '|' + permissions.canModify + '|' + JSON.stringify(tab.rows)
     + '|' + JSON.stringify(Array.from(checked)) + '|' + tab.todo + '|' + tab.inProgress + '|' + tab.done
-    + '|' + tab.connections + '|' + tab.summaryText
+    + '|' + JSON.stringify(tab.connections) + '|' + tab.selectedConnectionId + '|' + tab.summaryText
     + '|' + tab.resourceText + '|' + JSON.stringify(tab.processRows)
     + '|' + tab.detailText + '|' + tab.affinityInput + '|' + tab.priorityIndex
     + '|' + tab.detailSupported + '|' + tab.trendVersion
@@ -889,7 +905,7 @@ function renderContent(tab) {
   } else if (tab.tabType === 'process') {
     html = renderProcess(tab);
   } else {
-    html = '<div class="hint">「' + esc(tab.title) + '」是桌面端专用视图（终端 / 传输 / 编辑器等），网页端暂不展示其内容。</div>';
+    html = renderGenericView(tab);
   }
   if (tab.tabType !== 'process' && tab.totalRows && tab.totalRows > tab.rows.length) {
     html += '<div class="hint">仅显示前 ' + tab.rows.length + ' 项，共 ' + tab.totalRows + ' 项</div>';
@@ -1262,16 +1278,128 @@ function renderBoard(tab) {
     + '</div>';
 }
 
-function renderConnections(tab) {
-  let html = tableOpenHtml('connections', [260, 700]) + '<tr><th>名称</th><th>摘要</th></tr>';
-  const items = tab.connections || [];
-  if (items.length === 0) { html += '<tr><td class="hint" colspan="2">暂无连接，可在桌面端添加</td></tr>'; }
-  for (const item of items) {
-    const selected = item[0] === tab.selectedConnection;
-    html += '<tr class="connRow' + (selected ? ' selected' : '') + '"><td>' + esc(item[0]) + '</td><td>' + esc(item[1]) + '</td></tr>';
+function renderGenericView(tab) {
+  // 通用降级视图：桌面端新增标签类型后即使网页端还没有专用渲染器，也能展示标题与关键摘要
+  let html = '<div class="hint">「' + esc(tab.title) + '」暂时没有专用网页界面，以下为该视图的摘要信息。</div>';
+  const lines = [];
+  if (tab.currentPath) { lines.push('当前路径：' + tab.currentPath); }
+  if (tab.searchText) { lines.push('关键字：' + tab.searchText); }
+  if (tab.resourceText) { lines.push('资源摘要：' + tab.resourceText); }
+  if (tab.detailText) { lines.push('详情：' + tab.detailText); }
+  if (tab.totalRows) { lines.push('条目数：' + tab.totalRows); }
+  for (const line of lines) {
+    html += '<div class="hint">' + esc(line) + '</div>';
   }
-  html += '</table><div class="hint">连接管理为只读展示，建立连接等操作请在桌面端进行。</div>';
   return html;
+}
+
+let connEditingId = '';
+
+function renderConnections(tab) {
+  const items = tab.connections || [];
+  let html = '<div class="connToolbar">'
+    + '<span class="btn" onclick="connNew()">新建连接</span>'
+    + '<span class="btn" onclick="connSave()">保存连接</span>'
+    + '<span class="btn" onclick="connDelete()">删除连接</span>'
+    + '<span class="btn" onclick="connTest()">测试连接</span>'
+    + '<span class="btn" onclick="connImport()">一键导入已安装配置</span>'
+    + '<span class="btn" onclick="connOpenFolder()">打开远程文件夹</span>'
+    + '<span class="btn" onclick="connOpenTerminal()">打开终端</span>'
+    + '</div>';
+  html += tableOpenHtml('connections', [220, 200, 460]) + '<tr><th>名称</th><th>分组</th><th>摘要</th></tr>';
+  if (items.length === 0) {
+    html += '<tr><td class="hint" colspan="3">暂无连接，可点击「新建连接」或「一键导入已安装配置」</td></tr>';
+  }
+  for (const item of items) {
+    html += '<tr class="connRow' + (item.selected ? ' selected' : '') + '"'
+      + ' onclick="clickBtn(null,\'connselect\',\'' + escAttr(item.id) + '\')">'
+      + '<td>' + esc(item.name) + '</td><td>' + esc(item.group) + '</td><td>' + esc(item.summary) + '</td></tr>';
+  }
+  html += '</table>';
+  const selected = items.find(function (item) { return item.selected; }) || null;
+  connEditingId = selected ? selected.id : '';
+  const value = selected || {
+    id: '', name: '', group: '', protocol: 'SSH', host: '', port: 0, username: '',
+    authType: 'Password', privateKeyPath: '', keepAliveSeconds: 15
+  };
+  html += '<div class="connForm">'
+    + '<label>名称</label><input id="connName" class="wide" value="' + escAttr(value.name) + '">'
+    + '<label>分组</label><input id="connGroup" value="' + escAttr(value.group) + '">'
+    + '<label>协议</label><select id="connProtocol">'
+    + '<option value="SSH"' + (value.protocol === 'SSH' ? ' selected' : '') + '>SSH</option>'
+    + '<option value="FTP"' + (value.protocol === 'FTP' ? ' selected' : '') + '>FTP</option></select>'
+    + '<label>主机</label><input id="connHost" value="' + escAttr(value.host) + '">'
+    + '<label>端口</label><input id="connPort" value="' + (value.port > 0 ? value.port : '') + '" placeholder="留空为默认端口">'
+    + '<label>用户名</label><input id="connUser" value="' + escAttr(value.username) + '">'
+    + '<label>认证</label><select id="connAuth">'
+    + '<option value="Password"' + (value.authType === 'Password' ? ' selected' : '') + '>密码</option>'
+    + '<option value="PrivateKey"' + (value.authType === 'PrivateKey' ? ' selected' : '') + '>私钥</option></select>'
+    + '<label>私钥路径</label><input id="connKey" class="wide" value="' + escAttr(value.privateKeyPath) + '">'
+    + '<label>保活秒数</label><input id="connKeep" value="' + escAttr(String(value.keepAliveSeconds)) + '">'
+    + '<label>密码</label><input id="connSecret" class="wide" type="password" placeholder="留空保持原密码">'
+    + '</div>'
+    + '<div class="hint">Xshell / Xftp 导入的连接不含密码与私钥路径，请在上方补填后保存；打开远程文件夹会以新标签页浏览远端目录。</div>';
+  return html;
+}
+
+function connNew() {
+  connEditingId = '';
+  const textIds = ['connName', 'connGroup', 'connHost', 'connPort', 'connUser', 'connKey', 'connKeep', 'connSecret'];
+  for (const id of textIds) {
+    const element = document.getElementById(id);
+    if (element) { element.value = ''; }
+  }
+  const protocol = document.getElementById('connProtocol');
+  if (protocol) { protocol.value = 'SSH'; }
+  const auth = document.getElementById('connAuth');
+  if (auth) { auth.value = 'Password'; }
+  const nameBox = document.getElementById('connName');
+  if (nameBox) { nameBox.focus(); }
+  flash('已切换到新建连接，填写完成后再点「保存连接」');
+}
+
+function connFieldValues() {
+  function valueOf(id) {
+    const element = document.getElementById(id);
+    return element ? element.value : '';
+  }
+  return [
+    valueOf('connName'), valueOf('connGroup'), valueOf('connProtocol'), valueOf('connHost'),
+    valueOf('connPort'), valueOf('connUser'), valueOf('connAuth'), valueOf('connKey'),
+    valueOf('connKeep'), valueOf('connSecret')
+  ];
+}
+
+function connSave() {
+  if (!permissions.canCreateDelete) { flash('该端口未放行新建与删除权限，无法保存连接'); return; }
+  const values = connFieldValues();
+  doAction('connsave', [connEditingId].concat(values).join('\n'));
+}
+
+function connDelete() {
+  if (!permissions.canCreateDelete) { flash('该端口未放行新建与删除权限，无法删除连接'); return; }
+  if (!connEditingId) { flash('请先在列表中选中要删除的连接'); return; }
+  doAction('conndelete', connEditingId);
+}
+
+function connImport() {
+  if (!permissions.canCreateDelete) { flash('该端口未放行新建与删除权限，无法导入连接'); return; }
+  doAction('connimport');
+}
+
+function connTest() {
+  if (!connEditingId) { flash('请先在列表中选中要测试的连接'); return; }
+  flash('正在测试连接，请稍候……');
+  doAction('conntest', connEditingId);
+}
+
+function connOpenFolder() {
+  if (!connEditingId) { flash('请先在列表中选中要打开的连接'); return; }
+  doAction('connopenfolder', connEditingId);
+}
+
+function connOpenTerminal() {
+  doAction('connopenterminal', connEditingId);
 }
 
 function renderCrumb(tab) {
@@ -2526,6 +2654,8 @@ function scheduleSearch() {
   const value = document.getElementById('searchBox').value;
   searchTimer = setTimeout(function () {
     if (!currentTab) { return; }
+    // 全局搜索与桌面一致：只在回车或搜索按钮提交时执行，输入过程中不触发搜索
+    if (currentTab.tabType === 'search') { return; }
     if ((currentTab.searchText || '') === value) { return; }
     doAction('search', value);
   }, 400);

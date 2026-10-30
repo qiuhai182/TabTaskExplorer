@@ -1,7 +1,9 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Threading.Tasks;
+using TabTaskExplorer.App.Services;
 using TabTaskExplorer.Kernel.Models;
 using TabTaskExplorer.Kernel.Services;
 
@@ -11,8 +13,20 @@ namespace TabTaskExplorer.App.ViewModels;
 /// 连接管理标签页视图模型：远程主机（SSH / FTP）的增删改查、连通性测试与导出导入。
 /// 只依赖内核 ConnectionManager，不接触任何平台类型。
 /// </summary>
-public class ConnectionManagerViewModel : INotifyPropertyChanged
+public class ConnectionManagerViewModel : INotifyPropertyChanged, ITabView
 {
+    /// <summary>标签类型标识：连接管理。</summary>
+    public string Kind
+    {
+        get { return TabKinds.Connections; }
+    }
+
+    /// <summary>把连接列表与选中项写入网页端快照（桌面与网页共用）。</summary>
+    public void FillSnapshot(DebugTabState tabState)
+    {
+        TabSnapshotFiller.FillConnections(this, tabState);
+    }
+
     /// <summary>标签页标题。</summary>
     public string Title
     {
@@ -105,6 +119,46 @@ public class ConnectionManagerViewModel : INotifyPropertyChanged
         RemoteConnectionProfile added = this.manager.Add(profile);
         this.Reload();
         this.SelectById(added.Id);
+    }
+
+    /// <summary>在调用线程直接执行一键导入（网页端动作线程调用，不经过后台线程）。</summary>
+    /// <param name="homeDirectory">用于定位配置目录的用户主目录；为空时取当前登录用户的主目录。</param>
+    public XshellImportSummary ImportInstalled(string? homeDirectory = null)
+    {
+        XshellImportSummary summary = this.manager.ImportInstalledXshellSessions(homeDirectory);
+        this.Reload();
+        this.SelectFirstByName(summary.Names);
+        return summary;
+    }
+
+    /// <summary>一键导入本机已安装的 Xshell / Xftp 会话配置：同名连接更新参数，新连接追加。</summary>
+    /// <param name="homeDirectory">用于定位配置目录的用户主目录；为空时取当前登录用户的主目录。</param>
+    public async Task<XshellImportSummary> ImportInstalledAsync(string? homeDirectory = null)
+    {
+        XshellImportSummary summary = await Task.Run(delegate
+        {
+            return this.manager.ImportInstalledXshellSessions(homeDirectory);
+        });
+        this.Reload();
+        this.SelectFirstByName(summary.Names);
+        return summary;
+    }
+
+    /// <summary>按名称选中列表中的连接配置（导入完成后选中首条）。</summary>
+    private void SelectFirstByName(List<string> names)
+    {
+        if (names.Count == 0)
+        {
+            return;
+        }
+        foreach (RemoteConnectionProfile profile in this.Connections)
+        {
+            if (profile.Name == names[0])
+            {
+                this.SelectedConnection = profile;
+                return;
+            }
+        }
     }
 
     /// <summary>测试指定连接的连通性（网络请求放在后台线程执行）。</summary>

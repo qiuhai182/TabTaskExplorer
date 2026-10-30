@@ -34,8 +34,20 @@ public enum FileViewMode
 /// 路径为空字符串时表示"此电脑"根视图，展示全部磁盘分区。
 /// 目录枚举在后台线程执行，避免大文件夹冻结界面。
 /// </summary>
-public class FileTabViewModel : INotifyPropertyChanged, IColumnWidthViewModel
+public class FileTabViewModel : INotifyPropertyChanged, IColumnWidthViewModel, ITabView
 {
+    /// <summary>标签类型标识：文件列表。</summary>
+    public string Kind
+    {
+        get { return TabKinds.File; }
+    }
+
+    /// <summary>把文件列表状态写入网页端快照（桌面与网页共用）。</summary>
+    public void FillSnapshot(DebugTabState tabState)
+    {
+        TabSnapshotFiller.FillFile(this, tabState);
+    }
+
     private readonly IFileSystemProvider fileSystemProvider;
     private readonly AppSettings appSettings;
 

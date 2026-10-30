@@ -193,7 +193,7 @@ public partial class ConnectionPanel : UserControl
             {
                 new FilePickerFileType("Xshell 会话文件")
                 {
-                    Patterns = new List<string> { "*.xsh", "*.xshf" },
+                    Patterns = new List<string> { "*.xsh", "*.xshf", "*.xfp", "*.xftp" },
                 },
             },
         };
@@ -220,6 +220,54 @@ public partial class ConnectionPanel : UserControl
             + " 结果=" + (files.Count == 0
                 ? "未执行，用户取消了会话文件选择"
                 : importedCount > 0 ? "成功，导入的连接已加入连接列表" : "失败，会话文件解析失败或缺少主机地址"));
+    }
+
+    /// <summary>一键导入本机已安装的 Xshell / Xftp 配置：自动扫描配置目录并按名称合并。</summary>
+    private async void OnImportInstalledClick(object? sender, RoutedEventArgs e)
+    {
+        ConnectionManagerViewModel? viewModel = this.ViewModel;
+        if (viewModel == null)
+        {
+            UiLogger.Log("程序行为", "按钮=一键导入已安装配置 被点击：连接管理视图模型未就绪，结果=失败，未执行配置目录扫描");
+            return;
+        }
+
+        this.ImportInstalledButton.IsEnabled = false;
+        try
+        {
+            XshellImportSummary summary = await viewModel.ImportInstalledAsync();
+            string rootsText = string.Join("、", summary.RootsScanned);
+            string skippedText = string.Join("、", summary.Skipped);
+            string statusText;
+            string resultText;
+            if (summary.RootsScanned.Count == 0)
+            {
+                statusText = "未发现 Xshell / Xftp 配置目录（已查找用户文档目录与 OneDrive 文档目录下的 NetSarang Computer）";
+                resultText = "未执行导入，本机不存在 NetSarang Computer 配置目录";
+            }
+            else if (summary.Names.Count == 0)
+            {
+                statusText = "已扫描 " + summary.RootsScanned.Count + " 个配置目录，但没有可导入的会话"
+                    + (summary.Skipped.Count > 0 ? "；跳过：" + skippedText : string.Empty);
+                resultText = "扫描完成但没有可导入的会话";
+            }
+            else
+            {
+                statusText = "一键导入完成：新增 " + summary.Imported + " 个、更新 " + summary.Updated + " 个连接"
+                    + (summary.Skipped.Count > 0 ? "；跳过 " + summary.Skipped.Count + " 个：" + skippedText : string.Empty)
+                    + "（Xshell 密码与私钥需补填）";
+                resultText = "成功，已按名称合并到连接列表";
+            }
+            this.StatusText.Text = statusText;
+            UiLogger.Log("程序行为", "按钮=一键导入已安装配置 被点击：配置目录数=" + summary.RootsScanned.Count
+                + " 配置目录=" + rootsText + " 新增连接数=" + summary.Imported + " 更新连接数=" + summary.Updated
+                + " 会话名称=" + string.Join("、", summary.Names) + " 跳过数=" + summary.Skipped.Count
+                + " 跳过清单=" + skippedText + " 结果=" + resultText);
+        }
+        finally
+        {
+            this.ImportInstalledButton.IsEnabled = true;
+        }
     }
 
     /// <summary>导出全部连接配置到用户选择的 JSON 文件。</summary>

@@ -20,6 +20,13 @@ public interface ISystemClipboardService
     Task<bool> WriteAsync(IReadOnlyList<string> paths, bool isCut);
 
     /// <summary>
+    /// 把一段纯文本写入系统剪贴板（例如网页端地址），供粘贴到浏览器地址栏等场景使用。
+    /// </summary>
+    /// <param name="text">要写入剪贴板的文本。</param>
+    /// <returns>写入成功返回 true，失败或不支持返回 false。</returns>
+    Task<bool> WriteTextAsync(string text);
+
+    /// <summary>
     /// 读取系统剪贴板内容（我方状态标记 + 外部文件列表 + 系统剪切标记）。
     /// </summary>
     /// <returns>读取结果；读取失败时返回 HasTransfer 为 false 的结果，由上层回退内部剪贴板。</returns>

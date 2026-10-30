@@ -303,11 +303,54 @@ public class DebugTabState
     /// <summary>任务看板：已完成标题。</summary>
     public List<string> Done { get; } = new List<string>();
 
-    /// <summary>连接管理：全部连接（名称 / 摘要）。</summary>
-    public List<string[]> Connections { get; } = new List<string[]>();
+    /// <summary>连接管理：全部连接（含可编辑字段，网页端据此渲染编辑表单）。</summary>
+    public List<DebugConnection> Connections { get; } = new List<DebugConnection>();
 
     /// <summary>连接管理：当前选中的连接名称。</summary>
     public string SelectedConnection { get; set; } = string.Empty;
+
+    /// <summary>连接管理：当前选中的连接编号（网页端保存、测试、删除与打开时回传）。</summary>
+    public string SelectedConnectionId { get; set; } = string.Empty;
+}
+
+/// <summary>连接管理镜像项。</summary>
+public class DebugConnection
+{
+    /// <summary>连接编号。</summary>
+    public string Id { get; set; } = string.Empty;
+
+    /// <summary>连接名称。</summary>
+    public string Name { get; set; } = string.Empty;
+
+    /// <summary>连接分组。</summary>
+    public string Group { get; set; } = string.Empty;
+
+    /// <summary>连接协议：SSH / FTP。</summary>
+    public string Protocol { get; set; } = "SSH";
+
+    /// <summary>主机地址。</summary>
+    public string Host { get; set; } = string.Empty;
+
+    /// <summary>端口号；0 表示使用协议默认端口。</summary>
+    public int Port { get; set; }
+
+    /// <summary>登录用户名。</summary>
+    public string Username { get; set; } = string.Empty;
+
+    /// <summary>认证方式：Password / PrivateKey。</summary>
+    public string AuthType { get; set; } = "Password";
+
+    /// <summary>私钥文件完整路径（认证方式为私钥时使用）。</summary>
+    public string PrivateKeyPath { get; set; } = string.Empty;
+
+    /// <summary>SSH 保活间隔（秒）；0 表示关闭保活。</summary>
+    public int KeepAliveSeconds { get; set; } = 15;
+
+    /// <summary>列表展示摘要：协议 用户名@主机:端口。</summary>
+    public string Summary { get; set; } = string.Empty;
+
+    /// <summary>是否为当前选中的连接。</summary>
+    public bool Selected { get; set; }
 }
 
 /// <summary>进程监控镜像行。</summary>
