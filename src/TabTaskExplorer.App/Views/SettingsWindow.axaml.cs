@@ -5,6 +5,7 @@ using Avalonia.Controls;
 using Avalonia.Interactivity;
 using TabTaskExplorer.App.Services;
 using TabTaskExplorer.Kernel.Abstractions;
+using TabTaskExplorer.Kernel.Media;
 using TabTaskExplorer.Kernel.Models;
 using TabTaskExplorer.Kernel.Services;
 
@@ -100,7 +101,7 @@ public partial class SettingsWindow : Window
         int index = this.SectionList.SelectedIndex;
         // XAML 初始化时 ListBox 会因第一项 IsSelected="True" 触发本事件，此时各分页容器尚未创建，直接跳过
         if (this.BasicPage == null || this.MousePage == null || this.FilePage == null
-            || this.EditorPage == null || this.OpenWithPage == null
+            || this.EditorPage == null || this.OpenWithPage == null || this.MediaPage == null
             || this.WebPage == null || this.RightMenuPage == null || this.AboutPage == null)
         {
             UiLogger.Log("设置窗口", "分页切换：初始化阶段分页容器尚未创建，跳过 index=" + index);
@@ -112,13 +113,18 @@ public partial class SettingsWindow : Window
         this.FilePage.IsVisible = index == 2;
         this.EditorPage.IsVisible = index == 3;
         this.OpenWithPage.IsVisible = index == 4;
-        this.WebPage.IsVisible = index == 5;
-        this.RightMenuPage.IsVisible = index == 6;
-        this.AboutPage.IsVisible = index == 7;
-        if (index == 6 && !this.systemMenuLoaded)
+        this.MediaPage.IsVisible = index == 5;
+        this.WebPage.IsVisible = index == 6;
+        this.RightMenuPage.IsVisible = index == 7;
+        this.AboutPage.IsVisible = index == 8;
+        if (index == 5 && !this.mediaPageLoaded)
+        {
+            this.LoadMediaSettings();
+        }
+        if (index == 7 && !this.systemMenuLoaded)
         {
             this.LoadSystemMenuList();
-            UiLogger.Log("设置窗口", "分页切换：index=6 分组=" + this.GetSelectedGroupText()
+            UiLogger.Log("设置窗口", "分页切换：index=7 分组=" + this.GetSelectedGroupText()
                 + " 状态=" + this.GetSelectedStatusText()
                 + " 搜索词=" + this.GetSearchText()
                 + " 结果=成功，已首次加载系统右键菜单项列表");
@@ -178,6 +184,7 @@ public partial class SettingsWindow : Window
         this.CommitWebSettings();
         this.CommitEditorSettings();
         this.CommitOpenRules();
+        this.CommitMediaSettings();
         AppSettings? settings = this.DataContext as AppSettings;
         if (settings != null)
         {
@@ -207,6 +214,87 @@ public partial class SettingsWindow : Window
         }
         UiLogger.Log("设置窗口", "点击确定：提交设置并关闭");
         this.Close(true);
+    }
+
+    /// <summary>媒体分页是否已经按当前设置初始化过控件。</summary>
+    private bool mediaPageLoaded;
+
+    /// <summary>按当前设置初始化媒体分页的控件选中项。</summary>
+    private void LoadMediaSettings()
+    {
+        AppSettings? settings = this.DataContext as AppSettings;
+        if (settings == null)
+        {
+            return;
+        }
+        this.mediaPageLoaded = true;
+        if (settings.MediaOpenMode == MediaOpenModeValues.System)
+        {
+            this.MediaModeBox.SelectedIndex = 1;
+        }
+        else if (settings.MediaOpenMode == MediaOpenModeValues.Ask)
+        {
+            this.MediaModeBox.SelectedIndex = 2;
+        }
+        else
+        {
+            this.MediaModeBox.SelectedIndex = 0;
+        }
+        this.MediaScopeBox.SelectedIndex = string.Equals(settings.MediaPlaylistScope, "AllMedia", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+        int maxSize = settings.MediaImageMaxDecodeSize;
+        if (maxSize <= 0)
+        {
+            this.MediaDecodeBox.SelectedIndex = 3;
+        }
+        else if (maxSize <= 2048)
+        {
+            this.MediaDecodeBox.SelectedIndex = 0;
+        }
+        else if (maxSize <= 4096)
+        {
+            this.MediaDecodeBox.SelectedIndex = 1;
+        }
+        else
+        {
+            this.MediaDecodeBox.SelectedIndex = 2;
+        }
+        UiLogger.Log("设置窗口", "媒体分页初始化：打开方式=" + settings.MediaOpenMode
+            + " 播放列表范围=" + settings.MediaPlaylistScope
+            + " 解码上限=" + maxSize);
+    }
+
+    /// <summary>提交媒体分页设置：打开方式、播放列表范围与图片解码上限。</summary>
+    private void CommitMediaSettings()
+    {
+        AppSettings? settings = this.DataContext as AppSettings;
+        if (settings == null)
+        {
+            return;
+        }
+        int modeIndex = this.MediaModeBox.SelectedIndex;
+        if (modeIndex == 1)
+        {
+            settings.MediaOpenMode = MediaOpenModeValues.System;
+        }
+        else if (modeIndex == 2)
+        {
+            settings.MediaOpenMode = MediaOpenModeValues.Ask;
+        }
+        else
+        {
+            settings.MediaOpenMode = MediaOpenModeValues.Builtin;
+        }
+        settings.MediaPlaylistScope = this.MediaScopeBox.SelectedIndex == 1 ? "AllMedia" : "SameKind";
+        int[] sizes = new int[] { 2048, 4096, 8192, 0 };
+        int sizeIndex = this.MediaDecodeBox.SelectedIndex;
+        if (sizeIndex < 0 || sizeIndex >= sizes.Length)
+        {
+            sizeIndex = 1;
+        }
+        settings.MediaImageMaxDecodeSize = sizes[sizeIndex];
+        UiLogger.Log("配置更改", "媒体设置：打开方式=" + settings.MediaOpenMode
+            + " 播放列表范围=" + settings.MediaPlaylistScope
+            + " 解码上限=" + settings.MediaImageMaxDecodeSize);
     }
 
     /// <summary>提交打开方式设置：扩展名统一规整为小写带点形式，重复类型只保留一条规则。</summary>

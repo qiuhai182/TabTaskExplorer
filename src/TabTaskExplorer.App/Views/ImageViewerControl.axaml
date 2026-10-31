@@ -1,0 +1,21 @@
+﻿<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="TabTaskExplorer.App.Views.ImageViewerControl">
+
+  <!-- 图片显示区：整块黑底，图像居中，缩放 / 旋转 / 平移全部通过 RenderTransform 完成，不重新解码。
+       变换对象由代码创建并挂到 Picture 上（TransformGroup 内的命名元素不会生成字段）。 -->
+  <Panel x:Name="Root" Background="#000000" ClipToBounds="True">
+    <Image x:Name="Picture"
+           Stretch="None"
+           HorizontalAlignment="Center"
+           VerticalAlignment="Center" />
+
+    <!-- 加载中提示：图片解码完成前显示 -->
+    <TextBlock x:Name="LoadingText"
+               Text="正在加载图片……"
+               Foreground="#808080"
+               FontSize="13"
+               HorizontalAlignment="Center"
+               VerticalAlignment="Center" />
+  </Panel>
+</UserControl>

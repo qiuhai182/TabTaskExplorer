@@ -1,6 +1,7 @@
 ﻿using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using TabTaskExplorer.Kernel.Media;
 using TabTaskExplorer.Kernel.Services;
 
 namespace TabTaskExplorer.App.Services;
@@ -102,6 +103,36 @@ public class AppSettings
 
     /// <summary>按文件类型覆盖打开方式的规则列表（优先于默认优先级）。</summary>
     public List<FileOpenRule> FileOpenRules { get; set; } = new List<FileOpenRule>();
+
+    /// <summary>媒体打开方式：Builtin（内置媒体标签，默认）/ System（系统默认程序）/ Ask（每次询问）。</summary>
+    public string MediaOpenMode { get; set; } = MediaOpenModeValues.Builtin;
+
+    /// <summary>按媒体大类覆盖打开方式的规则列表（图片 / 视频 / 音频可各自设置）。</summary>
+    public List<MediaOpenRule> MediaOpenRules { get; set; } = new List<MediaOpenRule>();
+
+    /// <summary>是否显示播放列表侧边栏（默认显示）。</summary>
+    public bool MediaShowPlaylist { get; set; } = true;
+
+    /// <summary>播放列表侧边栏宽度（像素，默认 260）。</summary>
+    public double MediaPlaylistWidth { get; set; } = 260;
+
+    /// <summary>播放列表收录范围：SameKind（只列同类，默认）/ AllMedia（同目录全部媒体）。</summary>
+    public string MediaPlaylistScope { get; set; } = "SameKind";
+
+    /// <summary>播放结束后是否自动播放下一项（默认开启）。</summary>
+    public bool MediaAutoPlayNext { get; set; } = true;
+
+    /// <summary>同一文件重复双击时是否复用已打开的媒体标签（默认复用；关闭则每次新开）。</summary>
+    public bool MediaReuseTab { get; set; } = true;
+
+    /// <summary>图片解码最大边长（像素，默认 4096；0 表示不限制，超大图按此降采样）。</summary>
+    public int MediaImageMaxDecodeSize { get; set; } = 4096;
+
+    /// <summary>上次音量（0-100）。</summary>
+    public int MediaVolume { get; set; } = 80;
+
+    /// <summary>上次播放倍速（0.25 - 4.0）。</summary>
+    public double MediaRate { get; set; } = 1.0;
 }
 
 /// <summary>

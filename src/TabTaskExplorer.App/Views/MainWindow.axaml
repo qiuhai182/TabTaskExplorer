@@ -459,6 +459,9 @@
           <DataTemplate DataType="vm:EditorTabViewModel">
             <views:EditorPanel />
           </DataTemplate>
+          <DataTemplate DataType="vm:MediaTabViewModel">
+            <views:MediaPanel />
+          </DataTemplate>
           <DataTemplate DataType="vm:SearchTabViewModel">
             <views:SearchPanel />
           </DataTemplate>

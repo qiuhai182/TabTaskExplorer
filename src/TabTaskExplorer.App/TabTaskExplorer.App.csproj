@@ -8,6 +8,8 @@
     <!-- Avalonia 12 默认开启编译期绑定，模板内缺少 x:DataType 时改用反射绑定，与既有代码保持一致 -->
     <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
+    <!-- 应用清单：声明 supportedOS，NativeControlHost（视频渲染面）创建原生子窗口时必需 -->
+    <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
 
   <ItemGroup>
@@ -31,7 +33,23 @@
     <PackageReference Include="Avalonia.Desktop" Version="12.1.4" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.4" />
     <PackageReference Include="FluentAvaloniaUI" Version="3.1.0" />
+    <PackageReference Include="LibVLCSharp" Version="3.10.2" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.13" />
   </ItemGroup>
+
+  <!-- 音视频解码后端：Windows 随包分发 libvlc（约 110MB，build.bat 会做 plugins 裁剪）；
+       Linux / macOS 不随包分发，运行时使用系统安装的 libvlc -->
+  <ItemGroup Condition="$([MSBuild]::IsOSPlatform('Windows'))">
+    <PackageReference Include="VideoLAN.LibVLC.Windows" Version="3.0.24" />
+  </ItemGroup>
+
+  <!-- libvlc 包默认把 x64 / x86 / arm64 三套原生库全部拷出（合计约 300MB），
+       这里只保留与目标架构匹配的一套，构建产物从 300MB 降到约 100MB -->
+  <Target Name="TrimLibVlcArchitectures" AfterTargets="Build"
+          Condition="$([MSBuild]::IsOSPlatform('Windows'))">
+    <RemoveDir Directories="$(OutDir)libvlc\win-x86" Condition="'$(RuntimeIdentifier)' != 'win-x86'" />
+    <RemoveDir Directories="$(OutDir)libvlc\win-arm64" Condition="'$(RuntimeIdentifier)' != 'win-arm64'" />
+    <RemoveDir Directories="$(OutDir)libvlc\win-x64" Condition="'$(RuntimeIdentifier)' == 'win-x86' Or '$(RuntimeIdentifier)' == 'win-arm64'" />
+  </Target>
 
 </Project>

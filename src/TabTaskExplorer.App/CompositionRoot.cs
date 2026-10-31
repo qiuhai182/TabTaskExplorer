@@ -129,6 +129,9 @@ public static class CompositionRoot
         // 进程采样服务：共享的进程读取记录与单飞调度，新开标签先复用记录不重新读取
         services.AddSingleton<Services.ProcessSampleService>();
 
+        // 媒体播放引擎：每个媒体标签一个实例；libvlc 缺失时引擎自动降级为不可用
+        services.AddTransient<Kernel.Media.IMediaPlaybackEngine, Services.Media.VlcPlaybackEngine>();
+
         return services.BuildServiceProvider();
     }
 }

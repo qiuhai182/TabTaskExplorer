@@ -42,6 +42,9 @@ public static class TabKinds
     /// <summary>连接管理标签。</summary>
     public const string Connections = "connections";
 
+    /// <summary>媒体标签（图片 / 视频 / 音频）：桌面专用，网页端暂不渲染播放内容。</summary>
+    public const string Media = "media";
+
     /// <summary>网页端无法渲染的桌面专用标签（终端、传输队列、编辑器等）。</summary>
     public const string Unknown = "unknown";
 
@@ -242,6 +245,28 @@ public static class TabSnapshotFiller
         foreach (TaskItem item in boardTab.DoneItems)
         {
             tabState.Done.Add(item.Title);
+        }
+    }
+
+    /// <summary>媒体标签快照：网页端暂不渲染播放内容，只回传路径、类型与播放列表摘要。</summary>
+    public static void FillMedia(MediaTabViewModel mediaTab, DebugTabState tabState)
+    {
+        tabState.CurrentPath = mediaTab.CurrentPath;
+        tabState.SummaryText = mediaTab.Playlist.SummaryText;
+        tabState.TotalRows = mediaTab.Playlist.Items.Count;
+        tabState.DetailText = mediaTab.CurrentTypeText + " · " + mediaTab.StatusText;
+        for (int index = 0; index < mediaTab.Playlist.Items.Count && index < 1000; index++)
+        {
+            MediaPlaylistItemViewModel item = mediaTab.Playlist.Items[index];
+            DebugFileRow debugRow = new DebugFileRow();
+            debugRow.Name = item.Name;
+            debugRow.IsDirectory = false;
+            debugRow.FullPath = item.FullPath;
+            debugRow.Type = item.TypeText;
+            debugRow.Size = item.SizeText;
+            debugRow.IsSelected = item.IsCurrent;
+            debugRow.IconGlyph = item.IconGlyph;
+            tabState.Rows.Add(debugRow);
         }
     }
 

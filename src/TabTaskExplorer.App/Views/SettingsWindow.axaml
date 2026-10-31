@@ -12,6 +12,7 @@
         <ListBoxItem Content="文件/文件夹" />
         <ListBoxItem Content="编辑器" />
         <ListBoxItem Content="打开方式" />
+        <ListBoxItem Content="媒体" />
         <ListBoxItem Content="网页端" />
         <ListBoxItem Content="右键菜单" />
         <ListBoxItem Content="关于" />
@@ -118,6 +119,40 @@
             </ListBox>
             <TextBlock TextWrapping="Wrap" Opacity="0.7"
                        Text="说明：扩展名填 * 表示全部类型；同类型只会采用精确匹配的那条规则，修改后点确定生效。" />
+          </StackPanel>
+          <StackPanel x:Name="MediaPage" Spacing="12" IsVisible="False">
+            <TextBlock Text="媒体打开方式" FontWeight="Medium" />
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <TextBlock Text="双击图片 / 视频 / 音频时" VerticalAlignment="Center" />
+              <ComboBox x:Name="MediaModeBox" Width="220">
+                <ComboBoxItem Content="用内置查看器打开" />
+                <ComboBoxItem Content="用系统默认程序打开" />
+                <ComboBoxItem Content="每次询问" />
+              </ComboBox>
+            </StackPanel>
+            <TextBlock TextWrapping="Wrap" Opacity="0.7"
+                       Text="说明：内置查看器在标签页内播放，并在右侧列出同目录的播放列表；选择系统默认程序时行为与普通文件一致。" />
+            <TextBlock Text="播放列表" FontWeight="Medium" Margin="0,8,0,0" />
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <TextBlock Text="收录范围" VerticalAlignment="Center" />
+              <ComboBox x:Name="MediaScopeBox" Width="220">
+                <ComboBoxItem Content="只列同类媒体（图片标签只列图片）" />
+                <ComboBoxItem Content="列出同目录全部媒体" />
+              </ComboBox>
+            </StackPanel>
+            <CheckBox Content="打开媒体标签时显示播放列表侧边栏" IsChecked="{Binding MediaShowPlaylist, Mode=TwoWay}" />
+            <CheckBox Content="播放结束后自动播放下一项" IsChecked="{Binding MediaAutoPlayNext, Mode=TwoWay}" />
+            <CheckBox Content="同一文件重复双击时复用已打开的标签" IsChecked="{Binding MediaReuseTab, Mode=TwoWay}" />
+            <TextBlock Text="图片" FontWeight="Medium" Margin="0,8,0,0" />
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <TextBlock Text="解码最大边长" VerticalAlignment="Center" />
+              <ComboBox x:Name="MediaDecodeBox" Width="220">
+                <ComboBoxItem Content="2048 像素（省内存）" />
+                <ComboBoxItem Content="4096 像素（推荐）" />
+                <ComboBoxItem Content="8192 像素" />
+                <ComboBoxItem Content="不限制（大图可能占用大量内存）" />
+              </ComboBox>
+            </StackPanel>
           </StackPanel>
           <StackPanel x:Name="WebPage" Spacing="10" IsVisible="False">
             <TextBlock Text="网页端端口（每个端口独立配置，可添加任意数量）" FontWeight="Medium" />

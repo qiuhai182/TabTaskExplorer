@@ -9,6 +9,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Avalonia.Controls;
 using TabTaskExplorer.App.Services;
 using TabTaskExplorer.Kernel.Abstractions;
+using TabTaskExplorer.Kernel.Media;
 using TabTaskExplorer.Kernel.Models;
 using TabTaskExplorer.Kernel.Services;
 
@@ -345,6 +346,102 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
         this.AddTab(path);
     }
 
+    /// <summary>媒体文件打开请求（来自文件标签双击）：按设置开内置标签、弹窗询问或交系统程序。</summary>
+    private async void OnMediaOpenRequested(object? sender, string path)
+    {
+        await this.OpenMediaAsync(path);
+    }
+
+    /// <summary>按「媒体打开方式」设置打开一个媒体文件。</summary>
+    public async Task OpenMediaAsync(string path)
+    {
+        if (string.IsNullOrEmpty(path))
+        {
+            return;
+        }
+        MediaKind kind = MediaFormatCatalog.Classify(path);
+        if (kind == MediaKind.Unknown)
+        {
+            return;
+        }
+        string mode = MediaOpenPolicy.ResolveMode(this.Settings.MediaOpenRules, this.Settings.MediaOpenMode, kind);
+        if (mode == MediaOpenModeValues.Ask)
+        {
+            bool useBuiltin = await Views.MessageDialog.ConfirmAsync(this.OwnerWindow, "打开方式",
+                "「" + Path.GetFileName(path) + "」\n\n用内置媒体查看器打开吗？\n选择「系统默认程序」将交给系统关联的应用。",
+                "内置查看器", "系统默认程序");
+            if (!useBuiltin)
+            {
+                this.OpenWithSystemProgram(path);
+                return;
+            }
+        }
+        else if (mode == MediaOpenModeValues.System)
+        {
+            this.OpenWithSystemProgram(path);
+            return;
+        }
+        this.OpenMediaTab(path, kind);
+    }
+
+    /// <summary>新开（或复用）媒体标签：同一文件已打开时按设置激活已有标签。</summary>
+    public void OpenMediaTab(string path, MediaKind kind)
+    {
+        path = MediaTabViewModel.NormalizePath(path);
+        if (this.Settings.MediaReuseTab)
+        {
+            foreach (object tab in this.Tabs)
+            {
+                MediaTabViewModel? existing = tab as MediaTabViewModel;
+                if (existing != null && string.Equals(existing.CurrentPath, path, StringComparison.OrdinalIgnoreCase))
+                {
+                    this.SelectedTab = existing;
+                    UiLogger.Log("媒体", "复用已打开的媒体标签：路径=" + path);
+                    return;
+                }
+            }
+        }
+        MediaTabViewModel mediaTab = new MediaTabViewModel(this.Settings, this.CreateMediaEngine, path, kind);
+        mediaTab.CloseRequested += this.OnMediaTabCloseRequested;
+        this.Tabs.Add(mediaTab);
+        this.SelectedTab = mediaTab;
+        _ = mediaTab.LoadAsync();
+        UiLogger.Log("媒体", "新建媒体标签：类型=" + MediaFormatCatalog.DescribeKind(kind) + " 路径=" + path
+            + " 标签总数=" + this.Tabs.Count);
+    }
+
+    /// <summary>创建播放引擎实例（每个媒体标签一个，由容器按需构造）。</summary>
+    private IMediaPlaybackEngine? CreateMediaEngine()
+    {
+        return this.services.GetService<IMediaPlaybackEngine>();
+    }
+
+    /// <summary>媒体标签请求关闭自身（例如提示中的「关闭标签」）。</summary>
+    private void OnMediaTabCloseRequested(object? sender, EventArgs e)
+    {
+        MediaTabViewModel? mediaTab = sender as MediaTabViewModel;
+        if (mediaTab != null)
+        {
+            this.CloseTab(mediaTab);
+        }
+    }
+
+    /// <summary>用系统默认程序打开文件（媒体打开方式设为「系统」或用户在询问中选择了系统程序时使用）。</summary>
+    private void OpenWithSystemProgram(string path)
+    {
+        try
+        {
+            System.Diagnostics.ProcessStartInfo startInfo = new System.Diagnostics.ProcessStartInfo();
+            startInfo.FileName = path;
+            startInfo.UseShellExecute = true;
+            System.Diagnostics.Process.Start(startInfo);
+        }
+        catch (Exception error)
+        {
+            Views.MessageDialog.Show(this.OwnerWindow, "打开失败", "无法用系统默认程序打开：" + error.Message);
+        }
+    }
+
     /// <summary>按给定提供者创建文件标签并加入标签条。</summary>
     private void CreateFileTab(IFileSystemProvider provider, string path,
         DiskScanService? scanService, IArchiveService archiveService)
@@ -352,6 +449,7 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
         FileTabViewModel tab = new FileTabViewModel(provider, this.Settings, path, scanService, archiveService);
         tab.PathChanged += this.OnTabPathChanged;
         tab.ArchiveOpenRequested += this.OnArchiveOpenRequested;
+        tab.MediaOpenRequested += this.OnMediaOpenRequested;
         this.Tabs.Add(tab);
         this.SelectedTab = tab;
         string locationText = string.IsNullOrEmpty(path) ? "此电脑" : path;
@@ -813,6 +911,11 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
         {
             closingFileTab.Close();
         }
+        // 媒体标签关闭时停止播放并释放解码器与位图
+        if (tab is MediaTabViewModel closingMediaTab)
+        {
+            closingMediaTab.Dispose();
+        }
         int index = this.Tabs.IndexOf(tab);
         if (index < 0)
         {
@@ -848,6 +951,7 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
         {
             fileTab.PathChanged -= this.OnTabPathChanged;
             fileTab.ArchiveOpenRequested -= this.OnArchiveOpenRequested;
+            fileTab.MediaOpenRequested -= this.OnMediaOpenRequested;
             locationText = fileTab.CurrentPath;
         }
         this.Tabs.Remove(tab);
@@ -881,6 +985,7 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
         {
             fileTab.PathChanged += this.OnTabPathChanged;
             fileTab.ArchiveOpenRequested += this.OnArchiveOpenRequested;
+            fileTab.MediaOpenRequested += this.OnMediaOpenRequested;
             locationText = fileTab.CurrentPath;
         }
         this.Tabs.Add(tab);

@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using Avalonia.Threading;
 using TabTaskExplorer.App.Services;
 using TabTaskExplorer.Kernel.Abstractions;
+using TabTaskExplorer.Kernel.Media;
 using TabTaskExplorer.Kernel.Models;
 using TabTaskExplorer.Kernel.Services;
 
@@ -647,6 +648,12 @@ public class FileTabViewModel : INotifyPropertyChanged, IColumnWidthViewModel, I
     /// <summary>压缩包打开请求：主窗口据此在对应压缩包文件系统上新开预览标签，参数为压缩包完整路径。</summary>
     public event EventHandler<string>? ArchiveOpenRequested;
 
+    /// <summary>
+    /// 媒体文件打开请求：主窗口据此新开（或复用）媒体标签，参数为媒体文件完整路径。
+    /// 仅当「媒体打开方式」不是「系统默认程序」时触发；图片 / 视频 / 音频统一走这里。
+    /// </summary>
+    public event EventHandler<string>? MediaOpenRequested;
+
     /// <summary>远程文件内容访问能力；本地提供者不支持时为 null。</summary>
     public IFileContentAccess? ContentAccess
     {
@@ -712,6 +719,23 @@ public class FileTabViewModel : INotifyPropertyChanged, IColumnWidthViewModel, I
             this.RaiseArchiveOpenRequested(row.FullPath);
             return;
         }
+        // 媒体文件：按「媒体打开方式」设置交给内置媒体标签（图片 / 视频 / 音频）；
+        // 设置为「系统默认程序」时不触发事件，继续走下方系统打开分支
+        MediaKind mediaKind = MediaFormatCatalog.Classify(row.FullPath);
+        if (mediaKind != MediaKind.Unknown && MediaFormatCatalog.IsPlayable(row.FullPath))
+        {
+            string mediaMode = MediaOpenPolicy.ResolveMode(
+                this.appSettings.MediaOpenRules, this.appSettings.MediaOpenMode, mediaKind);
+            if (mediaMode != MediaOpenModeValues.System)
+            {
+                EventHandler<string>? mediaHandler = this.MediaOpenRequested;
+                if (mediaHandler != null)
+                {
+                    mediaHandler(this, row.FullPath);
+                    return;
+                }
+            }
+        }
         // 本机文件一律交给系统默认程序打开（IDE 模式下的打开方式由 IDE 侧设置决定）
         try
         {
@@ -725,7 +749,6 @@ public class FileTabViewModel : INotifyPropertyChanged, IColumnWidthViewModel, I
             this.SummaryText = "无法打开该文件：" + error.Message;
         }
     }
-
     /// <summary>发出压缩包打开请求（无订阅方时静默忽略）。</summary>
     private void RaiseArchiveOpenRequested(string path)
     {

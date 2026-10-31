@@ -23,6 +23,9 @@ public partial class MessageDialog : Window
 {
     private SavePromptChoice choice = SavePromptChoice.Cancel;
 
+    /// <summary>是否为「确认 / 取消」二选一模式（此时确定按钮代表确认）。</summary>
+    private bool confirmMode;
+
     /// <summary>构造消息窗。</summary>
     public MessageDialog()
     {
@@ -67,9 +70,38 @@ public partial class MessageDialog : Window
         return dialog.choice;
     }
 
+    /// <summary>
+    /// 弹出「确认 / 取消」二选一对话框：点确认返回 true，点取消或关闭返回 false。
+    /// 用于媒体打开方式询问等需要用户当场拍板的场景。
+    /// </summary>
+    public static async Task<bool> ConfirmAsync(Window? owner, string title, string message,
+        string confirmText, string cancelText)
+    {
+        MessageDialog dialog = new MessageDialog();
+        dialog.confirmMode = true;
+        dialog.Title = title;
+        dialog.MessageText.Text = message;
+        dialog.OkButton.Content = confirmText;
+        dialog.CancelChoiceButton.Content = cancelText;
+        dialog.CancelChoiceButton.IsVisible = true;
+        if (owner != null)
+        {
+            await dialog.ShowDialog(owner);
+        }
+        else
+        {
+            dialog.Show();
+        }
+        return dialog.choice == SavePromptChoice.Save;
+    }
+
     /// <summary>点击确定关闭。</summary>
     private void OnOkClick(object? sender, RoutedEventArgs e)
     {
+        if (this.confirmMode)
+        {
+            this.choice = SavePromptChoice.Save;
+        }
         UiLogger.Log("程序行为", "消息提示窗点击确定：标题=" + this.Title
             + " 结果=成功，已确认提示并关闭对话框");
         this.Close();
