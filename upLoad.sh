@@ -2,7 +2,8 @@
 # TabTaskExplorer 快捷上传：提交全部变更并推送到 Gitee（origin main）
 # 用法：在仓库根目录执行  bash upLoad.sh
 
-git pull
+git pull gitee main
+git pull github main
 
 python convert_to_utf8.py
 
@@ -15,4 +16,5 @@ else
     git commit -m "快捷上传最新代码"
 fi
 
-git push origin main
+git push github main
+git push gitee main

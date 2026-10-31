@@ -5,13 +5,13 @@
 	logallrefupdates = true
 	symlinks = false
 	ignorecase = true
-[branch "master"]
+[branch "main"]
 	remote = origin
-	merge = refs/heads/master
-	vscode-merge-base = origin/master
+	merge = refs/heads/main
+	vscode-merge-base = origin/main
 [remote "github"]
-	url = https://github.com/qiuhai182/encoding-switcher.git
+	url = https://github.com/qiuhai182/TabTaskExplorer.git
 	fetch = +refs/heads/*:refs/remotes/github/*
 [remote "gitee"]
-	url = https://gitee.com/qiuhai182/encoding-switcher.git
+	url = https://gitee.com/qiuhai182/TabTaskExplorer.git
 	fetch = +refs/heads/*:refs/remotes/gitee/*
