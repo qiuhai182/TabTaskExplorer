@@ -50,6 +50,9 @@ public class App : Application
             MainWindowViewModel mainViewModel = (MainWindowViewModel)desktop.MainWindow.DataContext;
             mainViewModel.AttachDebugWebHost(services.GetRequiredService<Services.WebServiceHost>());
 
+            // 截图录屏协调器：绑定主窗口后注册全局快捷键，并接管截图、录屏与产物文件夹自动打开
+            services.GetRequiredService<Services.Capture.CaptureCoordinator>().Attach(mainViewModel);
+
             // 单实例命令管道：第二实例把系统唤起的路径转发到这里（UI 线程处理）
             SingleInstanceService.StartServer(new Action<string>(this.HandleExternalCommand));
 
@@ -215,6 +218,14 @@ public class App : Application
     /// <summary>桌面生命周期结束：程序正常退出。</summary>
     private void OnDesktopExit(object? sender, ControlledApplicationLifetimeExitEventArgs e)
     {
+        Services.Capture.CaptureCoordinator? captureCoordinator = this.appServices == null
+            ? null
+            : this.appServices.GetService<Services.Capture.CaptureCoordinator>();
+        if (captureCoordinator != null)
+        {
+            Services.UiLogger.Log("程序退出", "释放截图录屏协调器：注销全局快捷键并结束仍在进行的录制");
+            captureCoordinator.Dispose();
+        }
         Services.UiLogger.Log("程序退出", "主程序正常退出：退出码=" + e.ApplicationExitCode + " 运行时长="
             + (DateTime.Now - System.Diagnostics.Process.GetCurrentProcess().StartTime).ToString(@"hh\:mm\:ss"));
     }

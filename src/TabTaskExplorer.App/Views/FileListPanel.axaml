@@ -2,6 +2,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:conv="using:Avalonia.Data.Converters"
              xmlns:svc="using:TabTaskExplorer.App.Services"
+             xmlns:views="using:TabTaskExplorer.App.Views"
              x:Class="TabTaskExplorer.App.Views.FileListPanel"
              Loaded="OnPanelLoaded">
 
@@ -108,7 +109,8 @@
                         <ColumnDefinition Width="110" />
                       </Grid.ColumnDefinitions>
                       <CheckBox Grid.Column="0" IsChecked="{Binding IsSelected, Mode=TwoWay}" Click="OnRowCheckChanged" />
-                      <TextBlock Grid.Column="1" FontFamily="Segoe MDL2 Assets, Segoe Fluent Icons" Text="{Binding IconGlyph}" Foreground="{Binding IconColor}" FontSize="13" VerticalAlignment="Center" />
+                      <views:FileTypeIcon Grid.Column="1" Width="16" Height="16" Category="{Binding IconCategory}"
+                                         AccentColor="{Binding IconColor}" VerticalAlignment="Center" />
                       <TextBlock Grid.Column="2" Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
                       <TextBlock Grid.Column="3" Text="{Binding ModifiedText}" Opacity="0.8" VerticalAlignment="Center"
                                  IsVisible="{Binding DataContext.IsDetailsLayout, RelativeSource={RelativeSource AncestorType=ListBox}}" />
@@ -152,7 +154,10 @@
                       </Border.ContextMenu>
                       <StackPanel Spacing="4">
                         <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}" Click="OnRowCheckChanged" HorizontalAlignment="Left" />
-                        <TextBlock FontFamily="Segoe MDL2 Assets, Segoe Fluent Icons" Text="{Binding IconGlyph}" Foreground="{Binding IconColor}" FontSize="22" HorizontalAlignment="Left" />
+                        <views:FileTypeIcon Width="{Binding $parent[ItemsControl].DataContext.TileIconSize}"
+                                           Height="{Binding $parent[ItemsControl].DataContext.TileIconSize}"
+                                           Category="{Binding IconCategory}" AccentColor="{Binding IconColor}"
+                                           HorizontalAlignment="Left" />
                         <TextBlock Text="{Binding DisplayName}" TextWrapping="Wrap" />
                         <TextBlock Text="{Binding TypeText}" FontSize="11" Opacity="0.7"
                                    IsVisible="{Binding DataContext.IsTileLayout, RelativeSource={RelativeSource AncestorType=ItemsControl}}" />

@@ -1,0 +1,30 @@
+﻿<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="TabTaskExplorer.App.Views.RegionSelectionWindow"
+        Title="选择截图区域" WindowDecorations="None" CanResize="False"
+        WindowStartupLocation="Manual" Topmost="True" ShowInTaskbar="False"
+        Background="Black"
+        KeyDown="OnWindowKeyDown"
+        PointerPressed="OnWindowPointerPressed"
+        PointerMoved="OnWindowPointerMoved"
+        PointerReleased="OnWindowPointerReleased">
+  <Panel>
+    <Canvas x:Name="RootCanvas" ClipToBounds="True">
+      <Image x:Name="ScreenImage" Stretch="Fill" Canvas.Left="0" Canvas.Top="0" />
+      <Rectangle x:Name="DimTop" Fill="#B3000000" Canvas.Left="0" Canvas.Top="0" />
+      <Rectangle x:Name="DimBottom" Fill="#B3000000" Canvas.Left="0" Canvas.Top="0" />
+      <Rectangle x:Name="DimLeft" Fill="#B3000000" Canvas.Left="0" Canvas.Top="0" />
+      <Rectangle x:Name="DimRight" Fill="#B3000000" Canvas.Left="0" Canvas.Top="0" />
+      <Border x:Name="SelectionBorder" BorderBrush="#3B82F6" BorderThickness="2"
+              Background="Transparent" IsVisible="False" />
+      <Border x:Name="SizeBadge" Background="#E61E1E1E" CornerRadius="3" Padding="6,2" IsVisible="False">
+        <TextBlock x:Name="SizeText" Foreground="White" FontSize="12" />
+      </Border>
+    </Canvas>
+    <Border x:Name="HintPanel" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,36,0,0"
+            Background="#E61E1E1E" CornerRadius="6" Padding="14,8">
+      <TextBlock Text="拖动鼠标框选截图区域，按 Esc 或单击右键取消"
+                 Foreground="White" FontSize="13" />
+    </Border>
+  </Panel>
+</Window>

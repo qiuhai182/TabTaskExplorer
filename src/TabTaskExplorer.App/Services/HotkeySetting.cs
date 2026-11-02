@@ -54,6 +54,20 @@ public class HotkeySetting
         return defaults;
     }
 
+    /// <summary>
+    /// 创建默认的全局快捷键配置：系统任何程序在前台时都能触发截图与录屏，
+    /// 与「快捷操作」中的应用内快捷键互不影响。
+    /// </summary>
+    public static List<HotkeySetting> CreateGlobalDefaults()
+    {
+        List<HotkeySetting> defaults = new List<HotkeySetting>();
+        defaults.Add(Create("ScreenshotRegion", "PrintScreen", false, false, false));
+        defaults.Add(Create("ScreenshotFull", "PrintScreen", true, false, false));
+        defaults.Add(Create("ScreenshotWindow", "PrintScreen", true, true, false));
+        defaults.Add(Create("RecordToggle", "R", true, false, true));
+        return defaults;
+    }
+
     /// <summary>把动作标识翻译成中文显示名。</summary>
     public static string GetDisplayName(string actionName)
     {
@@ -74,6 +88,10 @@ public class HotkeySetting
             case "CloseEditor": return "关闭编辑器（IDE 模式）";
             case "QuickOpen": return "快速打开（IDE 模式）";
             case "Find": return "查找（IDE 模式）";
+            case "ScreenshotRegion": return "区域截图（全局）";
+            case "ScreenshotFull": return "全屏截图（全局）";
+            case "ScreenshotWindow": return "活动窗口截图（全局）";
+            case "RecordToggle": return "开始 / 停止录屏（全局）";
             default: return actionName;
         }
     }
@@ -114,6 +132,8 @@ public class HotkeySetting
         keys.Add("End");
         keys.Add("PageUp");
         keys.Add("PageDown");
+        keys.Add("PrintScreen");
+        keys.Add("Escape");
         return keys;
     }
 }

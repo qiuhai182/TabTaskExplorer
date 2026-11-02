@@ -227,14 +227,14 @@ public class MediaTabViewModel : INotifyPropertyChanged, ITabView, IDisposable
         {
             this.isPlaying = value;
             this.RaisePropertyChanged(nameof(IsPlaying));
-            this.RaisePropertyChanged(nameof(PlayGlyph));
+            this.RaisePropertyChanged(nameof(PlayIconKind));
         }
     }
 
-    /// <summary>播放 / 暂停按钮字形。</summary>
-    public string PlayGlyph
+    /// <summary>播放 / 暂停按钮图标键。</summary>
+    public string PlayIconKind
     {
-        get { return this.isPlaying ? "\uE769" : "\uE768"; }
+        get { return this.isPlaying ? "pause" : "play"; }
     }
 
     /// <summary>是否有错误提示。</summary>
@@ -325,7 +325,7 @@ public class MediaTabViewModel : INotifyPropertyChanged, ITabView, IDisposable
             }
             this.settings.MediaVolume = clamped;
             this.RaisePropertyChanged(nameof(Volume));
-            this.RaisePropertyChanged(nameof(VolumeGlyph));
+            this.RaisePropertyChanged(nameof(VolumeIconKind));
         }
     }
 
@@ -341,20 +341,20 @@ public class MediaTabViewModel : INotifyPropertyChanged, ITabView, IDisposable
                 this.engine.IsMuted = value;
             }
             this.RaisePropertyChanged(nameof(IsMuted));
-            this.RaisePropertyChanged(nameof(VolumeGlyph));
+            this.RaisePropertyChanged(nameof(VolumeIconKind));
         }
     }
 
-    /// <summary>音量按钮字形。</summary>
-    public string VolumeGlyph
+    /// <summary>音量按钮图标键。</summary>
+    public string VolumeIconKind
     {
         get
         {
             if (this.isMuted || this.volume <= 0)
             {
-                return "\uE74F";
+                return "mute";
             }
-            return this.volume < 50 ? "\uE993" : "\uE767";
+            return this.volume < 50 ? "volumelow" : "volumehigh";
         }
     }
 

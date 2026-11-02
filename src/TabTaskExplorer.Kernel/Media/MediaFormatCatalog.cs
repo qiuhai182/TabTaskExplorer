@@ -145,24 +145,6 @@ public static class MediaFormatCatalog
         return "文件";
     }
 
-    /// <summary>取媒体大类对应的 Segoe 图标字形（用于播放列表与标签图标）。</summary>
-    public static string GetIconGlyph(MediaKind kind)
-    {
-        if (kind == MediaKind.Image)
-        {
-            return "\uEB9F";
-        }
-        if (kind == MediaKind.Video)
-        {
-            return "\uE714";
-        }
-        if (kind == MediaKind.Audio)
-        {
-            return "\uE8D6";
-        }
-        return "\uE7C3";
-    }
-
     /// <summary>生成文件对话框用的过滤器，例如 "媒体文件|*.jpg;*.png;..."。</summary>
     public static string BuildDialogFilter()
     {

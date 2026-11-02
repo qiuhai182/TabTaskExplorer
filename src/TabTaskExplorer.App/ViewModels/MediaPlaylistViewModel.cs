@@ -4,6 +4,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
 using System.Threading.Tasks;
+using TabTaskExplorer.App.Services;
 using TabTaskExplorer.Kernel.Media;
 
 namespace TabTaskExplorer.App.ViewModels;
@@ -69,10 +70,31 @@ public class MediaPlaylistItemViewModel : INotifyPropertyChanged
         get { return this.Item.Kind; }
     }
 
-    /// <summary>图标字形。</summary>
-    public string IconGlyph
+    /// <summary>图标分类键：图片 / 视频 / 音频。</summary>
+    public string IconCategory
     {
-        get { return MediaFormatCatalog.GetIconGlyph(this.Item.Kind); }
+        get
+        {
+            if (this.Item.Kind == MediaKind.Image)
+            {
+                return FileIconCatalog.Image;
+            }
+            if (this.Item.Kind == MediaKind.Video)
+            {
+                return FileIconCatalog.Video;
+            }
+            if (this.Item.Kind == MediaKind.Audio)
+            {
+                return FileIconCatalog.Audio;
+            }
+            return FileIconCatalog.File;
+        }
+    }
+
+    /// <summary>图标强调色：跟随分类自动取色。</summary>
+    public string IconColor
+    {
+        get { return FileIconCatalog.GetAccent(this.IconCategory); }
     }
 
     /// <summary>类型文本。</summary>

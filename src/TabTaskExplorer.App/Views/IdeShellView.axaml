@@ -1,10 +1,7 @@
 ﻿<UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:views="using:TabTaskExplorer.App.Views"
              x:Class="TabTaskExplorer.App.Views.IdeShellView">
-
-  <UserControl.Resources>
-    <FontFamily x:Key="IdeIconFont">Segoe MDL2 Assets, Segoe Fluent Icons</FontFamily>
-  </UserControl.Resources>
 
   <Panel>
     <Grid RowDefinitions="Auto,*,Auto" Background="{DynamicResource ContentBrush}">
@@ -12,37 +9,42 @@
       <!-- ===== 顶部：工作区路径与操作按钮 ===== -->
       <Border Grid.Row="0" Background="{DynamicResource ChromeBrush}" BorderBrush="{DynamicResource SeparatorBrush}" BorderThickness="0,0,0,1">
         <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto,Auto" Margin="8,4">
-          <TextBlock Grid.Column="0" FontFamily="{StaticResource IdeIconFont}" Text="&#xE8B7;" FontSize="13"
-                     Foreground="{DynamicResource AccentGlyphBrush}" VerticalAlignment="Center" Margin="0,0,6,0" />
+          <views:FileTypeIcon Grid.Column="0" Width="16" Height="16" Category="folder"
+                              VerticalAlignment="Center" Margin="0,0,6,0" />
           <TextBlock Grid.Column="1" Text="{Binding WorkspaceRootText}" VerticalAlignment="Center" FontSize="12"
                      Foreground="{DynamicResource TextPrimaryBrush}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding WorkspaceRootText}" />
           <Button Grid.Column="2" Classes="nav" Click="OnSaveClick" ToolTip.Tip="保存 (Ctrl+S)" Margin="4,0,0,0">
             <StackPanel Orientation="Horizontal" Spacing="5">
-              <TextBlock FontFamily="{StaticResource IdeIconFont}" Text="&#xE74E;" FontSize="12" VerticalAlignment="Center" Foreground="{DynamicResource TextMutedBrush}" />
+              <views:VectorIcon Kind="save" Width="13" Height="13" Thickness="1.6"
+                                VerticalAlignment="Center" IconBrush="{DynamicResource TextMutedBrush}" />
               <TextBlock Text="保存" FontSize="12" VerticalAlignment="Center" Foreground="{DynamicResource ToolbarTextBrush}" />
             </StackPanel>
           </Button>
           <Button Grid.Column="3" Classes="nav" Click="OnSaveAllClick" ToolTip.Tip="全部保存 (Ctrl+Shift+S)">
             <StackPanel Orientation="Horizontal" Spacing="5">
-              <TextBlock FontFamily="{StaticResource IdeIconFont}" Text="&#xE8F4;" FontSize="12" VerticalAlignment="Center" Foreground="{DynamicResource TextMutedBrush}" />
+              <views:VectorIcon Kind="saveall" Width="13" Height="13" Thickness="1.6"
+                                VerticalAlignment="Center" IconBrush="{DynamicResource TextMutedBrush}" />
               <TextBlock Text="全部保存" FontSize="12" VerticalAlignment="Center" Foreground="{DynamicResource ToolbarTextBrush}" />
             </StackPanel>
           </Button>
           <Button Grid.Column="4" Classes="nav" Click="OnFindClick" ToolTip.Tip="查找 (Ctrl+F)">
             <StackPanel Orientation="Horizontal" Spacing="5">
-              <TextBlock FontFamily="{StaticResource IdeIconFont}" Text="&#xE721;" FontSize="12" VerticalAlignment="Center" Foreground="{DynamicResource TextMutedBrush}" />
+              <views:VectorIcon Kind="search" Width="13" Height="13" Thickness="1.6"
+                                VerticalAlignment="Center" IconBrush="{DynamicResource TextMutedBrush}" />
               <TextBlock Text="查找" FontSize="12" VerticalAlignment="Center" Foreground="{DynamicResource ToolbarTextBrush}" />
             </StackPanel>
           </Button>
           <Button Grid.Column="5" Classes="nav" Click="OnQuickOpenClick" ToolTip.Tip="快速打开 (Ctrl+P)">
             <StackPanel Orientation="Horizontal" Spacing="5">
-              <TextBlock FontFamily="{StaticResource IdeIconFont}" Text="&#xE71E;" FontSize="12" VerticalAlignment="Center" Foreground="{DynamicResource TextMutedBrush}" />
+              <views:VectorIcon Kind="quickopen" Width="13" Height="13" Thickness="1.6"
+                                VerticalAlignment="Center" IconBrush="{DynamicResource TextMutedBrush}" />
               <TextBlock Text="快速打开" FontSize="12" VerticalAlignment="Center" Foreground="{DynamicResource ToolbarTextBrush}" />
             </StackPanel>
           </Button>
           <Button Grid.Column="6" Classes="nav" Click="OnRefreshClick" ToolTip.Tip="刷新工作区">
             <StackPanel Orientation="Horizontal" Spacing="5">
-              <TextBlock FontFamily="{StaticResource IdeIconFont}" Text="&#xE72C;" FontSize="12" VerticalAlignment="Center" Foreground="{DynamicResource TextMutedBrush}" />
+              <views:VectorIcon Kind="refresh" Width="13" Height="13" Thickness="1.6"
+                                VerticalAlignment="Center" IconBrush="{DynamicResource TextMutedBrush}" />
               <TextBlock Text="刷新" FontSize="12" VerticalAlignment="Center" Foreground="{DynamicResource ToolbarTextBrush}" />
             </StackPanel>
           </Button>
@@ -62,8 +64,8 @@
               <TreeView.ItemTemplate>
                 <TreeDataTemplate ItemsSource="{Binding Children}">
                   <StackPanel Orientation="Horizontal" Spacing="5" DoubleTapped="OnTreeItemDoubleTapped">
-                    <TextBlock FontFamily="{StaticResource IdeIconFont}" Text="{Binding IconGlyph}" FontSize="12"
-                               Foreground="{Binding IconColor}" VerticalAlignment="Center" />
+                    <views:FileTypeIcon Width="16" Height="16" Category="{Binding IconCategory}"
+                                       AccentColor="{Binding IconColor}" VerticalAlignment="Center" />
                     <TextBlock Text="{Binding Name}" FontSize="12" VerticalAlignment="Center"
                                Foreground="{DynamicResource TextPrimaryBrush}" TextTrimming="CharacterEllipsis" />
                   </StackPanel>
@@ -92,15 +94,17 @@
                 <ListBox.ItemTemplate>
                   <DataTemplate>
                     <Grid ColumnDefinitions="Auto,Auto,Auto" Margin="4,0,2,0">
-                      <TextBlock Grid.Column="0" FontFamily="{StaticResource IdeIconFont}" Text="&#xE7C3;" FontSize="11"
-                                 Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" Margin="0,0,5,0" />
+                      <views:FileTypeIcon Grid.Column="0" Width="14" Height="14"
+                                         Category="{Binding IconCategory}" AccentColor="{Binding IconColor}"
+                                         VerticalAlignment="Center" Margin="0,0,5,0" />
                       <TextBlock Grid.Column="1" Text="{Binding DisplayTitle}" FontSize="12" VerticalAlignment="Center"
                                  Foreground="{DynamicResource TextPrimaryBrush}" ToolTip.Tip="{Binding ToolTipText}"
                                  TextTrimming="CharacterEllipsis" MaxWidth="180" />
                       <Button Grid.Column="2" Classes="nav" Width="18" Height="18" Padding="0" Margin="4,0,0,0"
+                              HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
                               VerticalAlignment="Center" Tag="{Binding}" Click="OnCloseEditorTabClick" ToolTip.Tip="关闭">
-                        <TextBlock FontFamily="{StaticResource IdeIconFont}" Text="&#xE711;" FontSize="10"
-                                   Foreground="{DynamicResource TextMutedBrush}" />
+                        <views:VectorIcon Kind="close" Width="10" Height="10" Thickness="1.5"
+                                          IconBrush="{DynamicResource TextMutedBrush}" />
                       </Button>
                     </Grid>
                   </DataTemplate>

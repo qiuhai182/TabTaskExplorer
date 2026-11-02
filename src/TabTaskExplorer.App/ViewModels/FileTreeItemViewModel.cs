@@ -5,6 +5,7 @@ using System.ComponentModel;
 using System.IO;
 using System.Threading.Tasks;
 using Avalonia.Threading;
+using TabTaskExplorer.App.Services;
 using TabTaskExplorer.Kernel.Abstractions;
 using TabTaskExplorer.Kernel.Models;
 
@@ -60,11 +61,11 @@ public class FileTreeItemViewModel : INotifyPropertyChanged
     /// <summary>子节点集合（懒加载）。</summary>
     public ObservableCollection<FileTreeItemViewModel> Children { get; } = new ObservableCollection<FileTreeItemViewModel>();
 
-    /// <summary>类型图标字符（Segoe MDL2）。</summary>
-    public string IconGlyph { get; private set; } = "\uE7C3";
+    /// <summary>类型图标分类键（见 <see cref="FileIconCatalog"/>）。</summary>
+    public string IconCategory { get; private set; } = FileIconCatalog.File;
 
     /// <summary>类型图标颜色（十六进制）。</summary>
-    public string IconColor { get; private set; } = "#9AA0A6";
+    public string IconColor { get; private set; } = FileIconCatalog.GetAccent(FileIconCatalog.File);
 
     /// <summary>是否展开：展开时触发一次子节点懒加载。</summary>
     public bool IsExpanded
@@ -142,7 +143,7 @@ public class FileTreeItemViewModel : INotifyPropertyChanged
             new NullFileSystemProvider(), true, text, string.Empty, false, false, null, string.Empty);
         placeholder.IsPlaceholder = true;
         placeholder.childrenLoaded = true;
-        placeholder.IconGlyph = "\uE7C3";
+        placeholder.IconCategory = FileIconCatalog.File;
         return placeholder;
     }
 
@@ -231,14 +232,13 @@ public class FileTreeItemViewModel : INotifyPropertyChanged
     {
         if (this.IsDirectory)
         {
-            this.IconGlyph = "\uE8B7";
-            this.IconColor = "#FFD75E";
+            this.IconCategory = FileIconCatalog.Folder;
+            this.IconColor = FileIconCatalog.GetAccent(FileIconCatalog.Folder);
             return;
         }
-        string extension = Path.GetExtension(this.Name);
-        (string glyph, string color) = FileRow.GetIconForExtension(extension);
-        this.IconGlyph = glyph;
-        this.IconColor = color;
+        string category = FileIconCatalog.GetCategoryForName(this.Name);
+        this.IconCategory = category;
+        this.IconColor = FileIconCatalog.GetAccent(category);
     }
 
     /// <summary>触发属性变更通知。</summary>

@@ -145,11 +145,11 @@ public class DebugIdeTreeNode
     /// <summary>是否为占位节点（加载中 / 无法读取）。</summary>
     public bool IsPlaceholder { get; set; }
 
-    /// <summary>类型图标字符（Segoe MDL2）。</summary>
-    public string IconGlyph { get; set; } = "\uE7C3";
+    /// <summary>类型图标分类键（见 <see cref="FileIconCatalog"/>）。</summary>
+    public string IconCategory { get; set; } = FileIconCatalog.File;
 
     /// <summary>类型图标颜色（十六进制）。</summary>
-    public string IconColor { get; set; } = "#9AA0A6";
+    public string IconColor { get; set; } = FileIconCatalog.GetAccent(FileIconCatalog.File);
 }
 
 /// <summary>IDE 编辑器标签镜像。</summary>
@@ -166,6 +166,12 @@ public class DebugIdeEditor
 
     /// <summary>是否有未保存更改（关闭前确认用）。</summary>
     public bool IsDirty { get; set; }
+
+    /// <summary>标签图标分类键。</summary>
+    public string IconCategory { get; set; } = FileIconCatalog.File;
+
+    /// <summary>标签图标强调色。</summary>
+    public string IconColor { get; set; } = FileIconCatalog.GetAccent(FileIconCatalog.File);
 }
 
 /// <summary>IDE 快速打开候选项。</summary>
@@ -209,8 +215,14 @@ public class DebugNavItem
     /// <summary>是否命中当前路径（选中高亮）。</summary>
     public bool Selected { get; set; }
 
-    /// <summary>类型图标字符（Segoe MDL2），网页端用同款字体渲染。</summary>
-    public string IconGlyph { get; set; } = "\uE8B7";
+    /// <summary>类型图标分类键（见 <see cref="FileIconCatalog"/>），网页端按同一分类绘制矢量图标。</summary>
+    public string IconCategory { get; set; } = FileIconCatalog.Folder;
+
+    /// <summary>图标强调色：跟随分类自动取色。</summary>
+    public string IconColor
+    {
+        get { return FileIconCatalog.GetAccent(this.IconCategory); }
+    }
 }
 
 /// <summary>单个标签页的镜像状态。</summary>
@@ -423,11 +435,11 @@ public class DebugFileRow
     /// <summary>是否被勾选（与桌面复选框同构）。</summary>
     public bool IsSelected { get; set; }
 
-    /// <summary>类型图标字符（Segoe MDL2），网页端图标视图用同款字体渲染。</summary>
-    public string IconGlyph { get; set; } = "\uE7C3";
+    /// <summary>类型图标分类键（见 <see cref="FileIconCatalog"/>），网页端按同一分类绘制矢量图标。</summary>
+    public string IconCategory { get; set; } = FileIconCatalog.File;
 
     /// <summary>类型图标颜色（十六进制）。</summary>
-    public string IconColor { get; set; } = "#9AA0A6";
+    public string IconColor { get; set; } = FileIconCatalog.GetAccent(FileIconCatalog.File);
 
     /// <summary>磁盘视图：驱动器剩余可用空间（非驱动器行为空）。</summary>
     public string Free { get; set; } = string.Empty;

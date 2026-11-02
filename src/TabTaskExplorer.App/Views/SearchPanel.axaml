@@ -1,6 +1,7 @@
 ﻿<UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:svc="using:TabTaskExplorer.App.Services"
+             xmlns:views="using:TabTaskExplorer.App.Views"
              x:Class="TabTaskExplorer.App.Views.SearchPanel">
 
   <Grid RowDefinitions="Auto,Auto,*,Auto" Margin="8">
@@ -65,9 +66,9 @@
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
               </Grid.ColumnDefinitions>
-              <TextBlock Grid.Column="0" FontFamily="Segoe MDL2 Assets, Segoe Fluent Icons"
-                         Text="{Binding IconGlyph}" Foreground="{Binding IconColor}"
-                         FontSize="13" VerticalAlignment="Center" Margin="0,0,8,0" />
+              <views:FileTypeIcon Grid.Column="0" Width="16" Height="16"
+                                 Category="{Binding IconCategory}" AccentColor="{Binding IconColor}"
+                                 VerticalAlignment="Center" Margin="0,0,8,0" />
               <TextBlock Grid.Column="1" Text="{Binding DisplayName}" VerticalAlignment="Center"
                          TextTrimming="CharacterEllipsis" />
               <TextBlock Grid.Column="2" Text="{Binding ModifiedText}" VerticalAlignment="Center"

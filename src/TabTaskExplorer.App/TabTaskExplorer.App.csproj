@@ -43,6 +43,14 @@
     <PackageReference Include="VideoLAN.LibVLC.Windows" Version="3.0.24" />
   </ItemGroup>
 
+  <!-- 品牌图标：由 tools/generate-app-icon.ps1 生成多尺寸 app.ico 与窗口徽标；
+       脚本自带增量保护（图标已比脚本新时直接跳过），Windows 构建失败也不阻断编译 -->
+  <Target Name="GenerateBrandIcons" BeforeTargets="BeforeBuild"
+          Condition="$([MSBuild]::IsOSPlatform('Windows'))">
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\..\..\tools\generate-app-icon.ps1&quot;"
+          ContinueOnError="true" StandardOutputImportance="Low" />
+  </Target>
+
   <!-- libvlc 包默认把 x64 / x86 / arm64 三套原生库全部拷出（合计约 300MB），
        这里只保留与目标架构匹配的一套，构建产物从 300MB 降到约 100MB -->
   <Target Name="TrimLibVlcArchitectures" AfterTargets="Build"

@@ -132,6 +132,34 @@ public static class CompositionRoot
         // 媒体播放引擎：每个媒体标签一个实例；libvlc 缺失时引擎自动降级为不可用
         services.AddTransient<Kernel.Media.IMediaPlaybackEngine, Services.Media.VlcPlaybackEngine>();
 
+        // 截图、录屏与全局快捷键：Windows 使用 GDI 截图与 RegisterHotKey，Linux / macOS 使用系统工具或 FFmpeg；
+        // 不提供平台适配的操作系统统一降级为空实现，界面按能力清单禁用入口
+        if (OperatingSystem.IsWindows())
+        {
+            services.AddSingleton<Kernel.Capture.IScreenCaptureService, WindowsScreenCaptureService>();
+            services.AddSingleton<Kernel.Capture.IScreenRecordingService, WindowsScreenRecordingService>();
+            services.AddSingleton<Kernel.Capture.IGlobalHotkeyService, WindowsGlobalHotkeyService>();
+        }
+        else if (OperatingSystem.IsLinux())
+        {
+            services.AddSingleton<Kernel.Capture.IScreenCaptureService, LinuxScreenCaptureService>();
+            services.AddSingleton<Kernel.Capture.IScreenRecordingService, LinuxScreenRecordingService>();
+            services.AddSingleton<Kernel.Capture.IGlobalHotkeyService, NullGlobalHotkeyService>();
+        }
+        else if (OperatingSystem.IsMacOS())
+        {
+            services.AddSingleton<Kernel.Capture.IScreenCaptureService, MacScreenCaptureService>();
+            services.AddSingleton<Kernel.Capture.IScreenRecordingService, MacScreenRecordingService>();
+            services.AddSingleton<Kernel.Capture.IGlobalHotkeyService, NullGlobalHotkeyService>();
+        }
+        else
+        {
+            services.AddSingleton<Kernel.Capture.IScreenCaptureService, NullScreenCaptureService>();
+            services.AddSingleton<Kernel.Capture.IScreenRecordingService, NullScreenRecordingService>();
+            services.AddSingleton<Kernel.Capture.IGlobalHotkeyService, NullGlobalHotkeyService>();
+        }
+        services.AddSingleton<Services.Capture.CaptureCoordinator>();
+
         return services.BuildServiceProvider();
     }
 }

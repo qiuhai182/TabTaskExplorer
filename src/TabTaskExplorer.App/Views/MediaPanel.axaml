@@ -3,9 +3,13 @@
              xmlns:views="using:TabTaskExplorer.App.Views"
              x:Class="TabTaskExplorer.App.Views.MediaPanel">
 
-  <UserControl.Resources>
-    <FontFamily x:Key="MediaIconFont">Segoe MDL2 Assets, Segoe Fluent Icons</FontFamily>
-  </UserControl.Resources>
+  <UserControl.Styles>
+    <!-- 播放控制按钮全部为纯图标按钮：内容居中，避免导航按钮的默认左对齐把图标顶到一边 -->
+    <Style Selector="Button.nav">
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+  </UserControl.Styles>
 
   <Grid RowDefinitions="*,Auto">
 
@@ -25,8 +29,8 @@
         <!-- 音频：封面占位 + 元数据 -->
         <StackPanel IsVisible="{Binding IsAudio}" VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="18">
           <Border Width="220" Height="220" CornerRadius="10" Background="#1B1B1B" BorderBrush="#2E2E2E" BorderThickness="1">
-            <TextBlock FontFamily="{StaticResource MediaIconFont}" Text="&#xE8D6;" FontSize="76"
-                       Foreground="#4CC2FF" HorizontalAlignment="Center" VerticalAlignment="Center" />
+            <views:VectorIcon Kind="music" Width="72" Height="72" IconBrush="#4CC2FF" Thickness="1.9"
+                              HorizontalAlignment="Center" VerticalAlignment="Center" />
           </Border>
           <StackPanel Spacing="6" HorizontalAlignment="Center">
             <TextBlock Text="{Binding CurrentFileName}" FontSize="17" Foreground="#E8E8E8"
@@ -66,9 +70,10 @@
             <TextBlock Text="播放列表" FontSize="12" FontWeight="Medium"
                        Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" />
             <Button Grid.Column="1" x:Name="CollapseButton" Classes="nav" Width="26" Height="26" Padding="0"
-                    FontFamily="{StaticResource MediaIconFont}" FontSize="11" Content="&#xE76C;"
-                    Foreground="{DynamicResource TextMutedBrush}"
-                    Click="OnTogglePlaylistClick" ToolTip.Tip="折叠播放列表" />
+                    Click="OnTogglePlaylistClick" ToolTip.Tip="折叠播放列表">
+              <views:VectorIcon Kind="chevronright" Width="13" Height="13" Thickness="1.5"
+                                IconBrush="{DynamicResource TextMutedBrush}" />
+            </Button>
           </Grid>
 
           <ListBox Grid.Row="1" x:Name="PlaylistList" ItemsSource="{Binding Playlist.Items}"
@@ -83,8 +88,8 @@
                     </Style>
                   </Border.Styles>
                   <Grid ColumnDefinitions="Auto,*,Auto">
-                    <TextBlock Text="{Binding IconGlyph}" FontFamily="{StaticResource MediaIconFont}" FontSize="12"
-                               Foreground="{DynamicResource AccentGlyphBrush}" VerticalAlignment="Center" Margin="0,0,8,0" />
+                    <views:FileTypeIcon Width="16" Height="16" Category="{Binding IconCategory}"
+                                       AccentColor="{Binding IconColor}" VerticalAlignment="Center" Margin="0,0,8,0" />
                     <TextBlock Grid.Column="1" Text="{Binding Name}" FontSize="12" TextTrimming="CharacterEllipsis"
                                Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" />
                     <TextBlock Grid.Column="2" Text="{Binding SizeText}" FontSize="10"
@@ -109,23 +114,29 @@
         <!-- 左侧：图片为上一张 / 下一张，音视频为播放控制 -->
         <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
           <StackPanel Orientation="Horizontal" Spacing="4" IsVisible="{Binding IsImage}">
-            <Button Classes="nav" Width="32" Height="32" Padding="0" FontFamily="{StaticResource MediaIconFont}"
-                    FontSize="14" Content="&#xE892;" Foreground="{DynamicResource TextPrimaryBrush}"
-                    Click="OnPreviousClick" ToolTip.Tip="上一张 (PgUp)" />
-            <Button Classes="nav" Width="32" Height="32" Padding="0" FontFamily="{StaticResource MediaIconFont}"
-                    FontSize="14" Content="&#xE893;" Foreground="{DynamicResource TextPrimaryBrush}"
-                    Click="OnNextClick" ToolTip.Tip="下一张 (PgDn)" />
+            <Button Classes="nav" Width="32" Height="32" Padding="0"
+                    Click="OnPreviousClick" ToolTip.Tip="上一张 (PgUp)">
+              <views:VectorIcon Kind="prev" Width="16" Height="16" Filled="True" IconBrush="{DynamicResource TextPrimaryBrush}" />
+            </Button>
+            <Button Classes="nav" Width="32" Height="32" Padding="0"
+                    Click="OnNextClick" ToolTip.Tip="下一张 (PgDn)">
+              <views:VectorIcon Kind="next" Width="16" Height="16" Filled="True" IconBrush="{DynamicResource TextPrimaryBrush}" />
+            </Button>
           </StackPanel>
           <StackPanel Orientation="Horizontal" Spacing="4" IsVisible="{Binding IsPlayableMedia}">
-            <Button Classes="nav" Width="32" Height="32" Padding="0" FontFamily="{StaticResource MediaIconFont}"
-                    FontSize="14" Content="&#xE892;" Foreground="{DynamicResource TextPrimaryBrush}"
-                    Click="OnPreviousClick" ToolTip.Tip="上一个 (PgUp)" />
-            <Button Classes="nav" Width="34" Height="34" Padding="0" FontFamily="{StaticResource MediaIconFont}"
-                    FontSize="16" Content="{Binding PlayGlyph}" Foreground="{DynamicResource AccentGlyphBrush}"
-                    Click="OnPlayPauseClick" ToolTip.Tip="播放 / 暂停 (Space)" />
-            <Button Classes="nav" Width="32" Height="32" Padding="0" FontFamily="{StaticResource MediaIconFont}"
-                    FontSize="14" Content="&#xE893;" Foreground="{DynamicResource TextPrimaryBrush}"
-                    Click="OnNextClick" ToolTip.Tip="下一个 (PgDn)" />
+            <Button Classes="nav" Width="32" Height="32" Padding="0"
+                    Click="OnPreviousClick" ToolTip.Tip="上一个 (PgUp)">
+              <views:VectorIcon Kind="prev" Width="16" Height="16" Filled="True" IconBrush="{DynamicResource TextPrimaryBrush}" />
+            </Button>
+            <Button Classes="nav" Width="34" Height="34" Padding="0"
+                    Click="OnPlayPauseClick" ToolTip.Tip="播放 / 暂停 (Space)">
+              <views:VectorIcon Kind="{Binding PlayIconKind}" Width="17" Height="17" Filled="True"
+                                IconBrush="{DynamicResource AccentGlyphBrush}" />
+            </Button>
+            <Button Classes="nav" Width="32" Height="32" Padding="0"
+                    Click="OnNextClick" ToolTip.Tip="下一个 (PgDn)">
+              <views:VectorIcon Kind="next" Width="16" Height="16" Filled="True" IconBrush="{DynamicResource TextPrimaryBrush}" />
+            </Button>
           </StackPanel>
         </StackPanel>
 
@@ -152,38 +163,46 @@
         <!-- 右侧：图片缩放组 / 音视频音量倍速组 + 通用播放列表开关 -->
         <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
           <StackPanel Orientation="Horizontal" Spacing="2" IsVisible="{Binding IsImage}">
-            <Button Classes="nav" Width="30" Height="30" Padding="0" FontFamily="{StaticResource MediaIconFont}"
-                    FontSize="13" Content="&#xE71F;" Foreground="{DynamicResource TextPrimaryBrush}"
-                    Click="OnZoomOutClick" ToolTip.Tip="缩小" />
+            <Button Classes="nav" Width="30" Height="30" Padding="0"
+                    Click="OnZoomOutClick" ToolTip.Tip="缩小">
+              <views:VectorIcon Kind="zoomout" Width="15" Height="15" Thickness="1.6" IconBrush="{DynamicResource TextPrimaryBrush}" />
+            </Button>
             <TextBlock Text="{Binding ZoomPercent, StringFormat={}{0:F0}%}" FontSize="11" Width="44"
                        TextAlignment="Center" VerticalAlignment="Center"
                        Foreground="{DynamicResource TextMutedBrush}" />
-            <Button Classes="nav" Width="30" Height="30" Padding="0" FontFamily="{StaticResource MediaIconFont}"
-                    FontSize="13" Content="&#xE8A3;" Foreground="{DynamicResource TextPrimaryBrush}"
-                    Click="OnZoomInClick" ToolTip.Tip="放大" />
-            <Button Classes="nav" Width="30" Height="30" Padding="0" FontFamily="{StaticResource MediaIconFont}"
-                    FontSize="13" Content="&#xE7AD;" Foreground="{DynamicResource TextPrimaryBrush}"
-                    Click="OnRotateClick" ToolTip.Tip="旋转 90° (R)" />
-            <Button Classes="nav" Width="30" Height="30" Padding="0" FontFamily="{StaticResource MediaIconFont}"
-                    FontSize="13" Content="&#xE9A6;" Foreground="{DynamicResource TextPrimaryBrush}"
-                    Click="OnFitClick" ToolTip.Tip="适应窗口 (0)" />
+            <Button Classes="nav" Width="30" Height="30" Padding="0"
+                    Click="OnZoomInClick" ToolTip.Tip="放大">
+              <views:VectorIcon Kind="zoomin" Width="15" Height="15" Thickness="1.6" IconBrush="{DynamicResource TextPrimaryBrush}" />
+            </Button>
+            <Button Classes="nav" Width="30" Height="30" Padding="0"
+                    Click="OnRotateClick" ToolTip.Tip="旋转 90° (R)">
+              <views:VectorIcon Kind="rotate" Width="15" Height="15" Thickness="1.6" IconBrush="{DynamicResource TextPrimaryBrush}" />
+            </Button>
+            <Button Classes="nav" Width="30" Height="30" Padding="0"
+                    Click="OnFitClick" ToolTip.Tip="适应窗口 (0)">
+              <views:VectorIcon Kind="fit" Width="15" Height="15" Thickness="1.6" IconBrush="{DynamicResource TextPrimaryBrush}" />
+            </Button>
           </StackPanel>
           <StackPanel Orientation="Horizontal" Spacing="2" IsVisible="{Binding IsPlayableMedia}">
-            <Button Classes="nav" Width="30" Height="30" Padding="0" FontFamily="{StaticResource MediaIconFont}"
-                    FontSize="13" Content="{Binding VolumeGlyph}" Foreground="{DynamicResource TextPrimaryBrush}"
-                    Click="OnMuteClick" ToolTip.Tip="静音 (M)" />
+            <Button Classes="nav" Width="30" Height="30" Padding="0"
+                    Click="OnMuteClick" ToolTip.Tip="静音 (M)">
+              <views:VectorIcon Kind="{Binding VolumeIconKind}" Width="15" Height="15" Thickness="1.6"
+                                IconBrush="{DynamicResource TextPrimaryBrush}" />
+            </Button>
             <Slider x:Name="VolumeSlider" Minimum="0" Maximum="100" Value="{Binding Volume}" Width="76"
                     VerticalAlignment="Center" />
             <Button Classes="nav" Width="46" Height="30" Padding="0" FontSize="11"
                     Content="{Binding RateText}" Foreground="{DynamicResource TextPrimaryBrush}"
                     Click="OnRateClick" ToolTip.Tip="播放倍速" />
           </StackPanel>
-          <Button Classes="nav" Width="30" Height="30" Padding="0" FontFamily="{StaticResource MediaIconFont}"
-                  FontSize="13" Content="&#xE740;" Foreground="{DynamicResource TextPrimaryBrush}"
-                  Click="OnFullScreenClick" ToolTip.Tip="全屏 (F)" />
-          <Button Classes="nav" Width="30" Height="30" Padding="0" FontFamily="{StaticResource MediaIconFont}"
-                  FontSize="13" Content="&#xE8FD;" Foreground="{DynamicResource TextPrimaryBrush}"
-                  Click="OnTogglePlaylistClick" ToolTip.Tip="播放列表 (Ctrl+Shift+P)" />
+          <Button Classes="nav" Width="30" Height="30" Padding="0"
+                  Click="OnFullScreenClick" ToolTip.Tip="全屏 (F)">
+            <views:VectorIcon Kind="fullscreen" Width="15" Height="15" Thickness="1.6" IconBrush="{DynamicResource TextPrimaryBrush}" />
+          </Button>
+          <Button Classes="nav" Width="30" Height="30" Padding="0"
+                  Click="OnTogglePlaylistClick" ToolTip.Tip="播放列表 (Ctrl+Shift+P)">
+            <views:VectorIcon Kind="playlist" Width="15" Height="15" Thickness="1.6" IconBrush="{DynamicResource TextPrimaryBrush}" />
+          </Button>
         </StackPanel>
       </Grid>
     </Border>

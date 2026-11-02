@@ -45,6 +45,9 @@ public static class TabKinds
     /// <summary>媒体标签（图片 / 视频 / 音频）：桌面专用，网页端暂不渲染播放内容。</summary>
     public const string Media = "media";
 
+    /// <summary>截图与录屏标签：桌面专用（依赖本机屏幕采集），网页端不渲染。</summary>
+    public const string Capture = "capture";
+
     /// <summary>网页端无法渲染的桌面专用标签（终端、传输队列、编辑器等）。</summary>
     public const string Unknown = "unknown";
 
@@ -135,7 +138,7 @@ public static class TabSnapshotFiller
             debugRow.Size = row.SizeText;
             debugRow.Modified = row.ModifiedText;
             debugRow.IsSelected = row.IsSelected;
-            debugRow.IconGlyph = row.IconGlyph;
+            debugRow.IconCategory = row.IconCategory;
             debugRow.IconColor = row.IconColor;
             tabState.Rows.Add(debugRow);
         }
@@ -162,6 +165,8 @@ public static class TabSnapshotFiller
             debugRow.FileSystem = row.FileSystemText;
             debugRow.Level = row.Level;
             debugRow.Expanded = row.IsExpanded;
+            debugRow.IconCategory = row.IsDirectory ? FileIconCatalog.Folder : FileIconCatalog.File;
+            debugRow.IconColor = FileIconCatalog.GetAccent(debugRow.IconCategory);
             tabState.Rows.Add(debugRow);
         }
     }
@@ -225,7 +230,7 @@ public static class TabSnapshotFiller
             debugRow.Size = row.SizeText;
             debugRow.Modified = row.ModifiedText;
             debugRow.IsSelected = row.IsSelected;
-            debugRow.IconGlyph = row.IconGlyph;
+            debugRow.IconCategory = row.IconCategory;
             debugRow.IconColor = row.IconColor;
             tabState.Rows.Add(debugRow);
         }
@@ -265,7 +270,32 @@ public static class TabSnapshotFiller
             debugRow.Type = item.TypeText;
             debugRow.Size = item.SizeText;
             debugRow.IsSelected = item.IsCurrent;
-            debugRow.IconGlyph = item.IconGlyph;
+            debugRow.IconCategory = item.IconCategory;
+            debugRow.IconColor = item.IconColor;
+            tabState.Rows.Add(debugRow);
+        }
+    }
+
+    /// <summary>截图与录屏标签快照：记录产物目录、状态摘要与历史文件。</summary>
+    public static void FillCapture(CaptureTabViewModel captureTab, DebugTabState tabState)
+    {
+        tabState.CurrentPath = captureTab.OutputDirectory;
+        tabState.SummaryText = captureTab.StatusText;
+        tabState.DetailText = captureTab.EnvironmentText;
+        tabState.TotalRows = captureTab.HistoryItems.Count;
+        int limit = tabState.TotalRows > 1000 ? 1000 : tabState.TotalRows;
+        for (int index = 0; index < limit; index++)
+        {
+            CaptureHistoryItem item = captureTab.HistoryItems[index];
+            DebugFileRow debugRow = new DebugFileRow();
+            debugRow.Name = item.Name;
+            debugRow.IsDirectory = false;
+            debugRow.FullPath = item.FullPath;
+            debugRow.Type = item.TypeText;
+            debugRow.Size = item.SizeText;
+            debugRow.Modified = item.TimeText;
+            debugRow.IconCategory = item.IconCategory;
+            debugRow.IconColor = item.IconColor;
             tabState.Rows.Add(debugRow);
         }
     }

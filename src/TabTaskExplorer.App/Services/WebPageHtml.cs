@@ -15,17 +15,22 @@ public static class WebPageHtml
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Crect%20width='24'%20height='24'%20rx='5.4'%20fill='%232F7CF6'/%3E%3Cpath%20d='M4.2%2018.8V8.1c0-.8.6-1.4%201.4-1.4h3.6l1.6%201.7h7.6c.8%200%201.4.6%201.4%201.4v1.3H4.2z'%20fill='%23fff'%20opacity='.33'/%3E%3Crect%20x='4.2'%20y='11'%20width='15.6'%20height='8.6'%20rx='2.2'%20fill='%23fff'/%3E%3Crect%20x='6.6'%20y='13.5'%20width='8'%20height='1.4'%20rx='.7'%20fill='%232F7CF6'/%3E%3Crect%20x='6.6'%20y='16'%20width='5.2'%20height='1.4'%20rx='.7'%20fill='%232B6FE0'/%3E%3C/svg%3E">
 <title>TabTaskExplorer 网页端</title>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
   body { font:13px 'Segoe UI','Microsoft YaHei',sans-serif; color:#1C1C1C; background:#FFFFFF; height:100vh; display:flex; flex-direction:column; }
   .hidden { display:none !important; }
   .spacer { margin-left:auto; }
-  .ico { font-family:'Segoe MDL2 Assets','Segoe Fluent Icons'; font-size:13px; }
+  .ico { display:inline-flex; width:14px; height:14px; align-items:center; justify-content:center; flex:none; }
+  .ico svg, .fIco svg { width:100%; height:100%; display:block; }
+  .fIco { display:inline-flex; flex:none; align-items:center; justify-content:center; }
+  .diskArrow { display:inline-flex; width:14px; height:14px; align-items:center; justify-content:center; color:#E8A317; font-size:11px; cursor:pointer; flex:none; }
 
   /* ===== 标题栏（与桌面 TabX 标题栏同构） ===== */
   .titlebar { height:36px; background:#F1F1F1; border-bottom:1px solid #D9D9D9; display:flex; align-items:center; padding:0 8px; gap:6px; flex:none; }
-  .logo { width:20px; height:20px; border-radius:3px; background:#E8A317; color:#fff; font-size:11px; line-height:20px; text-align:center; font-weight:bold; cursor:pointer; }
+  .logo { width:22px; height:22px; display:inline-flex; align-items:center; justify-content:center; cursor:pointer; flex:none; }
+  .tbtn svg, .iconBtn svg, .btn svg, .bmItem svg, .navsec svg, .navitem svg { display:block; flex:none; }
   .tabs { display:flex; gap:2px; overflow:hidden; max-width:52%; }
   .tab { height:26px; line-height:26px; padding:0 10px; border-radius:4px 4px 0 0; cursor:pointer; border-bottom:2px solid transparent; white-space:nowrap; display:flex; align-items:center; gap:6px; }
   .tab:hover { background:#E4E4E4; }
@@ -35,7 +40,7 @@ public static class WebPageHtml
   .meta { color:#808080; font-size:12px; }
   .modeBtn, .iconBtn { padding:2px 9px; border:1px solid #B0B0B0; border-radius:4px; background:transparent; color:inherit; cursor:pointer; font:12px 'Segoe UI','Microsoft YaHei'; }
   .modeBtn:hover, .iconBtn:hover { border-color:#4A8FD0; color:#4A8FD0; }
-  .iconBtn { width:26px; height:24px; padding:0; font-family:'Segoe MDL2 Assets','Segoe Fluent Icons'; font-size:12px; }
+  .iconBtn { width:26px; height:24px; padding:0; display:inline-flex; align-items:center; justify-content:center; }
 
   /* ===== 书签栏（与桌面快捷访问固定项同构） ===== */
   .bookmarkbar { display:flex; align-items:center; gap:4px; padding:2px 8px; border-bottom:1px solid #E9E9E9; flex:none; min-height:28px; overflow:hidden; }
@@ -62,7 +67,7 @@ public static class WebPageHtml
   /* ===== 导航与地址栏（后退 / 前进 / 上一级 + 可编辑路径 + 最近 + 刷新 + 收藏 + 搜索） ===== */
   .navrow { display:flex; align-items:center; gap:6px; padding:4px 8px; border-bottom:1px solid #E9E9E9; flex:none; }
   .navbtns { display:flex; gap:2px; }
-  .tbtn { width:28px; height:26px; border:0; background:transparent; border-radius:4px; cursor:pointer; font-family:'Segoe MDL2 Assets','Segoe Fluent Icons'; font-size:13px; color:inherit; }
+  .tbtn { width:28px; height:26px; border:0; background:transparent; border-radius:4px; cursor:pointer; color:inherit; display:inline-flex; align-items:center; justify-content:center; padding:0; }
   .tbtn:hover { background:#F5F7FA; }
   .tbtn.disabled { color:#B0B0B0; cursor:not-allowed; }
   .tbtn.disabled:hover { background:transparent; }
@@ -124,7 +129,7 @@ public static class WebPageHtml
   .tile:hover { background:#F5F7FA; }
   .tile.checked { background:#E8F1FC; border-color:#BBD7F5; }
   .tile.focus { outline:1px solid #4A8FD0; }
-  .tile .ticon { font-family:'Segoe MDL2 Assets','Segoe Fluent Icons'; font-size:32px; line-height:1.1; }
+  .tile .ticon { width:32px; height:32px; margin:0 auto 2px; }
   .tile .tname { font-size:12px; margin-top:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .tile .ttype { font-size:11px; color:#808080; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .tile .ttick { position:absolute; left:4px; top:4px; }
@@ -272,13 +277,26 @@ public static class WebPageHtml
 <body>
   <!-- 标题栏：徽标 + 标签条 + 新建标签 + 任务看板 + 主题 + 模式切换 -->
   <div class="titlebar">
-    <div class="logo" title="此电脑" onclick="openPathAt(0)">T</div>
+    <div class="logo" title="此电脑" onclick="openPathAt(0)">
+      <svg viewBox="0 0 24 24" width="21" height="21" aria-hidden="true">
+        <defs>
+          <linearGradient id="appLogoGradient" x1="0.1" y1="0" x2="0.9" y2="1">
+            <stop offset="0" stop-color="#2F7CF6"/><stop offset="1" stop-color="#12C2E9"/>
+          </linearGradient>
+        </defs>
+        <rect x="0" y="0" width="24" height="24" rx="5.4" fill="url(#appLogoGradient)"/>
+        <path d="M4.2 18.8 L4.2 8.1 Q4.2 6.7 5.6 6.7 L9.2 6.7 L10.8 8.4 L18.4 8.4 Q19.8 8.4 19.8 9.8 L19.8 11.1 L4.2 11.1 Z" fill="#FFFFFF" fill-opacity="0.33"/>
+        <rect x="4.2" y="11" width="15.6" height="8.6" rx="2.2" fill="#FFFFFF"/>
+        <rect x="6.6" y="13.5" width="8" height="1.4" rx="0.7" fill="#2F7CF6"/>
+        <rect x="6.6" y="16" width="5.2" height="1.4" rx="0.7" fill="#2B6FE0"/>
+      </svg>
+    </div>
     <div class="tabs" id="tabs"></div>
-    <span class="iconBtn" title="新建标签" onclick="newTab()">+</span>
-    <span class="iconBtn" title="任务看板" onclick="clickBtn(null,'openboard')">&#xE8F4;</span>
-    <span class="iconBtn" id="ideIconBtn" title="IDE 模式 / 资源管理器模式" onclick="toggleIdeMode()">&#xE943;</span>
+    <span class="iconBtn" title="新建标签" onclick="newTab()"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M12 4.6 L12 19.4 M4.6 12 L19.4 12"/></svg></span>
+    <span class="iconBtn" title="任务看板" onclick="clickBtn(null,'openboard')"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4.4 5.6 L19.6 5.6 L19.6 18.4 L4.4 18.4 Z M4.4 9.2 L19.6 9.2 M8.2 8.6 L8.2 15.4 M12 8.6 L12 12.6 M15.8 8.6 L15.8 14.4"/></svg></span>
+    <span class="iconBtn" id="ideIconBtn" title="IDE 模式 / 资源管理器模式" onclick="toggleIdeMode()"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M8.2 7.2 L3.2 12 L8.2 16.8 M15.8 7.2 L20.8 12 L15.8 16.8 M13.8 5.6 L10.2 18.4"/></svg></span>
     <div class="spacer"></div>
-    <span class="iconBtn" title="切换深浅色主题" onclick="toggleTheme()">&#xE706;</span>
+    <span class="iconBtn" title="切换深浅色主题" onclick="toggleTheme()"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8 A4 4 0 1 0 12 16 A4 4 0 1 0 12 8 M12 2.2 L12 4.2 M12 19.8 L12 21.8 M2.2 12 L4.2 12 M19.8 12 L21.8 12 M5.1 5.1 L6.5 6.5 M17.5 17.5 L18.9 18.9 M18.9 5.1 L17.5 6.5 M6.5 17.5 L5.1 18.9"/></svg></span>
     <button class="modeBtn" id="modeBtn" title="默认使用独立新页面" onclick="toggleMode()">当前网页内容：独立新页面</button>
   </div>
 
@@ -287,7 +305,7 @@ public static class WebPageHtml
 
   <!-- 工具栏：与桌面工具栏同款按钮组 -->
   <div class="toolbar" id="toolbar">
-    <span class="btn" id="btnIde" onclick="toggleIdeMode()" title="切换到 IDE 模式"><span class="ico">&#xE943;</span> IDE 模式</span>
+    <span class="btn" id="btnIde" onclick="toggleIdeMode()" title="切换到 IDE 模式"><span class="ico"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M8.2 7.2 L3.2 12 L8.2 16.8 M15.8 7.2 L20.8 12 L15.8 16.8 M13.8 5.6 L10.2 18.4"/></svg></span> IDE 模式</span>
     <div class="dd">
       <span class="btn" onclick="toggleMenu('viewMenu')">查看</span>
       <div class="menu hidden" id="viewMenu">
@@ -327,17 +345,17 @@ public static class WebPageHtml
   <!-- 导航与地址栏：后退 / 前进 / 上一级 + 可编辑路径 + 最近访问 + 刷新 + 收藏 + 搜索 -->
   <div class="navrow" id="navrow">
     <div class="navbtns">
-      <button class="tbtn" id="btnBack" title="后退" onclick="clickBtn('btnBack','back')">&#xE72B;</button>
-      <button class="tbtn" id="btnFwd" title="前进" onclick="clickBtn('btnFwd','forward')">&#xE72A;</button>
-      <button class="tbtn" id="btnUp" title="上一级" onclick="goUp()">&#xE74A;</button>
+      <button class="tbtn" id="btnBack" title="后退" onclick="clickBtn('btnBack','back')"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20.4 12 L4.2 12 M11.2 5 L4.2 12 L11.2 19"/></svg></button>
+      <button class="tbtn" id="btnFwd" title="前进" onclick="clickBtn('btnFwd','forward')"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3.6 12 L19.8 12 M12.8 5 L19.8 12 L12.8 19"/></svg></button>
+      <button class="tbtn" id="btnUp" title="上一级" onclick="goUp()"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20.2 L12 3.8 M5 10.8 L12 3.8 L19 10.8"/></svg></button>
     </div>
     <div class="addr" id="addr">
       <div class="crumb" id="crumb" title="点击空白处编辑路径"></div>
       <input class="addrInput hidden" id="addrInput" placeholder="输入路径后按回车跳转">
       <div class="addrBtns">
-        <button class="tbtn" id="recentBtn" title="最近访问" onclick="toggleRecent()">&#xE81C;</button>
-        <button class="tbtn" title="刷新 (F5)" onclick="clickBtn(null,'refresh')">&#xE72C;</button>
-        <button class="tbtn" id="btnPin" title="收藏当前文件夹到书签" onclick="clickBtn('btnPin','pin')">&#xE735;</button>
+        <button class="tbtn" id="recentBtn" title="最近访问" onclick="toggleRecent()"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12 A9 9 0 1 0 21 12 A9 9 0 1 0 3 12 M12 6.8 L12 12.4 L16 14.4"/></svg></button>
+        <button class="tbtn" title="刷新 (F5)" onclick="clickBtn(null,'refresh')"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12 A7 7 0 0 1 12 5 M8.4 2.4 L12 5 L8.4 7.6 M19 12 A7 7 0 0 1 12 19 M15.6 16.4 L12 19 L15.6 21.6"/></svg></button>
+        <button class="tbtn" id="btnPin" title="收藏当前文件夹到书签" onclick="clickBtn('btnPin','pin')"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3.4 L18 3.4 L18 20.6 L12 16.2 L6 20.6 Z"/></svg></button>
       </div>
       <div class="pop hidden" id="recentPop"></div>
     </div>
@@ -366,13 +384,13 @@ public static class WebPageHtml
   <div class="ideView hidden" id="ideView">
     <!-- 顶部：工作区路径 + 保存 / 全部保存 / 查找 / 快速打开 / 刷新 -->
     <div class="ideTop">
-      <span class="ico" style="color:#E8A317">&#xE8B7;</span>
+      <span class="fIco" style="width:16px;height:16px"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M2.6 19.6 L2.6 6.4 Q2.6 4.6 4.6 4.6 L9.6 4.6 L12 7 L21.2 7 L21.2 9.8 L2.6 9.8 Z" fill="#B8801F"/><path d="M2.6 9.6 L21.2 9.6 L21.2 18.4 Q21.2 20.6 19 20.6 L4.8 20.6 Q2.6 20.6 2.6 18.4 Z" fill="#F2B23E"/><rect x="4.6" y="11" width="15.6" height="1.2" rx="0.6" fill="#FFFFFF" fill-opacity="0.32"/></svg></span>
       <span class="ideRoot" id="ideRoot" title=""></span>
-      <span class="btn" id="ideBtnSave" title="保存 (Ctrl+S)" onclick="clickIdeSave('ideBtnSave','idesave')"><span class="ico" style="color:#808080">&#xE74E;</span> 保存</span>
-      <span class="btn" id="ideBtnSaveAll" title="全部保存 (Ctrl+Shift+S)" onclick="clickIdeSave('ideBtnSaveAll','idesaveall')"><span class="ico" style="color:#808080">&#xE8F4;</span> 全部保存</span>
-      <span class="btn" id="ideBtnFind" title="查找 (Ctrl+F)" onclick="ideOpenFind()"><span class="ico" style="color:#808080">&#xE721;</span> 查找</span>
-      <span class="btn" id="ideBtnQuick" title="快速打开 (Ctrl+P)" onclick="clickIdeBtn('ideBtnQuick','idequickopen')"><span class="ico" style="color:#808080">&#xE71E;</span> 快速打开</span>
-      <span class="btn" id="ideBtnRefresh" title="刷新工作区" onclick="clickIdeBtn('ideBtnRefresh','iderefresh')"><span class="ico" style="color:#808080">&#xE72C;</span> 刷新</span>
+      <span class="btn" id="ideBtnSave" title="保存 (Ctrl+S)" onclick="clickIdeSave('ideBtnSave','idesave')"><span class="ico"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="#808080" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4.4 4 L16.6 4 L19.6 7 L19.6 19.6 C19.6 20.4 19 21 18.2 21 L5.8 21 C5 21 4.4 20.4 4.4 19.6 Z M8 4 L8 9 L16 9 L16 4 M7.4 13 L16.6 13 L16.6 21 L7.4 21 Z"/></svg></span> 保存</span>
+      <span class="btn" id="ideBtnSaveAll" title="全部保存 (Ctrl+Shift+S)" onclick="clickIdeSave('ideBtnSaveAll','idesaveall')"><span class="ico"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="#808080" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M8 4 L17.6 4 L20 6.4 L20 17.6 C20 18.4 19.4 19 18.6 19 L8 19 C7.2 19 6.6 18.4 6.6 17.6 L6.6 5.4 C6.6 4.6 7.2 4 8 4 Z M3.4 8 L3.4 21 L16.6 21"/></svg></span> 全部保存</span>
+      <span class="btn" id="ideBtnFind" title="查找 (Ctrl+F)" onclick="ideOpenFind()"><span class="ico"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="#808080" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3.4 10.6 A7.2 7.2 0 1 0 17.8 10.6 A7.2 7.2 0 1 0 3.4 10.6 M16 17 L20.8 21.8"/></svg></span> 查找</span>
+      <span class="btn" id="ideBtnQuick" title="快速打开 (Ctrl+P)" onclick="clickIdeBtn('ideBtnQuick','idequickopen')"><span class="ico"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="#808080" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6.4 3 L15 3 L19.4 7.4 L19.4 11.4 M6.4 3 C5.5 3 4.9 3.6 4.9 4.5 L4.9 19.5 C4.9 20.4 5.5 21 6.4 21 L11.6 21 M15 3 L15 7.4 L19.4 7.4 M10.4 17.6 A4.4 4.4 0 1 0 19.2 17.6 A4.4 4.4 0 1 0 10.4 17.6 M18.2 19.6 L21.8 23.2"/></svg></span> 快速打开</span>
+      <span class="btn" id="ideBtnRefresh" title="刷新工作区" onclick="clickIdeBtn('ideBtnRefresh','iderefresh')"><span class="ico"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="#808080" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12 A7 7 0 0 1 12 5 M8.4 2.4 L12 5 L8.4 7.6 M19 12 A7 7 0 0 1 12 19 M15.6 16.4 L12 19 L15.6 21.6"/></svg></span> 刷新</span>
     </div>
     <!-- 中部：资源树 + 分隔条 + 编辑区 -->
     <div class="ideBody">
@@ -508,6 +526,126 @@ public static class WebPageHtml
 const PORT_LABEL = '127.0.0.1:__PORT__';
 const VIEW_MODES = ['ExtraLargeIcons', 'LargeIcons', 'MediumIcons', 'SmallIcons', 'List', 'Details', 'Tile', 'Content'];
 const ICON_MODES = ['ExtraLargeIcons', 'LargeIcons', 'MediumIcons', 'SmallIcons', 'Tile'];
+
+// ===== 界面图标路径表（与桌面端 VectorIcon 使用同一套 24×24 图形） =====
+const UI_PATHS = {
+  plus: 'M12 4.6 L12 19.4 M4.6 12 L19.4 12',
+  board: 'M4.4 5.6 L19.6 5.6 L19.6 18.4 L4.4 18.4 Z M4.4 9.2 L19.6 9.2 M8.2 8.6 L8.2 15.4 M12 8.6 L12 12.6 M15.8 8.6 L15.8 14.4',
+  code: 'M8.2 7.2 L3.2 12 L8.2 16.8 M15.8 7.2 L20.8 12 L15.8 16.8 M13.8 5.6 L10.2 18.4',
+  sun: 'M12 8 A4 4 0 1 0 12 16 A4 4 0 1 0 12 8 M12 2.2 L12 4.2 M12 19.8 L12 21.8 M2.2 12 L4.2 12 M19.8 12 L21.8 12 M5.1 5.1 L6.5 6.5 M17.5 17.5 L18.9 18.9 M18.9 5.1 L17.5 6.5 M6.5 17.5 L5.1 18.9',
+  view: 'M4.2 4.2 L10.2 4.2 L10.2 10.2 L4.2 10.2 Z M13.8 4.2 L19.8 4.2 L19.8 10.2 L13.8 10.2 Z M4.2 13.8 L10.2 13.8 L10.2 19.8 L4.2 19.8 Z M13.8 13.8 L19.8 13.8 L19.8 19.8 L13.8 19.8 Z',
+  back: 'M20.4 12 L4.2 12 M11.2 5 L4.2 12 L11.2 19',
+  forward: 'M3.6 12 L19.8 12 M12.8 5 L19.8 12 L12.8 19',
+  up: 'M12 20.2 L12 3.8 M5 10.8 L12 3.8 L19 10.8',
+  clock: 'M3 12 A9 9 0 1 0 21 12 A9 9 0 1 0 3 12 M12 6.8 L12 12.4 L16 14.4',
+  refresh: 'M5 12 A7 7 0 0 1 12 5 M8.4 2.4 L12 5 L8.4 7.6 M19 12 A7 7 0 0 1 12 19 M15.6 16.4 L12 19 L15.6 21.6',
+  bookmark: 'M6 3.4 L18 3.4 L18 20.6 L12 16.2 L6 20.6 Z',
+  monitor: 'M3.4 4.4 L20.6 4.4 L20.6 16.2 L3.4 16.2 Z M9 20 L15 20 M12 16.2 L12 20',
+  globe: 'M3 12 A9 9 0 1 0 21 12 A9 9 0 1 0 3 12 M3 12 L21 12 M12 3 C8.4 6.4 8.4 17.6 12 21 C15.6 17.6 15.6 6.4 12 3',
+  search: 'M3.4 10.6 A7.2 7.2 0 1 0 17.8 10.6 A7.2 7.2 0 1 0 3.4 10.6 M16 17 L20.8 21.8',
+  donut: 'M3 12 A9 9 0 1 0 21 12 A9 9 0 1 0 3 12 M12 7 A5 5 0 1 0 12 17 A5 5 0 1 0 12 7',
+  activity: 'M2.4 12 L7 12 L9.6 5.4 L13.6 18.6 L16.2 12 L21.6 12',
+  save: 'M4.4 4 L16.6 4 L19.6 7 L19.6 19.6 C19.6 20.4 19 21 18.2 21 L5.8 21 C5 21 4.4 20.4 4.4 19.6 Z M8 4 L8 9 L16 9 L16 4 M7.4 13 L16.6 13 L16.6 21 L7.4 21 Z',
+  saveall: 'M8 4 L17.6 4 L20 6.4 L20 17.6 C20 18.4 19.4 19 18.6 19 L8 19 C7.2 19 6.6 18.4 6.6 17.6 L6.6 5.4 C6.6 4.6 7.2 4 8 4 Z M3.4 8 L3.4 21 L16.6 21',
+  quickopen: 'M6.4 3 L15 3 L19.4 7.4 L19.4 11.4 M6.4 3 C5.5 3 4.9 3.6 4.9 4.5 L4.9 19.5 C4.9 20.4 5.5 21 6.4 21 L11.6 21 M15 3 L15 7.4 L19.4 7.4 M10.4 17.6 A4.4 4.4 0 1 0 19.2 17.6 A4.4 4.4 0 1 0 10.4 17.6 M18.2 19.6 L21.8 23.2',
+  chevronright: 'M9 5.4 L15.6 12 L9 18.6',
+  close: 'M5.6 5.6 L18.4 18.4 M18.4 5.6 L5.6 18.4'
+};
+
+// ===== 文件分类符号路径表（与桌面端 FileTypeIcon 同款） =====
+const FILE_SYMBOL_PATHS = {
+  code: 'M10 9.6 L7.6 13 L10 16.4 M17 9.6 L19.4 13 L17 16.4 M14.6 8.8 L12.4 17.2',
+  web: 'M8.4 13.7 A4.6 4.6 0 1 0 17.6 13.7 A4.6 4.6 0 1 0 8.4 13.7 M8.4 13.7 L17.6 13.7 M13 9 C10.6 11 10.6 16.4 13 18.4 C15.4 16.4 15.4 11 13 9',
+  text: 'M8.4 9.6 L18.4 9.6 M8.4 12.7 L18.4 12.7 M8.4 15.8 L18.4 15.8 M8.4 18.8 L15.4 18.8',
+  log: 'M8.4 9.4 L18.4 9.4 M8.4 12.4 L18.4 12.4 M8.4 15.4 L18.4 15.4 M8.4 18.4 L13.4 18.4',
+  document: 'M8.4 9.4 L18.4 9.4 M8.4 12.3 L18.4 12.3 M8.4 15.2 L18.4 15.2 M8.4 18.1 L14.2 18.1',
+  markdown: 'M8 16 L10.2 9.4 L13 14.2 L15.8 9.4 L18 16 M13.4 8.2 L13.4 5.2 M11.6 6.8 L13.4 5.2 L15.2 6.8',
+  pdf: 'M8.4 9.2 L18.6 9.2 M8.4 12.1 L18.6 12.1 M8.4 15 L14.6 15 M8.4 17.9 L18.6 17.9',
+  spreadsheet: 'M8.2 9 L18.8 9 L18.8 17.6 L8.2 17.6 Z M8.2 12.6 L18.8 12.6 M13.5 9 L13.5 17.6',
+  presentation: 'M8.2 17.2 L8.2 13 M12.2 17.2 L12.2 9 M16.2 17.2 L16.2 11.2 M7 18.4 L18.4 18.4',
+  image: 'M7.8 16.8 L11 12.6 L13.2 15.2 L15.4 13 L18.6 16.8 Z M15.6 9.8 A1.4 1.4 0 1 0 18.4 9.8 A1.4 1.4 0 1 0 15.6 9.8',
+  audio: 'M9 17.2 A3 3 0 1 0 15 17.2 A3 3 0 1 0 9 17.2 M12 17.2 L12 6.8 L18.8 5.4',
+  video: 'M10 8.6 L18.6 13 L10 17.4 Z',
+  archive: 'M8.2 8.8 L18.6 8.8 L18.6 17.2 L8.2 17.2 Z M13.4 9 L13.4 17 M11.6 10.4 L15.2 10.4 M11.6 12.4 L15.2 12.4 M11.6 14.4 L15.2 14.4 M11.6 16.4 L15.2 16.4',
+  font: 'M8.6 17.4 L13.4 7.6 L18.2 17.4 M10.2 14 L16.6 14',
+  database: 'M8.6 9.4 C8.6 8 10.8 7.2 13.4 7.2 C16 7.2 18.2 8 18.2 9.4 C18.2 10.8 16 11.6 13.4 11.6 C10.8 11.6 8.6 10.8 8.6 9.4 Z M8.6 9.4 L8.6 15.2 C8.6 16.6 10.8 17.4 13.4 17.4 C16 17.4 18.2 16.6 18.2 15.2 L18.2 9.4 M8.6 12.3 C8.6 13.7 10.8 14.5 13.4 14.5 C16 14.5 18.2 13.7 18.2 12.3',
+  config: 'M8.4 9.4 L18.4 9.4 M8.4 13 L18.4 13 M8.4 16.6 L18.4 16.6 M10.6 9.4 A1.6 1.6 0 1 0 13.8 9.4 A1.6 1.6 0 1 0 10.6 9.4 M13.8 13 A1.6 1.6 0 1 0 17 13 A1.6 1.6 0 1 0 13.8 13 M9 16.6 A1.6 1.6 0 1 0 12.2 16.6 A1.6 1.6 0 1 0 9 16.6',
+  executable: 'M8 8.4 L19 8.4 L19 17 L8 17 Z M8 11 L19 11 M10 9.7 L10 9.9 M12 9.7 L12 9.9',
+  script: 'M8.4 9.6 L11.6 13 L8.4 16.4 M12.6 16.8 L17.6 16.8',
+  diskimage: 'M8.6 13 A4.8 4.8 0 1 0 18.2 13 A4.8 4.8 0 1 0 8.6 13 M11.6 13 A1.8 1.8 0 1 0 15.2 13 A1.8 1.8 0 1 0 11.6 13',
+  subtitle: 'M7.6 8.6 L19.2 8.6 C20 8.6 20.6 9.2 20.6 10 L20.6 15 C20.6 15.8 20 16.4 19.2 16.4 L13 16.4 L9.4 19.2 L9.4 16.4 L7.6 16.4 C6.8 16.4 6.2 15.8 6.2 15 L6.2 10 C6.2 9.2 6.8 8.6 7.6 8.6 Z M9.4 11.4 L17.4 11.4 M9.4 13.8 L14.6 13.8',
+  torrent: 'M9 15.6 A4 4 0 1 0 17 15.6 A4 4 0 1 0 9 15.6 M13 16.4 L13 8.2 M10.2 11 L13 8.2 L15.8 11',
+  email: 'M7 9 L19.4 9 L19.4 17 L7 17 Z M7 9 L13.2 13.6 L19.4 9',
+  certificate: 'M8.8 10.6 A3.4 3.4 0 1 0 15.6 10.6 A3.4 3.4 0 1 0 8.8 10.6 M11 13.6 L9.6 18.2 L12.2 16.6 L14.8 18.2 L13.4 13.6',
+  design: 'M7.8 17.6 L8.8 12.6 L14.4 7 L17.2 9.8 L11.6 15.4 Z M8.8 12.6 L11.6 15.4 M14.4 7 L17.2 9.8',
+  binary: 'M8.6 8.6 L18.2 8.6 L18.2 17 L8.6 17 Z M11 8.6 L11 6.4 M15.8 8.6 L15.8 6.4 M11 17 L11 19.2 M15.8 17 L15.8 19.2 M8.6 11 L6.4 11 M8.6 14.8 L6.4 14.8 M18.2 11 L20.4 11 M18.2 14.8 L20.4 14.8 M11.6 11.4 L15.2 11.4 M11.6 14.6 L15.2 14.6',
+  shortcut: 'M7.8 16.6 L13.4 16.6 C15 16.6 16.4 15.2 16.4 13.6 L16.4 8.6 M13 5.4 L16.6 8.6 L20.2 5.4',
+  ebook: 'M7.4 8.6 L11.4 8.6 C12.2 8.6 13 9.2 13.4 10 L13.4 17 C12.9 16.2 12.2 15.8 11.4 15.8 L7.4 15.8 Z M13.4 10 C13.9 9.2 14.6 8.8 15.4 8.8 L19.4 8.8 L19.4 15.8 L15.4 15.8 C14.6 15.8 13.9 16.2 13.4 17 Z',
+  package: 'M12.6 5.8 L19 9.2 L19 15.4 L12.6 18.8 L6.2 15.4 L6.2 9.2 Z M6.2 9.2 L12.6 12.6 L19 9.2 M12.6 12.6 L12.6 18.8',
+  file: 'M8.4 10 L18.4 10 M8.4 13 L18.4 13 M8.4 16 L15.4 16'
+};
+
+function toHex(value) {
+  const text = value.toString(16);
+  return text.length < 2 ? '0' + text : text;
+}
+
+function mixColor(hex, target, amount) {
+  const source = (hex || '#8A94A6').replace('#', '');
+  const destination = target.replace('#', '');
+  const sr = parseInt(source.substring(0, 2), 16);
+  const sg = parseInt(source.substring(2, 4), 16);
+  const sb = parseInt(source.substring(4, 6), 16);
+  const dr = parseInt(destination.substring(0, 2), 16);
+  const dg = parseInt(destination.substring(2, 4), 16);
+  const db = parseInt(destination.substring(4, 6), 16);
+  const r = Math.round(sr * (1 - amount) + dr * amount);
+  const g = Math.round(sg * (1 - amount) + dg * amount);
+  const b = Math.round(sb * (1 - amount) + db * amount);
+  return '#' + toHex(r) + toHex(g) + toHex(b);
+}
+
+function uiIcon(kind, size, color) {
+  const path = UI_PATHS[kind];
+  if (!path) { return ''; }
+  const stroke = color || 'currentColor';
+  return '<svg viewBox="0 0 24 24" width="' + size + '" height="' + size
+    + '" fill="none" stroke="' + stroke + '" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">'
+    + '<path d="' + path + '"/></svg>';
+}
+
+function fileIcon(category, accent, size) {
+  const cat = category || 'file';
+  const color = accent || '#8A94A6';
+  const dark = mixColor(color, '#000000', 0.22);
+  const light = mixColor(color, '#FFFFFF', 0.3);
+  let body = '';
+  if (cat === 'folder') {
+    body = '<path d="M2.6 19.6 L2.6 6.4 Q2.6 4.6 4.6 4.6 L9.6 4.6 L12 7 L21.2 7 L21.2 9.8 L2.6 9.8 Z" fill="' + dark + '"/>'
+      + '<path d="M2.6 9.6 L21.2 9.6 L21.2 18.4 Q21.2 20.6 19 20.6 L4.8 20.6 Q2.6 20.6 2.6 18.4 Z" fill="' + color + '"/>'
+      + '<rect x="4.6" y="11" width="15.6" height="1.2" rx="0.6" fill="#FFFFFF" fill-opacity="0.32"/>'
+      + '<rect x="4.6" y="13.4" width="9.4" height="1" rx="0.5" fill="#FFFFFF" fill-opacity="0.14"/>';
+  } else if (cat === 'drive') {
+    body = '<rect x="2" y="6.4" width="20" height="11.6" rx="3" fill="' + color + '"/>'
+      + '<path d="M5 6.4 L19 6.4 C21 6.4 22 8 22 10.6 L2 10.6 C2 8 3 6.4 5 6.4 Z" fill="' + light + '"/>'
+      + '<rect x="2" y="10.6" width="20" height="0.6" fill="' + dark + '" fill-opacity="0.8"/>'
+      + '<rect x="5" y="13.4" width="8.4" height="1.8" rx="0.9" fill="#FFFFFF" fill-opacity="0.72"/>'
+      + '<circle cx="18.4" cy="14.3" r="1.2" fill="#FFFFFF" fill-opacity="0.92"/>';
+  } else {
+    const symbol = FILE_SYMBOL_PATHS[cat] || FILE_SYMBOL_PATHS.file;
+    if (size < 20) {
+      body = '<rect x="4.4" y="2.2" width="15.4" height="19.6" rx="2.6" fill="' + color + '" stroke="' + dark + '" stroke-width="0.8"/>'
+        + '<path d="M14.6 2.2 L19.8 7.3 L16.4 7.3 Q14.6 7.3 14.6 5.5 Z" fill="#FFFFFF" fill-opacity="0.82"/>'
+        + '<path d="' + symbol + '" fill="none" stroke="#FFFFFF" stroke-opacity="0.95" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>';
+    } else {
+      body = '<rect x="4.6" y="2.2" width="15.2" height="19.6" rx="2.5" fill="#FBFCFE" stroke="#0E172133" stroke-width="0.9"/>'
+        + '<path d="M4.6 4.7 Q4.6 2.2 7.3 2.2 L7.6 2.2 L7.6 21.8 L7.3 21.8 Q4.6 21.8 4.6 19.3 Z" fill="' + color + '"/>'
+        + '<path d="M14.8 2.2 L19.8 7.3 L16.6 7.3 Q14.8 7.3 14.8 5.5 Z" fill="' + light + '" stroke="#0E172133" stroke-width="0.7"/>'
+        + '<path d="' + symbol + '" fill="none" stroke="' + color + '" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>';
+    }
+  }
+  return '<svg viewBox="0 0 24 24" width="' + size + '" height="' + size + '" aria-hidden="true">' + body + '</svg>';
+}
 
 let workspaceId = '';
 let permissions = { canModify: false, canCreateDelete: false, profile: '' };
@@ -768,7 +906,7 @@ function renderTabs() {
   let html = '';
   for (const tab of state.tabs) {
     html += '<div class="tab' + (tab.selected ? ' active' : '') + '" onclick="selectTab(' + tab.index + ')">'
-      + '<span class="ico">&#xE8B7;</span><span>' + esc(tab.title) + '</span>';
+      + '<span class="fIco" style="width:14px;height:14px">' + fileIcon('folder', '#F2B23E', 14) + '</span><span>' + esc(tab.title) + '</span>';
     if (!state.followDesktop) {
       html += '<span class="x" onclick="event.stopPropagation();closeTab(' + tab.index + ')">&times;</span>';
     }
@@ -780,14 +918,14 @@ function renderTabs() {
 function renderBookmarks() {
   const bar = document.getElementById('bookmarkbar');
   if (!state.navPinned || state.navPinned.length === 0) {
-    bar.innerHTML = '<span class="ico" style="color:#E8A317">&#xE8B7;</span>'
+    bar.innerHTML = '<span class="ico">' + uiIcon('bookmark', 16, '#E8A317') + '</span>'
       + '<span class="bmHint">可拖动常用文件 / 文档 / 文件夹到此，创建成书签，以便能快速找到并打开</span>';
     return;
   }
   let html = '';
   for (const item of state.navPinned) {
     html += '<div class="bmItem" onclick="openPath(' + JSON.stringify(item.path).replace(/"/g, '&quot;') + ')">'
-      + '<span class="ico bmIcon">&#xE8B7;</span><span>' + esc(item.name) + '</span>'
+      + '<span class="fIco" style="width:15px;height:15px">' + fileIcon(item.iconCategory || 'folder', item.iconColor || '#F2B23E', 15) + '</span><span>' + esc(item.name) + '</span>'
       + '<span class="bmX" title="取消固定" onclick="event.stopPropagation();clickBtn(null,\'unpin\','
       + JSON.stringify(item.path).replace(/"/g, '&quot;') + ')">&times;</span></div>';
   }
@@ -796,29 +934,29 @@ function renderBookmarks() {
 
 function renderSidebar() {
   let html = '';
-  html += navSection('快捷访问', '&#xE735;', state.navPinned, false);
-  html += navSection('此电脑', '&#xE7F8;', state.navPc, true);
-  html += '<div class="navsec"><span class="ico">&#xE968;</span>网络</div>'
-    + '<div class="navitem" onclick="clickBtn(null,\'openconnections\')"><span class="ico">&#xE968;</span>连接管理</div>'
-    + '<div class="navitem" onclick="clickBtn(null,\'opensearch\')"><span class="ico">&#xE721;</span>全局搜索</div>'
-    + '<div class="navitem" onclick="clickBtn(null,\'opendisk\')"><span class="ico">&#xE9F4;</span>磁盘视图</div>'
-    + '<div class="navitem" onclick="clickBtn(null,\'openprocess\')"><span class="ico">&#xE9F5;</span>进程监控</div>'
-    + '<div class="navitem" onclick="clickBtn(null,\'openboard\')"><span class="ico">&#xE9D5;</span>任务看板</div>';
+  html += navSection('快捷访问', 'bookmark', state.navPinned, false);
+  html += navSection('此电脑', 'monitor', state.navPc, true);
+  html += '<div class="navsec"><span class="ico">' + uiIcon('globe', 14, '#2F6FD0') + '</span>网络</div>'
+    + '<div class="navitem" onclick="clickBtn(null,\'openconnections\')"><span class="ico">' + uiIcon('globe', 15, '#E8A317') + '</span>连接管理</div>'
+    + '<div class="navitem" onclick="clickBtn(null,\'opensearch\')"><span class="ico">' + uiIcon('search', 15, '#E8A317') + '</span>全局搜索</div>'
+    + '<div class="navitem" onclick="clickBtn(null,\'opendisk\')"><span class="ico">' + uiIcon('donut', 15, '#E8A317') + '</span>磁盘视图</div>'
+    + '<div class="navitem" onclick="clickBtn(null,\'openprocess\')"><span class="ico">' + uiIcon('activity', 15, '#E8A317') + '</span>进程监控</div>'
+    + '<div class="navitem" onclick="clickBtn(null,\'openboard\')"><span class="ico">' + uiIcon('board', 15, '#E8A317') + '</span>任务看板</div>';
   document.getElementById('sidebar').innerHTML = html;
 }
 
-function navSection(title, glyph, items, clickable) {
+function navSection(title, iconKind, items, clickable) {
   // 分组标题可点击时：导航当前文件标签到此电脑根视图（无文件标签时自动新建），与桌面端 OnThisPcHeaderClick 一致
   let html = '<div class="navsec' + (clickable ? ' clickable' : '') + '"'
     + (clickable ? ' onclick="openPath(\'\')" title="导航到此电脑"' : '')
-    + '><span class="ico">' + glyph + '</span>' + title + '</div>';
+    + '><span class="ico">' + uiIcon(iconKind, 14, '#2F6FD0') + '</span>' + title + '</div>';
   if (!items || items.length === 0) {
     return html;
   }
   for (const item of items) {
     html += '<div class="navitem' + (item.selected ? ' selected' : '') + '" onclick="navOpen('
       + JSON.stringify(item.path).replace(/"/g, '&quot;') + ',' + (item.selected ? 1 : 0) + ')">'
-      + '<span class="ico">' + (item.iconGlyph ? esc(item.iconGlyph) : '&#xE8B7;') + '</span>'
+      + '<span class="fIco" style="width:15px;height:15px">' + fileIcon(item.iconCategory || 'folder', item.iconColor || '#F2B23E', 15) + '</span>'
       + '<span>' + esc(item.name) + '</span></div>';
   }
   return html;
@@ -990,8 +1128,7 @@ function renderTable(tab) {
     const selected = checked.has(path);
     html += '<tr class="row' + (selected ? ' checked' : '') + '" data-i="' + rowIndex + '">'
       + '<td><input type="checkbox" data-check="' + rowIndex + '"' + (selected ? ' checked' : '') + '></td>'
-      + '<td class="name"><span class="ico" style="color:' + esc(row.iconColor || '#9AA0A6') + '">'
-      + esc(row.iconGlyph || '&#xE7C3;') + '</span>'
+      + '<td class="name"><span class="fIco" style="width:16px;height:16px">' + fileIcon(row.iconCategory, row.iconColor, 16) + '</span>'
       + '<span class="text ' + (row.isDirectory ? 'dir' : 'file') + '" title="' + esc(path) + '">' + esc(row.name) + '</span></td>';
     if (mode === 'Details') {
       html += '<td>' + esc(row.modified) + '</td>';
@@ -1010,16 +1147,18 @@ function renderTable(tab) {
 function renderTiles(tab) {
   const mode = tab.viewMode;
   let width = 96;
-  if (mode === 'ExtraLargeIcons') { width = 210; }
-  else if (mode === 'LargeIcons') { width = 130; }
-  else if (mode === 'SmallIcons') { width = 64; }
+  let iconSize = 40;
+  if (mode === 'ExtraLargeIcons') { width = 210; iconSize = 64; }
+  else if (mode === 'LargeIcons') { width = 130; iconSize = 48; }
+  else if (mode === 'MediumIcons') { width = 96; iconSize = 36; }
+  else if (mode === 'SmallIcons') { width = 64; iconSize = 24; }
   let html = '<div class="tiles">';
   let rowIndex = 0;
   for (const row of tab.rows) {
     const selected = checked.has(row.fullPath);
     html += '<div class="tile' + (selected ? ' checked' : '') + '" data-i="' + rowIndex + '" style="width:' + width + 'px">'
       + '<input type="checkbox" class="ttick" data-check="' + rowIndex + '"' + (selected ? ' checked' : '') + '>'
-      + '<div class="ticon" style="color:' + esc(row.iconColor || '#9AA0A6') + '">' + esc(row.iconGlyph || '&#xE7C3;') + '</div>'
+      + '<div class="ticon" style="width:' + iconSize + 'px;height:' + iconSize + 'px;margin:0 auto 2px">' + fileIcon(row.iconCategory, row.iconColor, iconSize) + '</div>'
       + '<div class="tname" title="' + esc(row.fullPath) + '">' + esc(row.name) + '</div>';
     if (mode === 'Tile') { html += '<div class="ttype">' + esc(row.type) + '</div>'; }
     html += '</div>';
@@ -1048,11 +1187,14 @@ function renderDiskTable(tab) {
     html += '<tr class="row" data-i="' + rowIndex + '"><td class="name" style="padding-left:' + indent + 'px">';
     if (row.isDirectory) {
       // 小三角与文件名点击效果完全一致：同一 diskNav 处理，点击即展开或折叠
-      html += '<span class="ico" style="color:#E8A317;cursor:pointer" onclick="diskNav(' + target + ')">'
+      html += '<span class="diskArrow" onclick="diskNav(' + target + ')">'
         + (row.expanded ? '&#9662;' : '&#9656;') + '</span>'
+        + '<span class="fIco" style="width:16px;height:16px">' + fileIcon(row.iconCategory, row.iconColor, 16) + '</span>'
         + '<span class="dir" onclick="diskNav(' + target + ')">' + esc(row.name) + '</span>';
     } else {
-      html += '<span class="ico"></span><span>' + esc(row.name) + '</span>';
+      html += '<span class="diskArrow" style="visibility:hidden">&#9656;</span>'
+        + '<span class="fIco" style="width:16px;height:16px">' + fileIcon(row.iconCategory, row.iconColor, 16) + '</span>'
+        + '<span>' + esc(row.name) + '</span>';
     }
     html += '</td><td>' + esc(row.type) + '</td><td>' + esc(row.size) + '</td>'
       + '<td>' + esc(row.free || '-') + '</td><td>' + esc(row.usage || '-') + '</td>'
@@ -2169,11 +2311,11 @@ function renderIdeTree(ide) {
     for (let i = 0; i < ideTreeNodes.length; i++) {
       const node = ideTreeNodes[i];
       const selected = node.fullPath === ideSelectedPath ? ' sel' : '';
-      const arrow = node.isDirectory ? (node.isExpanded ? '&#xE70D;' : '&#xE76C;') : '';
+      const arrow = node.isDirectory ? (node.isExpanded ? '&#9662;' : '&#9656;') : '';
       html += '<div class="ideNode' + selected + '" data-i="' + i + '" style="padding-left:' + (4 + node.depth * 14) + 'px"'
         + ' title="' + escAttr(node.fullPath) + '">'
         + '<span class="arrow">' + arrow + '</span>'
-        + '<span class="ico" style="color:' + escAttr(node.iconColor || '#9AA0A6') + '">' + esc(node.iconGlyph || '') + '</span>'
+        + '<span class="fIco" style="width:16px;height:16px">' + fileIcon(node.iconCategory, node.iconColor, 16) + '</span>'
         + '<span class="nm">' + esc(node.name) + '</span></div>';
     }
   }
@@ -2191,6 +2333,7 @@ function renderIdeTabs(ide) {
   for (const editor of ideEditorList) {
     const active = editor.index === ide.activeEditorIndex ? ' active' : '';
     html += '<div class="ideTab' + active + '" data-i="' + editor.index + '" title="' + escAttr(editor.toolTipText) + '">'
+      + '<span class="fIco" style="width:14px;height:14px">' + fileIcon(editor.iconCategory, editor.iconColor, 14) + '</span>'
       + '<span>' + esc(editor.displayTitle) + '</span>'
       + '<span class="x" data-close="' + editor.index + '" title="关闭">&times;</span></div>';
   }

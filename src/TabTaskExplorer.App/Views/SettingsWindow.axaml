@@ -15,6 +15,7 @@
         <ListBoxItem Content="媒体" />
         <ListBoxItem Content="网页端" />
         <ListBoxItem Content="右键菜单" />
+        <ListBoxItem Content="截图与录屏" />
         <ListBoxItem Content="关于" />
       </ListBox>
       <ScrollViewer Grid.Column="1" Margin="16">
@@ -248,6 +249,73 @@
                 </DataTemplate>
               </ListBox.ItemTemplate>
             </ListBox>
+          </StackPanel>
+          <StackPanel x:Name="CapturePage" Spacing="10" IsVisible="False">
+            <TextBlock Text="截图与录屏" FontWeight="Medium" />
+            <TextBlock x:Name="CaptureEnvironmentText" TextWrapping="Wrap" Opacity="0.72"
+                       Text="平台能力与 FFmpeg 状态：启动后自动检测。" />
+            <TextBlock Text="产物保存位置" FontWeight="Medium" Margin="0,6,0,0" />
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <TextBox x:Name="CaptureSaveDirectoryBox" Width="380" PlaceholderText="留空使用「我的图片\TabTaskExplorer\截图录屏」" />
+              <Button Content="浏览…" Click="OnBrowseCaptureFolderClick" />
+              <Button Content="恢复默认" Click="OnResetCaptureFolderClick" />
+            </StackPanel>
+            <TextBlock Text="FFmpeg（录屏与 Linux 截图使用）" FontWeight="Medium" Margin="0,6,0,0" />
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <TextBox x:Name="FfmpegPathBox" Width="380" PlaceholderText="留空自动查找 PATH 与程序 tools 目录" />
+              <Button Content="浏览…" Click="OnBrowseFfmpegClick" />
+              <Button Content="自动查找" Click="OnClearFfmpegPathClick" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="18" Margin="0,6,0,0">
+              <CheckBox Content="截图后复制到剪贴板" IsChecked="{Binding CaptureCopyToClipboard, Mode=TwoWay}" />
+              <CheckBox Content="完成后自动打开产物文件夹标签" IsChecked="{Binding CaptureOpenFolderAfter, Mode=TwoWay}" />
+              <CheckBox Content="截图与录屏包含鼠标指针" IsChecked="{Binding CaptureIncludeCursor, Mode=TwoWay}" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,6,0,0">
+              <TextBlock Text="截图延迟" VerticalAlignment="Center" />
+              <ComboBox x:Name="CaptureDelayBox" Width="120">
+                <ComboBoxItem Content="立即截图" />
+                <ComboBoxItem Content="3 秒后" />
+                <ComboBoxItem Content="5 秒后" />
+                <ComboBoxItem Content="10 秒后" />
+              </ComboBox>
+              <TextBlock Text="录屏帧率" VerticalAlignment="Center" Margin="14,0,0,0" />
+              <ComboBox x:Name="CaptureFpsBox" Width="110">
+                <ComboBoxItem Content="24 帧/秒" />
+                <ComboBoxItem Content="30 帧/秒" />
+                <ComboBoxItem Content="60 帧/秒" />
+              </ComboBox>
+              <TextBlock Text="录屏画质" VerticalAlignment="Center" Margin="14,0,0,0" />
+              <ComboBox x:Name="CaptureQualityBox" Width="150">
+                <ComboBoxItem Content="高（文件较大）" />
+                <ComboBoxItem Content="标准（推荐）" />
+                <ComboBoxItem Content="小（文件较小）" />
+              </ComboBox>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,6,0,0">
+              <TextBlock Text="麦克风设备" VerticalAlignment="Center" />
+              <TextBox x:Name="CaptureMicrophoneBox" Width="380"
+                       PlaceholderText="留空表示不录音；Windows 填 DirectShow 设备名，Linux 填 PulseAudio 设备名，macOS 填音频序号" />
+            </StackPanel>
+            <TextBlock TextWrapping="Wrap" Opacity="0.72"
+                       Text="说明：录屏通过 FFmpeg 采集屏幕并编码为 MP4（H.264）。未安装 FFmpeg 时截图仍可用；录屏按钮会提示缺少 FFmpeg。截图或录屏完成后，默认自动新建（或复用）产物文件夹标签页。" />
+            <TextBlock Text="全局快捷键（系统任意程序在前台时生效）" FontWeight="Medium" Margin="0,8,0,0" />
+            <Button Content="恢复默认全局快捷键" Click="OnResetGlobalHotkeysClick" HorizontalAlignment="Left" />
+            <ItemsControl ItemsSource="{Binding GlobalHotkeys}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <Grid ColumnDefinitions="190,Auto,Auto,Auto,Auto" Margin="0,2">
+                    <TextBlock Grid.Column="0" Text="{Binding DisplayName}" VerticalAlignment="Center" />
+                    <CheckBox Grid.Column="1" Content="Ctrl" IsChecked="{Binding Ctrl, Mode=TwoWay}" Margin="0,0,10,0" />
+                    <CheckBox Grid.Column="2" Content="Alt" IsChecked="{Binding Alt, Mode=TwoWay}" Margin="0,0,10,0" />
+                    <CheckBox Grid.Column="3" Content="Shift" IsChecked="{Binding Shift, Mode=TwoWay}" Margin="0,0,10,0" />
+                    <ComboBox Grid.Column="4" Width="130" ItemsSource="{x:Static svc:HotkeySetting.KeyOptions}" SelectedItem="{Binding KeyText, Mode=TwoWay}" />
+                  </Grid>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <TextBlock TextWrapping="Wrap" Opacity="0.72"
+                       Text="说明：Windows 通过系统 RegisterHotKey 注册全局快捷键；若某个按键已被其他程序占用，注册会失败并写入程序日志，可在此更换按键。Linux / macOS 目前不提供全局快捷键，仍可使用应用内按钮。" />
           </StackPanel>
           <StackPanel x:Name="AboutPage" Spacing="12" IsVisible="False">
             <TextBlock Text="TabTaskExplorer v0.1" FontWeight="Medium" />

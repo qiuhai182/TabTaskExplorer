@@ -1097,13 +1097,13 @@ public partial class MainWindow : Window
     {
         if (this.BreadcrumbPanel.Children.Count > 0)
         {
-            TextBlock separator = new TextBlock
-            {
-                Text = "\uE76C",
-                FontFamily = (FontFamily)this.Resources["IconFont"],
-                FontSize = 10,
-                VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
-            };
+            VectorIcon separator = new VectorIcon();
+            separator.Kind = "chevronright";
+            separator.Width = 10;
+            separator.Height = 10;
+            separator.Thickness = 1.4;
+            separator.IconBrush = this.FindResource("TextMutedBrush") as IBrush;
+            separator.VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center;
             this.BreadcrumbPanel.Children.Add(separator);
         }
         Button segment = new Button
@@ -1936,6 +1936,18 @@ public partial class MainWindow : Window
         UiLogger.Log("程序行为", "点击磁盘视图按钮：结果=已打开磁盘视图标签 标签总数=" + viewModel.Tabs.Count);
     }
 
+    private void OnCaptureClick(object? sender, RoutedEventArgs e)
+    {
+        MainWindowViewModel? viewModel = this.ViewModel;
+        if (viewModel == null)
+        {
+            UiLogger.Log("程序行为", "点击截图与录屏按钮：当前没有可用的主窗口视图模型，未打开");
+            return;
+        }
+        viewModel.OpenCaptureTab();
+        UiLogger.Log("程序行为", "点击截图与录屏按钮：结果=已打开截图录屏标签 标签总数=" + viewModel.Tabs.Count);
+    }
+
     private async void OnSettingsClick(object? sender, RoutedEventArgs e)
     {
         MainWindowViewModel? viewModel = this.ViewModel;
@@ -1944,7 +1956,8 @@ public partial class MainWindow : Window
             return;
         }
         UiLogger.Log("程序行为", "打开设置窗口");
-        SettingsWindow window = new SettingsWindow(viewModel.Settings, viewModel.SystemContextMenus);
+        SettingsWindow window = new SettingsWindow(viewModel.Settings, viewModel.SystemContextMenus,
+            viewModel.CaptureEnvironmentText);
         await window.ShowDialog(this);
         UiLogger.Log("程序行为", "设置窗口已关闭，开始应用设置");
         App current = (App)App.Current!;
@@ -1957,6 +1970,8 @@ public partial class MainWindow : Window
         current.SyncTrayAutoStartState();
         DefaultFileManagerManager.Apply(viewModel.Settings.DefaultFileManager);
         viewModel.SaveSettingsAndApply();
+        // 截图录屏全局快捷键按最新按键重新注册，失败项由协调器写入日志与状态文字
+        viewModel.ReloadGlobalHotkeys();
     }
 
     /// <summary>按设置切换窗口装饰：显示白条时保留 Avalonia 绘制的窗口边框，隐藏时不绘制任何装饰。</summary>

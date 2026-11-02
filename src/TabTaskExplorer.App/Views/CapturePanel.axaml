@@ -1,0 +1,102 @@
+﻿<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:views="using:TabTaskExplorer.App.Views"
+             x:Class="TabTaskExplorer.App.Views.CapturePanel">
+  <Grid RowDefinitions="Auto,*,Auto" Margin="12">
+
+    <!-- 顶部操作区：截图与录屏 -->
+    <StackPanel Grid.Row="0" Spacing="10">
+      <TextBlock Text="截图" FontWeight="Medium" FontSize="16" />
+      <StackPanel Orientation="Horizontal" Spacing="8">
+        <Button Content="全屏截图" Click="OnCaptureFullClick" IsEnabled="{Binding CanCaptureFullScreen}"
+                ToolTip.Tip="截取全部屏幕（多显示器合并为一整张图片）" />
+        <Button Content="区域截图" Click="OnCaptureRegionClick" IsEnabled="{Binding CanCaptureRegion}"
+                ToolTip.Tip="拖动鼠标框选任意区域" />
+        <Button Content="活动窗口" Click="OnCaptureWindowClick" IsEnabled="{Binding CanCaptureWindow}"
+                ToolTip.Tip="截取当前位于前台的窗口" />
+        <Button Content="上次区域" Click="OnCaptureLastRegionClick" IsEnabled="{Binding CanCaptureLastRegion}"
+                ToolTip.Tip="直接复用上一次框选的区域" />
+        <TextBlock Text="延迟" VerticalAlignment="Center" Margin="8,0,0,0" />
+        <ComboBox Width="112" SelectedIndex="{Binding DelayIndex, Mode=TwoWay}" VerticalAlignment="Center">
+          <ComboBoxItem Content="立即截图" />
+          <ComboBoxItem Content="3 秒后" />
+          <ComboBoxItem Content="5 秒后" />
+          <ComboBoxItem Content="10 秒后" />
+        </ComboBox>
+      </StackPanel>
+      <StackPanel Orientation="Horizontal" Spacing="18">
+        <CheckBox Content="截图后复制到剪贴板" IsChecked="{Binding Settings.CaptureCopyToClipboard, Mode=TwoWay}"
+                  Click="OnCaptureOptionChanged" />
+        <CheckBox Content="完成后自动打开产物文件夹" IsChecked="{Binding Settings.CaptureOpenFolderAfter, Mode=TwoWay}"
+                  Click="OnCaptureOptionChanged" />
+        <CheckBox Content="包含鼠标指针" IsChecked="{Binding Settings.CaptureIncludeCursor, Mode=TwoWay}"
+                  Click="OnCaptureOptionChanged" />
+      </StackPanel>
+
+      <Border Height="1" Background="{DynamicResource SeparatorBrush}" Margin="0,4" />
+
+      <TextBlock Text="录屏" FontWeight="Medium" FontSize="16" />
+      <StackPanel Orientation="Horizontal" Spacing="8">
+        <Button Content="{Binding RecordingButtonText}" Click="OnToggleRecordingClick" IsEnabled="{Binding CanRecord}"
+                MinWidth="108" />
+        <TextBlock Text="录制目标" VerticalAlignment="Center" Margin="8,0,0,0" />
+        <ComboBox Width="140" SelectedIndex="{Binding RecordingTargetIndex, Mode=TwoWay}" VerticalAlignment="Center">
+          <ComboBoxItem Content="全部屏幕" />
+          <ComboBoxItem Content="选择区域" />
+          <ComboBoxItem Content="活动窗口" />
+        </ComboBox>
+        <TextBlock Text="{Binding RecordingElapsedText}" VerticalAlignment="Center" FontFamily="Consolas"
+                   FontSize="15" Margin="10,0,0,0" />
+        <TextBlock Text="{Binding RecordingStatusText}" VerticalAlignment="Center"
+                   Foreground="{DynamicResource TextMutedBrush}" />
+      </StackPanel>
+      <TextBlock Text="{Binding EnvironmentText}" TextWrapping="Wrap" Opacity="0.72" FontSize="12" />
+    </StackPanel>
+
+    <!-- 产物历史：双击打开，右键复制路径 / 删除 -->
+    <Grid Grid.Row="1" RowDefinitions="Auto,*" Margin="0,12,0,0">
+      <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,6">
+        <TextBlock Grid.Column="0" Text="产物历史" FontWeight="Medium" VerticalAlignment="Center" />
+        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
+          <Button Content="打开产物文件夹" Click="OnOpenOutputFolderClick" />
+          <Button Content="刷新" Click="OnRefreshHistoryClick" />
+        </StackPanel>
+      </Grid>
+      <ListBox Grid.Row="1" x:Name="HistoryList" ItemsSource="{Binding HistoryItems}"
+               DoubleTapped="OnHistoryDoubleTapped">
+        <ListBox.ItemTemplate>
+          <DataTemplate>
+            <Border Background="Transparent" ToolTip.Tip="{Binding FullPath}">
+              <Border.ContextMenu>
+                <ContextMenu>
+                  <MenuItem Header="打开" Click="OnHistoryOpenClick" />
+                  <MenuItem Header="打开产物文件夹" Click="OnHistoryOpenFolderClick" />
+                  <MenuItem Header="复制完整路径" Click="OnHistoryCopyPathClick" />
+                  <MenuItem Header="删除" Click="OnHistoryDeleteClick" />
+                </ContextMenu>
+              </Border.ContextMenu>
+              <Grid ColumnDefinitions="Auto,*,Auto,Auto" Margin="2,3">
+                <views:FileTypeIcon Grid.Column="0" Width="16" Height="16"
+                                   Category="{Binding IconCategory}" AccentColor="{Binding IconColor}"
+                                   VerticalAlignment="Center" Margin="0,0,8,0" />
+                <StackPanel Grid.Column="1" Spacing="1">
+                  <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                  <TextBlock Text="{Binding TypeText}" FontSize="11" Foreground="{DynamicResource TextMutedBrush}" />
+                </StackPanel>
+                <TextBlock Grid.Column="2" Text="{Binding TimeText}" VerticalAlignment="Center"
+                           Foreground="{DynamicResource TextMutedBrush}" FontSize="11" Margin="12,0" />
+                <TextBlock Grid.Column="3" Text="{Binding SizeText}" VerticalAlignment="Center"
+                           HorizontalAlignment="Right" MinWidth="80" TextAlignment="Right" FontSize="11" />
+              </Grid>
+            </Border>
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+    </Grid>
+
+    <!-- 状态栏 -->
+    <Border Grid.Row="2" Margin="0,8,0,0" Padding="8,4" CornerRadius="6" Background="#20808080">
+      <TextBlock Text="{Binding StatusText}" TextWrapping="Wrap" FontSize="12" />
+    </Border>
+  </Grid>
+</UserControl>

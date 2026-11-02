@@ -65,6 +65,51 @@ public class AppSettings
     /// <summary>快捷键配置。</summary>
     public List<HotkeySetting> Hotkeys { get; set; } = HotkeySetting.CreateDefaults();
 
+    /// <summary>全局快捷键配置：系统任何程序在前台时都能触发截图与录屏。</summary>
+    public List<HotkeySetting> GlobalHotkeys { get; set; } = HotkeySetting.CreateGlobalDefaults();
+
+    /// <summary>截图与录屏产物保存目录；留空表示使用「我的图片\TabTaskExplorer\截图录屏」。</summary>
+    public string CaptureSaveDirectory { get; set; } = string.Empty;
+
+    /// <summary>截图完成后是否把图片文件写入系统剪贴板（可在资源管理器直接粘贴）。</summary>
+    public bool CaptureCopyToClipboard { get; set; } = true;
+
+    /// <summary>截图或录屏完成后是否自动打开产物文件夹标签页。</summary>
+    public bool CaptureOpenFolderAfter { get; set; } = true;
+
+    /// <summary>截图与录屏是否包含鼠标指针。</summary>
+    public bool CaptureIncludeCursor { get; set; } = true;
+
+    /// <summary>截图前的延迟秒数：0 表示立即截图。</summary>
+    public int CaptureDelaySeconds { get; set; } = 0;
+
+    /// <summary>录屏帧率（每秒采集画面数量）。</summary>
+    public int CaptureRecordFps { get; set; } = 30;
+
+    /// <summary>录屏画质（H.264 恒定质量参数，数值越小画质越高）。</summary>
+    public int CaptureRecordQuality { get; set; } = 23;
+
+    /// <summary>录屏默认目标：FullScreen / Region / ActiveWindow。</summary>
+    public string CaptureRecordTarget { get; set; } = "FullScreen";
+
+    /// <summary>录屏麦克风设备名；留空表示不录制音频。</summary>
+    public string CaptureMicrophoneDevice { get; set; } = string.Empty;
+
+    /// <summary>FFmpeg 可执行文件完整路径；留空表示自动查找。</summary>
+    public string FfmpegPath { get; set; } = string.Empty;
+
+    /// <summary>上次区域截图的左上角横坐标（物理像素，用于「上次区域」快速截图）。</summary>
+    public int CaptureLastRegionX { get; set; } = 0;
+
+    /// <summary>上次区域截图的左上角纵坐标（物理像素）。</summary>
+    public int CaptureLastRegionY { get; set; } = 0;
+
+    /// <summary>上次区域截图的宽度（物理像素）。</summary>
+    public int CaptureLastRegionWidth { get; set; } = 0;
+
+    /// <summary>上次区域截图的高度（物理像素）。</summary>
+    public int CaptureLastRegionHeight { get; set; } = 0;
+
     /// <summary>固定到快捷访问的路径列表。</summary>
     public List<string> PinnedPaths { get; set; } = new List<string>();
 
@@ -167,6 +212,7 @@ public class AppSettingsStore
                 if (settings != null)
                 {
                     EnsureDefaultHotkeys(settings);
+                    EnsureGlobalHotkeys(settings);
                     EnsureFileOpenRules(settings);
                     EnsureWebSettings(settings);
                     return settings;
@@ -205,15 +251,29 @@ public class AppSettingsStore
     /// </summary>
     private static void EnsureDefaultHotkeys(AppSettings settings)
     {
-        if (settings.Hotkeys == null)
+        settings.Hotkeys = EnsureHotkeyList(settings.Hotkeys, HotkeySetting.CreateDefaults());
+    }
+
+    /// <summary>
+    /// 补齐全局快捷键清单：旧配置文件没有全局热键时写入默认值，
+    /// 已存在的动作保持用户自定义按键不变。
+    /// </summary>
+    private static void EnsureGlobalHotkeys(AppSettings settings)
+    {
+        settings.GlobalHotkeys = EnsureHotkeyList(settings.GlobalHotkeys, HotkeySetting.CreateGlobalDefaults());
+    }
+
+    /// <summary>按动作标识补齐快捷键清单，返回可直接使用的列表。</summary>
+    private static List<HotkeySetting> EnsureHotkeyList(List<HotkeySetting>? current, List<HotkeySetting> defaults)
+    {
+        if (current == null)
         {
-            settings.Hotkeys = HotkeySetting.CreateDefaults();
-            return;
+            return defaults;
         }
-        foreach (HotkeySetting candidate in HotkeySetting.CreateDefaults())
+        foreach (HotkeySetting candidate in defaults)
         {
             bool exists = false;
-            foreach (HotkeySetting existing in settings.Hotkeys)
+            foreach (HotkeySetting existing in current)
             {
                 if (string.Equals(existing.ActionName, candidate.ActionName, StringComparison.Ordinal))
                 {
@@ -223,9 +283,10 @@ public class AppSettingsStore
             }
             if (!exists)
             {
-                settings.Hotkeys.Add(candidate);
+                current.Add(candidate);
             }
         }
+        return current;
     }
 
     /// <summary>

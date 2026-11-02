@@ -64,6 +64,18 @@ public class IdeEditorTabViewModel : INotifyPropertyChanged
         get { return this.fileAccess.LocationText; }
     }
 
+    /// <summary>标签图标分类键。</summary>
+    public string IconCategory
+    {
+        get { return FileIconCatalog.GetCategoryForName(this.fileAccess.FileName); }
+    }
+
+    /// <summary>标签图标强调色。</summary>
+    public string IconColor
+    {
+        get { return FileIconCatalog.GetAccent(this.IconCategory); }
+    }
+
     /// <summary>编辑中的文本内容。</summary>
     public string Text
     {

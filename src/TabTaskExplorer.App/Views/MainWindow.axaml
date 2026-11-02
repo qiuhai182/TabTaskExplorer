@@ -13,10 +13,6 @@
         DragDrop.AllowDrop="True"
         KeyDown="OnWindowKeyDown">
 
-  <Window.Resources>
-    <FontFamily x:Key="IconFont">Segoe MDL2 Assets, Segoe Fluent Icons</FontFamily>
-  </Window.Resources>
-
   <Grid RowDefinitions="Auto,Auto,Auto,Auto,*,Auto">
 
     <!-- ===== 行 0：TabX 风格标题栏（36px，标签条融入标题栏） ===== -->
@@ -26,8 +22,10 @@
             PointerPressed="OnCaptionPointerPressed" DoubleTapped="OnCaptionDoubleTapped">
 
         <!-- 徽标：点击回到此电脑 -->
-        <Button Grid.Column="0" Classes="nav" Width="32" Height="36" Click="OnLogoClick" ToolTip.Tip="此电脑">
-          <Image Source="{DynamicResource LogoIcon}" Width="16" Height="14" />
+        <Button Grid.Column="0" Classes="nav" Width="32" Height="36" Padding="0"
+                HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                Click="OnLogoClick" ToolTip.Tip="此电脑">
+          <views:LogoMark Width="19" Height="19" />
         </Button>
         <Border Grid.Column="1" Width="1" Height="24" Background="{DynamicResource SeparatorBrush}" Margin="2,0" VerticalAlignment="Center" />
 
@@ -60,18 +58,15 @@
                     <MenuItem Header="粘贴" Click="OnTabMenuPasteClick" />
                   </ContextMenu>
                 </Grid.ContextMenu>
-                <TextBlock Grid.Column="0" Text="&#xE8B7;" FontFamily="{StaticResource IconFont}" FontSize="12"
-                           Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" Margin="0,0,6,0" />
+                <views:FileTypeIcon Grid.Column="0" Width="14" Height="14" Category="folder"
+                                   VerticalAlignment="Center" Margin="0,0,6,0" />
                 <TextBlock Grid.Column="1" Text="{Binding Title}" VerticalAlignment="Center" FontSize="12"
                            Foreground="{DynamicResource TextPrimaryBrush}" MaxWidth="246" TextTrimming="CharacterEllipsis" />
                 <Button Grid.Column="2" Width="18" Height="18" Padding="0" Background="Transparent"
+                        HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
                         Click="OnCloseTabClick" VerticalAlignment="Center" ToolTip.Tip="关闭">
-                  <Button.Styles>
-                    <Style Selector="Image.part"><Setter Property="Source" Value="{DynamicResource TabCloseN}" /></Style>
-                    <Style Selector="Button:pointerover Image.part"><Setter Property="Source" Value="{DynamicResource TabCloseH}" /></Style>
-                    <Style Selector="Button:pressed Image.part"><Setter Property="Source" Value="{DynamicResource TabCloseP}" /></Style>
-                  </Button.Styles>
-                  <Image Classes="part" Width="16" Height="16" />
+                  <views:VectorIcon Kind="close" Width="10" Height="10" Thickness="1.4"
+                                    IconBrush="{DynamicResource TextMutedBrush}" />
                 </Button>
               </Grid>
             </DataTemplate>
@@ -80,99 +75,83 @@
 
         <!-- 新建标签 -->
         <Button Grid.Column="4" Classes="nav" Width="28" Height="28" Padding="0" Margin="2,0,6,0"
+                HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
                 VerticalAlignment="Center" Click="OnNewTabClick" ToolTip.Tip="新建标签 (Ctrl+T)">
-          <Button.Styles>
-            <Style Selector="Image.part"><Setter Property="Source" Value="{DynamicResource BtnTabAddN}" /></Style>
-            <Style Selector="Button:pointerover Image.part"><Setter Property="Source" Value="{DynamicResource BtnTabAddH}" /></Style>
-            <Style Selector="Button:pressed Image.part"><Setter Property="Source" Value="{DynamicResource BtnTabAddH}" /></Style>
-          </Button.Styles>
-          <Image Classes="part" Width="24" Height="24" />
+          <views:VectorIcon Kind="plus" Width="14" Height="14" Thickness="1.7"
+                            IconBrush="{DynamicResource TextMutedBrush}" />
         </Button>
 
         <!-- 工具盒子（任务看板）+ IDE 模式切换 -->
         <StackPanel Grid.Column="5" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
           <Button Classes="nav" Width="28" Height="28" Padding="0"
+                  HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
                   VerticalAlignment="Center" Click="OnToolboxClick" ToolTip.Tip="任务看板">
-            <Button.Styles>
-              <Style Selector="Image.part"><Setter Property="Source" Value="{DynamicResource BtnToolboxN}" /></Style>
-              <Style Selector="Button:pointerover Image.part"><Setter Property="Source" Value="{DynamicResource BtnToolboxH}" /></Style>
-              <Style Selector="Button:pressed Image.part"><Setter Property="Source" Value="{DynamicResource BtnToolboxP}" /></Style>
-            </Button.Styles>
-            <Image Classes="part" Width="16" Height="16" />
+            <views:VectorIcon Kind="board" Width="15" Height="15" Thickness="1.6"
+                              IconBrush="{DynamicResource TextMutedBrush}" />
           </Button>
           <Button Classes="nav" Width="28" Height="28" Padding="0"
+                  HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                  VerticalAlignment="Center" Click="OnCaptureClick" ToolTip.Tip="截图与录屏">
+            <views:VectorIcon Kind="camera" Width="15" Height="15" Thickness="1.6"
+                              IconBrush="{DynamicResource TextMutedBrush}" />
+          </Button>
+          <Button Classes="nav" Width="28" Height="28" Padding="0"
+                  HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
                   VerticalAlignment="Center" Click="OnToggleIdeModeClick" ToolTip.Tip="IDE 模式 / 资源管理器模式">
-            <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE943;" FontSize="14"
-                       Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" HorizontalAlignment="Center" />
+            <views:VectorIcon Kind="code" Width="15" Height="15" Thickness="1.6"
+                              IconBrush="{DynamicResource TextMutedBrush}" />
           </Button>
         </StackPanel>
         <Border Grid.Column="6" Width="1" Height="24" Background="{DynamicResource SeparatorBrush}" Margin="2,0" VerticalAlignment="Center" />
 
-        <!-- 主题切换（TabX 同款按钮位） -->
-        <Button Grid.Column="7" Classes="nav" Width="40" Height="36" Padding="0"
+        <!-- 主题切换 -->
+        <Button Grid.Column="7" Classes="nav caption" Width="40" Height="36" Padding="0"
+                HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
                 Click="OnToggleThemeClick" ToolTip.Tip="切换深浅色主题">
-          <Button.Styles>
-            <Style Selector="Image.part"><Setter Property="Source" Value="{DynamicResource BtnThemeN}" /></Style>
-            <Style Selector="Button:pointerover Image.part"><Setter Property="Source" Value="{DynamicResource BtnThemeH}" /></Style>
-            <Style Selector="Button:pressed Image.part"><Setter Property="Source" Value="{DynamicResource BtnThemeP}" /></Style>
-          </Button.Styles>
-          <Image Classes="part" Width="40" Height="34" />
+          <views:VectorIcon Kind="sun" Width="16" Height="16" Thickness="1.6"
+                            IconBrush="{DynamicResource TextMutedBrush}" />
         </Button>
 
         <!-- 接管 / 恢复默认资源管理器 -->
-        <Button Grid.Column="8" x:Name="DefaultExplorerBtn" Classes="nav" Width="40" Height="36" Padding="0"
+        <Button Grid.Column="8" x:Name="DefaultExplorerBtn" Classes="nav caption" Width="40" Height="36" Padding="0"
+                HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
                 Click="OnDefaultExplorerClick" ToolTip.Tip="设为默认资源管理器">
-          <Button.Styles>
-            <Style Selector="Image.part"><Setter Property="Source" Value="{DynamicResource BtnDefaultN}" /></Style>
-            <Style Selector="Button:pointerover Image.part"><Setter Property="Source" Value="{DynamicResource BtnDefaultH}" /></Style>
-            <Style Selector="Button:pressed Image.part"><Setter Property="Source" Value="{DynamicResource BtnDefaultP}" /></Style>
-          </Button.Styles>
-          <Image Classes="part" Width="40" Height="34" />
+          <views:VectorIcon Kind="checkcircle" Width="16" Height="16" Thickness="1.6"
+                            IconBrush="{DynamicResource TextMutedBrush}" />
         </Button>
-        <Button Grid.Column="8" x:Name="RestoreExplorerBtn" Classes="nav" Width="40" Height="36" Padding="0"
+        <Button Grid.Column="8" x:Name="RestoreExplorerBtn" Classes="nav caption" Width="40" Height="36" Padding="0"
+                HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
                 IsVisible="False" Click="OnDefaultExplorerClick" ToolTip.Tip="恢复默认资源管理器">
-          <Button.Styles>
-            <Style Selector="Image.part"><Setter Property="Source" Value="{DynamicResource BtnRecoveryN}" /></Style>
-            <Style Selector="Button:pointerover Image.part"><Setter Property="Source" Value="{DynamicResource BtnRecoveryH}" /></Style>
-            <Style Selector="Button:pressed Image.part"><Setter Property="Source" Value="{DynamicResource BtnRecoveryP}" /></Style>
-          </Button.Styles>
-          <Image Classes="part" Width="40" Height="34" />
+          <views:VectorIcon Kind="undo" Width="16" Height="16" Thickness="1.6"
+                            IconBrush="{DynamicResource TextMutedBrush}" />
         </Button>
 
         <!-- 设置 -->
-        <Button Grid.Column="9" Classes="nav" Width="40" Height="36" Padding="0" Click="OnSettingsClick" ToolTip.Tip="设置">
-          <Button.Styles>
-            <Style Selector="Image.part"><Setter Property="Source" Value="{DynamicResource BtnSettingN}" /></Style>
-            <Style Selector="Button:pointerover Image.part"><Setter Property="Source" Value="{DynamicResource BtnSettingH}" /></Style>
-            <Style Selector="Button:pressed Image.part"><Setter Property="Source" Value="{DynamicResource BtnSettingP}" /></Style>
-          </Button.Styles>
-          <Image Classes="part" Width="40" Height="34" />
+        <Button Grid.Column="9" Classes="nav caption" Width="40" Height="36" Padding="0"
+                HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                Click="OnSettingsClick" ToolTip.Tip="设置">
+          <views:VectorIcon Kind="sliders" Width="16" Height="16" Thickness="1.6"
+                            IconBrush="{DynamicResource TextMutedBrush}" />
         </Button>
 
         <!-- 窗口控制 -->
-        <Button Grid.Column="10" Classes="nav" Width="40" Height="36" Padding="0" Click="OnMinimizeClick" ToolTip.Tip="最小化">
-          <Button.Styles>
-            <Style Selector="Image.part"><Setter Property="Source" Value="{DynamicResource BtnMinN}" /></Style>
-            <Style Selector="Button:pointerover Image.part"><Setter Property="Source" Value="{DynamicResource BtnMinH}" /></Style>
-            <Style Selector="Button:pressed Image.part"><Setter Property="Source" Value="{DynamicResource BtnMinP}" /></Style>
-          </Button.Styles>
-          <Image Classes="part" Width="40" Height="34" />
+        <Button Grid.Column="10" Classes="nav caption" Width="40" Height="36" Padding="0"
+                HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                Click="OnMinimizeClick" ToolTip.Tip="最小化">
+          <views:VectorIcon Kind="minimize" Width="14" Height="14" Thickness="1.5"
+                            IconBrush="{DynamicResource TextMutedBrush}" />
         </Button>
-        <Button Grid.Column="11" Classes="nav" Width="40" Height="36" Padding="0" Click="OnMaximizeClick" ToolTip.Tip="最大化">
-          <Button.Styles>
-            <Style Selector="Image.part"><Setter Property="Source" Value="{DynamicResource BtnMaxN}" /></Style>
-            <Style Selector="Button:pointerover Image.part"><Setter Property="Source" Value="{DynamicResource BtnMaxH}" /></Style>
-            <Style Selector="Button:pressed Image.part"><Setter Property="Source" Value="{DynamicResource BtnMaxP}" /></Style>
-          </Button.Styles>
-          <Image Classes="part" Width="40" Height="34" />
+        <Button Grid.Column="11" Classes="nav caption" Width="40" Height="36" Padding="0"
+                HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                Click="OnMaximizeClick" ToolTip.Tip="最大化">
+          <views:VectorIcon Kind="maximize" Width="12" Height="12" Thickness="1.4"
+                            IconBrush="{DynamicResource TextMutedBrush}" />
         </Button>
-        <Button Grid.Column="12" Classes="nav" Width="40" Height="36" Padding="0" Click="OnCloseWindowClick" ToolTip.Tip="关闭">
-          <Button.Styles>
-            <Style Selector="Image.part"><Setter Property="Source" Value="{DynamicResource BtnCloseN}" /></Style>
-            <Style Selector="Button:pointerover Image.part"><Setter Property="Source" Value="{DynamicResource BtnCloseH}" /></Style>
-            <Style Selector="Button:pressed Image.part"><Setter Property="Source" Value="{DynamicResource BtnCloseP}" /></Style>
-          </Button.Styles>
-          <Image Classes="part" Width="40" Height="34" />
+        <Button Grid.Column="12" Classes="nav caption closecaption" Width="40" Height="36" Padding="0"
+                HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                Click="OnCloseWindowClick" ToolTip.Tip="关闭">
+          <views:VectorIcon Kind="close" Width="13" Height="13" Thickness="1.5"
+                            IconBrush="{DynamicResource TextMutedBrush}" />
         </Button>
       </Grid>
     </Border>
@@ -181,7 +160,8 @@
     <Border Grid.Row="1" Background="{DynamicResource BookmarkBarBrush}" BorderBrush="{DynamicResource SeparatorBrush}" BorderThickness="0,0,0,1"
             IsVisible="{Binding IsExplorerMode}">
       <StackPanel Orientation="Horizontal" Spacing="4" Margin="8,2">
-        <Image Source="{DynamicResource BookmarkLogoIcon}" Width="20" Height="20" VerticalAlignment="Center" />
+        <views:VectorIcon Kind="bookmark" Width="18" Height="18" Thickness="1.6"
+                          IconBrush="{DynamicResource AccentGlyphBrush}" VerticalAlignment="Center" />
         <TextBlock Text=" 可拖动常用文件/文档/文件夹到此，创建成书签，以便能快速找到并打开"
                          FontSize="12" Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center"
                          IsVisible="{Binding HasNoBookmarks}" />
@@ -196,12 +176,17 @@
               <Panel Margin="0,0,2,0">
                 <Button Classes="nav" Click="OnBookmarkItemClick">
                   <StackPanel Orientation="Horizontal" Spacing="5">
-                    <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE8B7;" Foreground="{DynamicResource AccentGlyphBrush}" FontSize="12" VerticalAlignment="Center" />
+                    <views:FileTypeIcon Width="14" Height="14" Category="{Binding IconCategory}"
+                                       AccentColor="{Binding IconColor}" VerticalAlignment="Center" />
                     <TextBlock Text="{Binding Name}" VerticalAlignment="Center" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}" />
                   </StackPanel>
                 </Button>
-                <Button Classes="nav" FontFamily="{StaticResource IconFont}" Content="&#xE711;" Width="16" Height="16" FontSize="8"
-                        HorizontalAlignment="Right" VerticalAlignment="Top" ToolTip.Tip="取消固定" Click="OnBookmarkUnpinClick" />
+                <Button Classes="nav" Width="16" Height="16" Padding="0"
+                        HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                        HorizontalAlignment="Right" VerticalAlignment="Top" ToolTip.Tip="取消固定" Click="OnBookmarkUnpinClick">
+                  <views:VectorIcon Kind="close" Width="9" Height="9" Thickness="1.4"
+                                    IconBrush="{DynamicResource TextMutedBrush}" />
+                </Button>
               </Panel>
             </DataTemplate>
           </ItemsControl.ItemTemplate>
@@ -214,13 +199,15 @@
                 IsVisible="{Binding IsExplorerMode}">
       <Button Classes="nav tool" Click="OnToggleIdeModeClick" ToolTip.Tip="切换到 IDE 模式">
         <StackPanel Orientation="Horizontal" Spacing="5">
-          <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE943;" FontSize="13" Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
+          <views:VectorIcon Kind="code" Width="14" Height="14" Thickness="1.6"
+                            IconBrush="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
           <TextBlock Text="IDE 模式" VerticalAlignment="Center" Foreground="{DynamicResource ToolbarTextBrush}" />
         </StackPanel>
       </Button>
       <Button Classes="nav tool" ToolTip.Tip="切换视图">
         <StackPanel Orientation="Horizontal" Spacing="5">
-          <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE7B3;" FontSize="13" Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
+          <views:VectorIcon Kind="view" Width="14" Height="14" Thickness="1.6"
+                            IconBrush="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
           <TextBlock Text="查看" VerticalAlignment="Center" Foreground="{DynamicResource ToolbarTextBrush}" />
         </StackPanel>
         <Button.Flyout>
@@ -240,7 +227,8 @@
       </Button>
       <Button Classes="nav tool" ToolTip.Tip="复制（含路径与名称变体）">
         <StackPanel Orientation="Horizontal" Spacing="5">
-          <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE8C8;" FontSize="13" Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
+          <views:VectorIcon Kind="copy" Width="14" Height="14" Thickness="1.6"
+                            IconBrush="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
           <TextBlock Text="复制" VerticalAlignment="Center" Foreground="{DynamicResource ToolbarTextBrush}" />
         </StackPanel>
         <Button.Flyout>
@@ -255,55 +243,64 @@
       </Button>
       <Button Classes="nav tool" Click="OnToolbarCutClick" ToolTip.Tip="剪切勾选项">
         <StackPanel Orientation="Horizontal" Spacing="5">
-          <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE8C6;" FontSize="13" Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
+          <views:VectorIcon Kind="cut" Width="14" Height="14" Thickness="1.6"
+                            IconBrush="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
           <TextBlock Text="剪切" VerticalAlignment="Center" Foreground="{DynamicResource ToolbarTextBrush}" />
         </StackPanel>
       </Button>
       <Button Classes="nav tool" Click="OnToolbarPasteClick" ToolTip.Tip="粘贴到当前目录">
         <StackPanel Orientation="Horizontal" Spacing="5">
-          <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE77F;" FontSize="13" Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
+          <views:VectorIcon Kind="paste" Width="14" Height="14" Thickness="1.6"
+                            IconBrush="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
           <TextBlock Text="粘贴" VerticalAlignment="Center" Foreground="{DynamicResource ToolbarTextBrush}" />
         </StackPanel>
       </Button>
       <Button Classes="nav tool" Click="OnToolbarNewFolderClick" ToolTip.Tip="新建文件夹">
         <StackPanel Orientation="Horizontal" Spacing="5">
-          <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE8F4;" FontSize="13" Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
+          <views:VectorIcon Kind="newfolder" Width="14" Height="14" Thickness="1.6"
+                            IconBrush="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
           <TextBlock Text="新建文件夹" VerticalAlignment="Center" Foreground="{DynamicResource ToolbarTextBrush}" />
         </StackPanel>
       </Button>
       <Button Classes="nav tool" Click="OnToolbarBatchRenameClick" ToolTip.Tip="批量改名（先勾选条目）">
         <StackPanel Orientation="Horizontal" Spacing="5">
-          <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE8AC;" FontSize="13" Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
+          <views:VectorIcon Kind="rename" Width="14" Height="14" Thickness="1.6"
+                            IconBrush="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
           <TextBlock Text="批量改名" VerticalAlignment="Center" Foreground="{DynamicResource ToolbarTextBrush}" />
         </StackPanel>
       </Button>
       <Button Classes="nav tool" Click="OnToolbarEncodeConvertClick" ToolTip.Tip="编码转换（先勾选条目，转换文件名编码）">
         <StackPanel Orientation="Horizontal" Spacing="5">
-          <TextBlock Text="?" FontSize="13" Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
+          <views:VectorIcon Kind="encode" Width="14" Height="14" Thickness="1.6"
+                            IconBrush="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
           <TextBlock Text="编码转换" VerticalAlignment="Center" Foreground="{DynamicResource ToolbarTextBrush}" />
         </StackPanel>
       </Button>
       <Button Classes="nav tool" Click="OnToolbarDeleteClick" ToolTip.Tip="删除勾选项（Windows 移入回收站）">
         <StackPanel Orientation="Horizontal" Spacing="5">
-          <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE74D;" FontSize="13" Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
+          <views:VectorIcon Kind="delete" Width="14" Height="14" Thickness="1.6"
+                            IconBrush="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
           <TextBlock Text="回收站" VerticalAlignment="Center" Foreground="{DynamicResource ToolbarTextBrush}" />
         </StackPanel>
       </Button>
       <Button Classes="nav tool" Click="OnToolbarHiddenClick" ToolTip.Tip="显示 / 隐藏隐藏条目">
         <StackPanel Orientation="Horizontal" Spacing="5">
-          <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE7B3;" FontSize="13" Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
+          <views:VectorIcon Kind="eye" Width="14" Height="14" Thickness="1.6"
+                            IconBrush="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
           <TextBlock Text="显示隐藏条目" VerticalAlignment="Center" Foreground="{DynamicResource ToolbarTextBrush}" />
         </StackPanel>
       </Button>
       <Button Classes="nav tool" Click="OnToolbarInfoPaneClick" ToolTip.Tip="显示 / 隐藏详细信息窗格">
         <StackPanel Orientation="Horizontal" Spacing="5">
-          <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE7C9;" FontSize="13" Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
+          <views:VectorIcon Kind="info" Width="14" Height="14" Thickness="1.6"
+                            IconBrush="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
           <TextBlock Text="显示详细信息窗格" VerticalAlignment="Center" Foreground="{DynamicResource ToolbarTextBrush}" />
         </StackPanel>
       </Button>
       <Button Classes="nav tool" Click="OnToolbarRefreshClick" ToolTip.Tip="刷新 (F5)">
         <StackPanel Orientation="Horizontal" Spacing="5">
-          <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE72C;" FontSize="13" Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
+          <views:VectorIcon Kind="refresh" Width="14" Height="14" Thickness="1.6"
+                            IconBrush="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
           <TextBlock Text="刷新" VerticalAlignment="Center" Foreground="{DynamicResource ToolbarTextBrush}" />
         </StackPanel>
       </Button>
@@ -312,9 +309,15 @@
     <!-- ===== 行 3：导航 + 可编辑地址栏（点击空白即编辑）+ 最近 / 刷新 / 收藏 + 搜索 ===== -->
     <Grid Grid.Row="3" ColumnDefinitions="Auto,*,240" Margin="6,2,6,4" IsVisible="{Binding IsExplorerMode}">
       <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="2">
-        <Button Classes="nav tool" FontFamily="{StaticResource IconFont}" Content="&#xE72B;" Click="OnBackClick" ToolTip.Tip="后退" />
-        <Button Classes="nav tool" FontFamily="{StaticResource IconFont}" Content="&#xE72A;" Click="OnForwardClick" ToolTip.Tip="前进" />
-        <Button Classes="nav tool" FontFamily="{StaticResource IconFont}" Content="&#xE74A;" Click="OnUpClick" ToolTip.Tip="上一级" />
+        <Button Classes="nav tool" Click="OnBackClick" ToolTip.Tip="后退">
+          <views:VectorIcon Kind="back" Width="14" Height="14" Thickness="1.6" IconBrush="{DynamicResource TextMutedBrush}" />
+        </Button>
+        <Button Classes="nav tool" Click="OnForwardClick" ToolTip.Tip="前进">
+          <views:VectorIcon Kind="forward" Width="14" Height="14" Thickness="1.6" IconBrush="{DynamicResource TextMutedBrush}" />
+        </Button>
+        <Button Classes="nav tool" Click="OnUpClick" ToolTip.Tip="上一级">
+          <views:VectorIcon Kind="up" Width="14" Height="14" Thickness="1.6" IconBrush="{DynamicResource TextMutedBrush}" />
+        </Button>
       </StackPanel>
       <Border Grid.Column="1" x:Name="AddressBarBorder" Margin="6,0,0,0" Background="{DynamicResource ChromeBrush}" CornerRadius="3" MinHeight="30"
               BorderBrush="{DynamicResource AddressBarBorderBrush}" BorderThickness="1">
@@ -326,7 +329,10 @@
             <StackPanel x:Name="BreadcrumbPanel" Orientation="Horizontal" Spacing="1" Margin="4,2" VerticalAlignment="Center" />
             <TextBox x:Name="AddressBox" IsVisible="False" PlaceholderText="输入路径后按回车跳转" KeyDown="OnAddressKeyDown" LostFocus="OnAddressBoxLostFocus" />
           </Panel>
-          <Button Grid.Column="1" x:Name="RecentButton" Classes="nav" FontFamily="{StaticResource IconFont}" Content="&#xE81C;" Width="30" Click="OnRecentClick" ToolTip.Tip="最近访问">
+          <Button Grid.Column="1" x:Name="RecentButton" Classes="nav" Width="30"
+                  HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                  Click="OnRecentClick" ToolTip.Tip="最近访问">
+            <views:VectorIcon Kind="clock" Width="14" Height="14" Thickness="1.6" IconBrush="{DynamicResource TextMutedBrush}" />
             <Button.Flyout>
               <Flyout Placement="BottomEdgeAlignedLeft">
                 <ListBox x:Name="RecentList" ItemsSource="{Binding RecentPaths}" MaxHeight="320" MinWidth="380"
@@ -340,8 +346,16 @@
               </Flyout>
             </Button.Flyout>
           </Button>
-          <Button Grid.Column="2" Classes="nav" FontFamily="{StaticResource IconFont}" Content="&#xE72C;" Width="30" Click="OnAddressRefreshClick" ToolTip.Tip="刷新 (F5)" />
-          <Button Grid.Column="3" Classes="nav" FontFamily="{StaticResource IconFont}" Content="&#xE735;" Width="30" Click="OnPinClick" ToolTip.Tip="收藏当前文件夹到书签" />
+          <Button Grid.Column="2" Classes="nav" Width="30"
+                  HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                  Click="OnAddressRefreshClick" ToolTip.Tip="刷新 (F5)">
+            <views:VectorIcon Kind="refresh" Width="14" Height="14" Thickness="1.6" IconBrush="{DynamicResource TextMutedBrush}" />
+          </Button>
+          <Button Grid.Column="3" Classes="nav" Width="30"
+                  HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                  Click="OnPinClick" ToolTip.Tip="收藏当前文件夹到书签">
+            <views:VectorIcon Kind="bookmark" Width="14" Height="14" Thickness="1.6" IconBrush="{DynamicResource TextMutedBrush}" />
+          </Button>
         </Grid>
       </Border>
       <TextBox Grid.Column="2" x:Name="SearchBox" Width="200" PlaceholderText="搜索当前目录" TextChanged="OnSearchTextChanged" />
@@ -354,7 +368,8 @@
         <ScrollViewer>
           <StackPanel Margin="4">
             <StackPanel Orientation="Horizontal" Spacing="6" Margin="4,2">
-              <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE735;" Foreground="{DynamicResource AccentGlyphBrush}" VerticalAlignment="Center" />
+              <views:VectorIcon Kind="bookmark" Width="14" Height="14" Thickness="1.6"
+                                IconBrush="{DynamicResource AccentGlyphBrush}" VerticalAlignment="Center" />
               <TextBlock Text="快捷访问" FontWeight="Medium" Foreground="{DynamicResource AccentGlyphBrush}" VerticalAlignment="Center" />
             </StackPanel>
             <ListBox x:Name="PinnedNavList" ItemsSource="{Binding QuickAccessItems}" SelectionMode="Single"
@@ -368,7 +383,8 @@
                         <MenuItem Header="粘贴到该文件夹" Click="OnNavMenuPasteClick" />
                       </ContextMenu>
                     </StackPanel.ContextMenu>
-                    <TextBlock FontFamily="{StaticResource IconFont}" Text="{Binding IconGlyph}" Foreground="{DynamicResource AccentGlyphBrush}" FontSize="13" VerticalAlignment="Center" />
+                    <views:FileTypeIcon Width="15" Height="15" Category="{Binding IconCategory}"
+                                       AccentColor="{Binding IconColor}" VerticalAlignment="Center" />
                     <TextBlock Text="{Binding Name}" VerticalAlignment="Center" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}" />
                   </StackPanel>
                 </DataTemplate>
@@ -378,7 +394,8 @@
             <!-- 此电脑分组标题：点击即可导航到此电脑根视图 -->
             <Button Classes="nav" HorizontalAlignment="Stretch" Margin="4,14,4,2" Click="OnThisPcHeaderClick" ToolTip.Tip="导航到此电脑">
               <StackPanel Orientation="Horizontal" Spacing="6">
-                <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE7F8;" Foreground="{DynamicResource AccentGlyphBrush}" VerticalAlignment="Center" />
+                <views:VectorIcon Kind="monitor" Width="14" Height="14" Thickness="1.6"
+                                  IconBrush="{DynamicResource AccentGlyphBrush}" VerticalAlignment="Center" />
                 <TextBlock Text="此电脑" FontWeight="Medium" Foreground="{DynamicResource AccentGlyphBrush}" VerticalAlignment="Center" />
               </StackPanel>
             </Button>
@@ -393,7 +410,8 @@
                         <MenuItem Header="粘贴到该文件夹" Click="OnNavMenuPasteClick" />
                       </ContextMenu>
                     </StackPanel.ContextMenu>
-                    <TextBlock FontFamily="{StaticResource IconFont}" Text="{Binding IconGlyph}" Foreground="{DynamicResource AccentGlyphBrush}" FontSize="13" VerticalAlignment="Center" />
+                    <views:FileTypeIcon Width="15" Height="15" Category="{Binding IconCategory}"
+                                       AccentColor="{Binding IconColor}" VerticalAlignment="Center" />
                     <TextBlock Text="{Binding Name}" VerticalAlignment="Center" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}" />
                   </StackPanel>
                 </DataTemplate>
@@ -401,12 +419,14 @@
             </ListBox>
 
             <StackPanel Orientation="Horizontal" Spacing="6" Margin="4,14,4,2">
-              <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE968;" Foreground="{DynamicResource AccentGlyphBrush}" VerticalAlignment="Center" />
+              <views:VectorIcon Kind="globe" Width="14" Height="14" Thickness="1.6"
+                                IconBrush="{DynamicResource AccentGlyphBrush}" VerticalAlignment="Center" />
               <TextBlock Text="网络" FontWeight="Medium" Foreground="{DynamicResource AccentGlyphBrush}" VerticalAlignment="Center" />
             </StackPanel>
             <Button Classes="nav" HorizontalAlignment="Stretch" Click="OnConnectionsClick">
               <StackPanel Orientation="Horizontal" Spacing="7">
-                <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE968;" Foreground="{DynamicResource AccentGlyphBrush}" FontSize="13" VerticalAlignment="Center" />
+                <views:VectorIcon Kind="globe" Width="15" Height="15" Thickness="1.6"
+                                  IconBrush="{DynamicResource AccentGlyphBrush}" VerticalAlignment="Center" />
                 <TextBlock Text="连接管理" VerticalAlignment="Center" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}" />
               </StackPanel>
             </Button>
@@ -414,7 +434,8 @@
             <!-- 全局搜索（Everything IPC 内核加速） -->
             <Button Classes="nav" HorizontalAlignment="Stretch" Click="OnGlobalSearchClick">
               <StackPanel Orientation="Horizontal" Spacing="7">
-                <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE721;" Foreground="{DynamicResource AccentGlyphBrush}" FontSize="13" VerticalAlignment="Center" />
+                <views:VectorIcon Kind="search" Width="15" Height="15" Thickness="1.6"
+                                  IconBrush="{DynamicResource AccentGlyphBrush}" VerticalAlignment="Center" />
                 <TextBlock Text="全局搜索" VerticalAlignment="Center" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}" />
               </StackPanel>
             </Button>
@@ -422,7 +443,8 @@
             <!-- 磁盘视图（WizTree 逆向成果合并：目录占用统计） -->
             <Button Classes="nav" HorizontalAlignment="Stretch" Click="OnDiskViewClick">
               <StackPanel Orientation="Horizontal" Spacing="7">
-                <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE9F4;" Foreground="{DynamicResource AccentGlyphBrush}" FontSize="13" VerticalAlignment="Center" />
+                <views:VectorIcon Kind="donut" Width="15" Height="15" Thickness="1.6"
+                                  IconBrush="{DynamicResource AccentGlyphBrush}" VerticalAlignment="Center" />
                 <TextBlock Text="磁盘视图" VerticalAlignment="Center" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}" />
               </StackPanel>
             </Button>
@@ -430,8 +452,18 @@
             <!-- 进程监控（跨平台任务管理器：资源摘要 + 进程列表） -->
             <Button Classes="nav" HorizontalAlignment="Stretch" Click="OnProcessMonitorClick">
               <StackPanel Orientation="Horizontal" Spacing="7">
-                <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE9F5;" Foreground="{DynamicResource AccentGlyphBrush}" FontSize="13" VerticalAlignment="Center" />
+                <views:VectorIcon Kind="activity" Width="15" Height="15" Thickness="1.6"
+                                  IconBrush="{DynamicResource AccentGlyphBrush}" VerticalAlignment="Center" />
                 <TextBlock Text="进程监控" VerticalAlignment="Center" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}" />
+              </StackPanel>
+            </Button>
+
+            <!-- 截图与录屏（Screenpresso 逆向成果合并：截图 / 录屏 / 全局快捷键 / 产物历史） -->
+            <Button Classes="nav" HorizontalAlignment="Stretch" Click="OnCaptureClick">
+              <StackPanel Orientation="Horizontal" Spacing="7">
+                <views:VectorIcon Kind="camera" Width="15" Height="15" Thickness="1.6"
+                                  IconBrush="{DynamicResource AccentGlyphBrush}" VerticalAlignment="Center" />
+                <TextBlock Text="截图与录屏" VerticalAlignment="Center" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}" />
               </StackPanel>
             </Button>
           </StackPanel>
@@ -470,6 +502,9 @@
           </DataTemplate>
           <DataTemplate DataType="vm:ProcessPanelViewModel">
             <views:ProcessPanel />
+          </DataTemplate>
+          <DataTemplate DataType="vm:CaptureTabViewModel">
+            <views:CapturePanel />
           </DataTemplate>
         </ContentControl.DataTemplates>
       </ContentControl>

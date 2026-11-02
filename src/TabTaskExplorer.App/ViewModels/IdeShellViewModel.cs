@@ -937,6 +937,8 @@ public class IdeShellViewModel : INotifyPropertyChanged
             editorMirror.DisplayTitle = editor.DisplayTitle;
             editorMirror.ToolTipText = editor.ToolTipText;
             editorMirror.IsDirty = editor.IsDirty;
+            editorMirror.IconCategory = editor.IconCategory;
+            editorMirror.IconColor = editor.IconColor;
             mirror.Editors.Add(editorMirror);
             if (object.ReferenceEquals(editor, this.selectedEditor))
             {
@@ -979,7 +981,7 @@ public class IdeShellViewModel : INotifyPropertyChanged
         node.IsDirectory = item.IsDirectory;
         node.IsExpanded = item.IsExpanded;
         node.IsPlaceholder = item.IsPlaceholder;
-        node.IconGlyph = item.IconGlyph;
+        node.IconCategory = item.IconCategory;
         node.IconColor = item.IconColor;
         target.Add(node);
         if (item.IsDirectory && item.IsExpanded)

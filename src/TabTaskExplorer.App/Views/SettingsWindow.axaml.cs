@@ -1,8 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
+using Avalonia.Platform.Storage;
 using TabTaskExplorer.App.Services;
 using TabTaskExplorer.Kernel.Abstractions;
 using TabTaskExplorer.Kernel.Media;
@@ -57,6 +59,8 @@ public partial class SettingsWindow : Window
     private string rightMenuIntroText = string.Empty;
     // 是否已完成首次加载，避免每次切回该分页都重新扫描
     private bool systemMenuLoaded;
+    // 截图录屏分页是否已经按当前设置初始化过控件
+    private bool capturePageLoaded;
     // 填充列表期间屏蔽开关事件，避免回填勾选状态被当成用户启停操作
     private bool suppressSystemMenuToggle;
 
@@ -75,7 +79,7 @@ public partial class SettingsWindow : Window
     }
 
     /// <summary>绑定共享设置对象与系统右键菜单服务：改动即时生效，点确定保存到磁盘。</summary>
-    public SettingsWindow(AppSettings settings, ISystemContextMenuService systemContextMenus) : this()
+    public SettingsWindow(AppSettings settings, ISystemContextMenuService systemContextMenus, string captureEnvironmentText) : this()
     {
         this.systemContextMenus = systemContextMenus;
         this.DataContext = settings;
@@ -94,6 +98,10 @@ public partial class SettingsWindow : Window
             }
         }
         this.InitializeWebSettings(settings);
+        if (!string.IsNullOrEmpty(captureEnvironmentText))
+        {
+            this.CaptureEnvironmentText.Text = captureEnvironmentText;
+        }
     }
 
     private void OnSectionChanged(object? sender, SelectionChangedEventArgs e)
@@ -102,7 +110,8 @@ public partial class SettingsWindow : Window
         // XAML 初始化时 ListBox 会因第一项 IsSelected="True" 触发本事件，此时各分页容器尚未创建，直接跳过
         if (this.BasicPage == null || this.MousePage == null || this.FilePage == null
             || this.EditorPage == null || this.OpenWithPage == null || this.MediaPage == null
-            || this.WebPage == null || this.RightMenuPage == null || this.AboutPage == null)
+            || this.WebPage == null || this.RightMenuPage == null || this.CapturePage == null
+            || this.AboutPage == null)
         {
             UiLogger.Log("设置窗口", "分页切换：初始化阶段分页容器尚未创建，跳过 index=" + index);
             return;
@@ -116,10 +125,15 @@ public partial class SettingsWindow : Window
         this.MediaPage.IsVisible = index == 5;
         this.WebPage.IsVisible = index == 6;
         this.RightMenuPage.IsVisible = index == 7;
-        this.AboutPage.IsVisible = index == 8;
+        this.CapturePage.IsVisible = index == 8;
+        this.AboutPage.IsVisible = index == 9;
         if (index == 5 && !this.mediaPageLoaded)
         {
             this.LoadMediaSettings();
+        }
+        if (index == 8 && !this.capturePageLoaded)
+        {
+            this.LoadCaptureSettings();
         }
         if (index == 7 && !this.systemMenuLoaded)
         {
@@ -185,6 +199,7 @@ public partial class SettingsWindow : Window
         this.CommitEditorSettings();
         this.CommitOpenRules();
         this.CommitMediaSettings();
+        this.CommitCaptureSettings();
         AppSettings? settings = this.DataContext as AppSettings;
         if (settings != null)
         {
@@ -195,7 +210,17 @@ public partial class SettingsWindow : Window
                 + " 默认打开模式=" + settings.DefaultOpenMode
                 + " 打开方式默认优先级=" + settings.FileOpenDefaultPriority
                 + " 打开方式规则数=" + (settings.FileOpenRules != null ? settings.FileOpenRules.Count : 0)
-                + " 快捷键条数=" + settings.Hotkeys.Count);
+                + " 快捷键条数=" + settings.Hotkeys.Count
+                + " 全局快捷键条数=" + settings.GlobalHotkeys.Count
+                + " 截图保存目录=" + (string.IsNullOrEmpty(settings.CaptureSaveDirectory) ? "默认图片目录" : settings.CaptureSaveDirectory)
+                + " 截图后复制到剪贴板=" + settings.CaptureCopyToClipboard
+                + " 完成后自动打开产物文件夹=" + settings.CaptureOpenFolderAfter
+                + " 截图包含鼠标指针=" + settings.CaptureIncludeCursor
+                + " 截图延迟秒数=" + settings.CaptureDelaySeconds
+                + " 录屏帧率=" + settings.CaptureRecordFps
+                + " 录屏画质参数=" + settings.CaptureRecordQuality
+                + " 录屏麦克风设备=" + (string.IsNullOrEmpty(settings.CaptureMicrophoneDevice) ? "未启用" : settings.CaptureMicrophoneDevice)
+                + " FFmpeg路径=" + (string.IsNullOrEmpty(settings.FfmpegPath) ? "自动查找" : settings.FfmpegPath));
             foreach (WebPortSetting port in settings.WebPorts)
             {
                 UiLogger.Log("配置更改", "网页端端口：端口号=" + port.Port + " 是否启用=" + port.Enabled
@@ -295,6 +320,184 @@ public partial class SettingsWindow : Window
         UiLogger.Log("配置更改", "媒体设置：打开方式=" + settings.MediaOpenMode
             + " 播放列表范围=" + settings.MediaPlaylistScope
             + " 解码上限=" + settings.MediaImageMaxDecodeSize);
+    }
+
+    /// <summary>按当前设置初始化截图录屏分页的控件。</summary>
+    private void LoadCaptureSettings()
+    {
+        AppSettings? settings = this.DataContext as AppSettings;
+        if (settings == null)
+        {
+            return;
+        }
+        this.capturePageLoaded = true;
+        this.CaptureSaveDirectoryBox.Text = settings.CaptureSaveDirectory;
+        this.FfmpegPathBox.Text = settings.FfmpegPath;
+        this.CaptureMicrophoneBox.Text = settings.CaptureMicrophoneDevice;
+        int[] delays = new int[] { 0, 3, 5, 10 };
+        this.CaptureDelayBox.SelectedIndex = FindIntegerIndex(delays, settings.CaptureDelaySeconds, 0);
+        int[] frames = new int[] { 24, 30, 60 };
+        this.CaptureFpsBox.SelectedIndex = FindIntegerIndex(frames, settings.CaptureRecordFps, 1);
+        int[] qualities = new int[] { 18, 23, 28 };
+        this.CaptureQualityBox.SelectedIndex = FindIntegerIndex(qualities, settings.CaptureRecordQuality, 1);
+        UiLogger.Log("设置窗口", "截图录屏分页初始化：保存目录=" + (string.IsNullOrEmpty(settings.CaptureSaveDirectory) ? "默认图片目录" : settings.CaptureSaveDirectory)
+            + " FFmpeg路径=" + (string.IsNullOrEmpty(settings.FfmpegPath) ? "自动查找" : settings.FfmpegPath)
+            + " 延迟秒数=" + settings.CaptureDelaySeconds
+            + " 帧率=" + settings.CaptureRecordFps
+            + " 画质参数=" + settings.CaptureRecordQuality
+            + " 麦克风设备=" + (string.IsNullOrEmpty(settings.CaptureMicrophoneDevice) ? "未启用" : settings.CaptureMicrophoneDevice)
+            + " 全局快捷键条数=" + settings.GlobalHotkeys.Count);
+    }
+
+    /// <summary>提交截图录屏分页设置：文本与下拉框写入共享设置对象，确定后由主窗口统一保存。</summary>
+    private void CommitCaptureSettings()
+    {
+        AppSettings? settings = this.DataContext as AppSettings;
+        if (settings == null)
+        {
+            return;
+        }
+        settings.CaptureSaveDirectory = this.CaptureSaveDirectoryBox.Text == null
+            ? string.Empty : this.CaptureSaveDirectoryBox.Text.Trim();
+        settings.FfmpegPath = this.FfmpegPathBox.Text == null
+            ? string.Empty : this.FfmpegPathBox.Text.Trim();
+        settings.CaptureMicrophoneDevice = this.CaptureMicrophoneBox.Text == null
+            ? string.Empty : this.CaptureMicrophoneBox.Text.Trim();
+        int[] delays = new int[] { 0, 3, 5, 10 };
+        int delayIndex = this.CaptureDelayBox.SelectedIndex;
+        if (delayIndex < 0 || delayIndex >= delays.Length)
+        {
+            delayIndex = 0;
+        }
+        settings.CaptureDelaySeconds = delays[delayIndex];
+        int[] frames = new int[] { 24, 30, 60 };
+        int frameIndex = this.CaptureFpsBox.SelectedIndex;
+        if (frameIndex < 0 || frameIndex >= frames.Length)
+        {
+            frameIndex = 1;
+        }
+        settings.CaptureRecordFps = frames[frameIndex];
+        int[] qualities = new int[] { 18, 23, 28 };
+        int qualityIndex = this.CaptureQualityBox.SelectedIndex;
+        if (qualityIndex < 0 || qualityIndex >= qualities.Length)
+        {
+            qualityIndex = 1;
+        }
+        settings.CaptureRecordQuality = qualities[qualityIndex];
+        UiLogger.Log("配置更改", "截图录屏设置：保存目录=" + (string.IsNullOrEmpty(settings.CaptureSaveDirectory) ? "默认图片目录" : settings.CaptureSaveDirectory)
+            + " FFmpeg路径=" + (string.IsNullOrEmpty(settings.FfmpegPath) ? "自动查找" : settings.FfmpegPath)
+            + " 延迟秒数=" + settings.CaptureDelaySeconds
+            + " 帧率=" + settings.CaptureRecordFps
+            + " 画质参数=" + settings.CaptureRecordQuality
+            + " 麦克风设备=" + (string.IsNullOrEmpty(settings.CaptureMicrophoneDevice) ? "未启用" : settings.CaptureMicrophoneDevice));
+    }
+
+    /// <summary>查找整数值在候选数组中的索引；不存在时返回默认索引。</summary>
+    private static int FindIntegerIndex(int[] options, int value, int fallbackIndex)
+    {
+        for (int index = 0; index < options.Length; index++)
+        {
+            if (options[index] == value)
+            {
+                return index;
+            }
+        }
+        return fallbackIndex;
+    }
+
+    /// <summary>浏览选择截图录屏产物保存目录。</summary>
+    private async void OnBrowseCaptureFolderClick(object? sender, RoutedEventArgs e)
+    {
+        TopLevel? owner = TopLevel.GetTopLevel(this);
+        if (owner == null)
+        {
+            UiLogger.Log("设置窗口", "浏览截图保存目录：顶层窗口未就绪，结果=未打开选择框");
+            return;
+        }
+        FolderPickerOpenOptions options = new FolderPickerOpenOptions();
+        options.Title = "选择截图与录屏产物保存目录";
+        options.AllowMultiple = false;
+        IReadOnlyList<IStorageFolder> folders = await owner.StorageProvider.OpenFolderPickerAsync(options);
+        if (folders.Count == 0)
+        {
+            UiLogger.Log("设置窗口", "浏览截图保存目录：用户取消选择");
+            return;
+        }
+        string? localPath = folders[0].TryGetLocalPath();
+        if (string.IsNullOrEmpty(localPath))
+        {
+            UiLogger.Log("设置窗口", "浏览截图保存目录：选择结果无法转换为本机路径");
+            return;
+        }
+        this.CaptureSaveDirectoryBox.Text = localPath;
+        UiLogger.Log("设置窗口", "浏览截图保存目录：已选择目录=" + localPath);
+    }
+
+    /// <summary>恢复默认产物目录（留空即使用「我的图片\TabTaskExplorer\截图录屏」）。</summary>
+    private void OnResetCaptureFolderClick(object? sender, RoutedEventArgs e)
+    {
+        this.CaptureSaveDirectoryBox.Text = string.Empty;
+        UiLogger.Log("设置窗口", "恢复默认截图保存目录：已清空自定义目录，将使用默认图片目录");
+    }
+
+    /// <summary>浏览选择 FFmpeg 可执行文件。</summary>
+    private async void OnBrowseFfmpegClick(object? sender, RoutedEventArgs e)
+    {
+        TopLevel? owner = TopLevel.GetTopLevel(this);
+        if (owner == null)
+        {
+            UiLogger.Log("设置窗口", "浏览 FFmpeg：顶层窗口未就绪，结果=未打开选择框");
+            return;
+        }
+        FilePickerOpenOptions options = new FilePickerOpenOptions();
+        options.Title = "选择 FFmpeg 可执行文件";
+        options.AllowMultiple = false;
+        List<FilePickerFileType> fileTypes = new List<FilePickerFileType>();
+        FilePickerFileType executableType = new FilePickerFileType("FFmpeg 可执行文件");
+        executableType.Patterns = new List<string> { "ffmpeg.exe", "ffmpeg" };
+        fileTypes.Add(executableType);
+        options.FileTypeFilter = fileTypes;
+        IReadOnlyList<IStorageFile> files = await owner.StorageProvider.OpenFilePickerAsync(options);
+        if (files.Count == 0)
+        {
+            UiLogger.Log("设置窗口", "浏览 FFmpeg：用户取消选择");
+            return;
+        }
+        string? localPath = files[0].TryGetLocalPath();
+        if (string.IsNullOrEmpty(localPath))
+        {
+            UiLogger.Log("设置窗口", "浏览 FFmpeg：选择结果无法转换为本机路径");
+            return;
+        }
+        this.FfmpegPathBox.Text = localPath;
+        UiLogger.Log("设置窗口", "浏览 FFmpeg：已选择文件=" + localPath);
+    }
+
+    /// <summary>清空自定义 FFmpeg 路径，恢复自动查找。</summary>
+    private void OnClearFfmpegPathClick(object? sender, RoutedEventArgs e)
+    {
+        this.FfmpegPathBox.Text = string.Empty;
+        UiLogger.Log("设置窗口", "FFmpeg 路径已清空：将按 PATH 与程序目录自动查找");
+    }
+
+    /// <summary>把全局快捷键恢复为默认按键。</summary>
+    private void OnResetGlobalHotkeysClick(object? sender, RoutedEventArgs e)
+    {
+        if (this.DataContext is AppSettings settings)
+        {
+            settings.GlobalHotkeys.Clear();
+            foreach (HotkeySetting setting in HotkeySetting.CreateGlobalDefaults())
+            {
+                settings.GlobalHotkeys.Add(setting);
+            }
+            UiLogger.Log("设置窗口", "恢复默认全局快捷键：已重建默认项"
+                + " 全局快捷键条数=" + settings.GlobalHotkeys.Count
+                + " 结果=成功");
+        }
+        else
+        {
+            UiLogger.Log("设置窗口", "恢复默认全局快捷键失败：设置数据未绑定 结果=失败");
+        }
     }
 
     /// <summary>提交打开方式设置：扩展名统一规整为小写带点形式，重复类型只保留一条规则。</summary>

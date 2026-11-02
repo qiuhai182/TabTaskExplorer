@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Avalonia.Controls;
 using TabTaskExplorer.App.Services;
+using TabTaskExplorer.App.Services.Capture;
 using TabTaskExplorer.Kernel.Abstractions;
 using TabTaskExplorer.Kernel.Media;
 using TabTaskExplorer.Kernel.Models;
@@ -24,8 +25,14 @@ public class QuickAccessItem
     /// <summary>跳转目标路径。</summary>
     public string Path { get; set; } = string.Empty;
 
-    /// <summary>图标字符（Segoe MDL2）。</summary>
-    public string IconGlyph { get; set; } = "\uE8B7";
+    /// <summary>图标分类键（见 <see cref="FileIconCatalog"/>）。</summary>
+    public string IconCategory { get; set; } = FileIconCatalog.Folder;
+
+    /// <summary>图标强调色：跟随分类自动取色。</summary>
+    public string IconColor
+    {
+        get { return FileIconCatalog.GetAccent(this.IconCategory); }
+    }
 }
 
 /// <summary>
@@ -35,6 +42,7 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
 {
     private readonly IServiceProvider services;
     private readonly AppSettingsStore settingsStore = new AppSettingsStore();
+    private readonly CaptureCoordinator captureCoordinator;
     private object? selectedTab;
     private bool showToolbar = true;
     private bool showBookmarkBar = true;
@@ -133,6 +141,11 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
                 {
                     newProcess.SetForeground(true);
                 }
+                // 截图录屏标签切入台前时刷新产物历史与当前录制状态
+                if (value is CaptureTabViewModel newCaptureTab)
+                {
+                    newCaptureTab.OnActivated();
+                }
             }
             this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SelectedTab)));
         }
@@ -194,6 +207,7 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
     {
         this.services = services;
         this.Settings = this.settingsStore.Load();
+        this.captureCoordinator = services.GetRequiredService<CaptureCoordinator>();
         this.IdeShell = new IdeShellViewModel(this.Settings, services);
         this.FillThisPcItems();
         this.FillQuickAccessItems();
@@ -228,6 +242,7 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
     {
         this.services = services;
         this.Settings = sharedSettings;
+        this.captureCoordinator = services.GetRequiredService<CaptureCoordinator>();
         this.IdeShell = new IdeShellViewModel(this.Settings, services);
         this.FillThisPcItems();
         this.FillQuickAccessItems();
@@ -581,6 +596,66 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
         UiLogger.Log("程序行为", "新建磁盘视图标签：标签总数=" + this.Tabs.Count);
     }
 
+    /// <summary>打开截图与录屏标签页（已存在时直接选中）。</summary>
+    public void OpenCaptureTab()
+    {
+        foreach (object tab in this.Tabs)
+        {
+            if (tab is CaptureTabViewModel captureTab)
+            {
+                this.SelectedTab = captureTab;
+                UiLogger.Log("截图录屏", "切换到已打开的截图录屏标签：标签总数=" + this.Tabs.Count);
+                return;
+            }
+        }
+        CaptureTabViewModel newCaptureTab = new CaptureTabViewModel(this.Settings, this.captureCoordinator);
+        this.Tabs.Add(newCaptureTab);
+        this.SelectedTab = newCaptureTab;
+        UiLogger.Log("截图录屏", "新建截图录屏标签：标签总数=" + this.Tabs.Count);
+    }
+
+    /// <summary>
+    /// 打开产物文件夹标签：同一路径的文件标签已存在时直接选中并刷新，
+    /// 否则新建文件标签；截图与录屏完成后由协调器调用，满足「自动弹出产物文件夹视图」。
+    /// </summary>
+    public void OpenFolderTab(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            UiLogger.Log("截图录屏", "打开产物文件夹标签被跳过：路径为空");
+            return;
+        }
+        string normalizedPath = Path.GetFullPath(path);
+        foreach (object tab in this.Tabs)
+        {
+            FileTabViewModel? existing = tab as FileTabViewModel;
+            if (existing != null && string.Equals(existing.CurrentPath, normalizedPath, StringComparison.OrdinalIgnoreCase))
+            {
+                this.SelectedTab = existing;
+                existing.Refresh();
+                UiLogger.Log("截图录屏", "复用已打开的产物文件夹标签：路径=" + normalizedPath
+                    + " 标签总数=" + this.Tabs.Count);
+                return;
+            }
+        }
+        this.AddTab(normalizedPath);
+        UiLogger.Log("截图录屏", "新建产物文件夹标签：路径=" + normalizedPath
+            + " 标签总数=" + this.Tabs.Count);
+    }
+
+    /// <summary>截图录屏环境摘要（平台能力、FFmpeg、全局快捷键状态）：设置窗口展示用。</summary>
+    public string CaptureEnvironmentText
+    {
+        get { return this.captureCoordinator.DescribeEnvironment(); }
+    }
+
+    /// <summary>按最新设置重新注册全部全局快捷键；设置窗口关闭后调用。</summary>
+    public void ReloadGlobalHotkeys()
+    {
+        this.captureCoordinator.ReloadGlobalHotkeys();
+        UiLogger.Log("全局热键", "设置窗口关闭后重新注册全局快捷键：状态=" + this.captureCoordinator.HotkeyStatusText);
+    }
+
     /// <summary>跟随桌面：网页端请求打开桌面磁盘视图标签。</summary>
     public void OpenDesktopDiskView()
     {
@@ -619,6 +694,11 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
         if (kind == TabKinds.Process)
         {
             this.OpenProcessMonitorTab();
+            return;
+        }
+        if (kind == TabKinds.Capture)
+        {
+            this.OpenCaptureTab();
             return;
         }
         UiLogger.Log("程序行为", "打开视图被忽略：无法识别的标签类型=" + kind + " 结果=未打开任何标签");
@@ -915,6 +995,11 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
         if (tab is MediaTabViewModel closingMediaTab)
         {
             closingMediaTab.Dispose();
+        }
+        // 截图录屏标签关闭时取消事件订阅与状态计时器
+        if (tab is CaptureTabViewModel closingCaptureTab)
+        {
+            closingCaptureTab.Detach();
         }
         int index = this.Tabs.IndexOf(tab);
         if (index < 0)
@@ -1368,7 +1453,16 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
             + " 编辑器Tab宽度=" + this.Settings.EditorTabWidth
             + " 快捷访问固定数=" + this.Settings.PinnedPaths.Count
             + " 打开方式规则数=" + (this.Settings.FileOpenRules != null ? this.Settings.FileOpenRules.Count : 0)
-            + " 快捷键条数=" + this.Settings.Hotkeys.Count);
+            + " 快捷键条数=" + this.Settings.Hotkeys.Count
+            + " 全局快捷键条数=" + this.Settings.GlobalHotkeys.Count
+            + " 截图保存目录=" + CapturePaths.ResolveOutputDirectory(this.Settings)
+            + " 截图复制到剪贴板=" + this.Settings.CaptureCopyToClipboard
+            + " 完成后打开产物文件夹=" + this.Settings.CaptureOpenFolderAfter
+            + " 截图包含指针=" + this.Settings.CaptureIncludeCursor
+            + " 截图延迟秒数=" + this.Settings.CaptureDelaySeconds
+            + " 录屏帧率=" + this.Settings.CaptureRecordFps
+            + " 录屏画质=" + this.Settings.CaptureRecordQuality
+            + " FFmpeg路径=" + (string.IsNullOrEmpty(this.Settings.FfmpegPath) ? "自动查找" : this.Settings.FfmpegPath));
         this.SyncViewSettings();
         this.ApplyWebServiceSettings();
         foreach (object tab in this.Tabs)
@@ -2407,7 +2501,7 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
                 Name = item.Name,
                 Path = item.Path,
                 Selected = object.ReferenceEquals(item, navMatch),
-                IconGlyph = item.IconGlyph,
+                IconCategory = item.IconCategory,
             });
         }
         foreach (QuickAccessItem item in this.ThisPcItems)
@@ -2417,7 +2511,7 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
                 Name = item.Name,
                 Path = item.Path,
                 Selected = object.ReferenceEquals(item, navMatch),
-                IconGlyph = item.IconGlyph,
+                IconCategory = item.IconCategory,
             });
         }
 
@@ -2502,29 +2596,29 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
 
         foreach (DriveInfo drive in DriveInfo.GetDrives())
         {
-            this.ThisPcItems.Add(new QuickAccessItem { Name = "本地磁盘 (" + drive.Name.TrimEnd(Path.DirectorySeparatorChar) + ")", Path = drive.Name, IconGlyph = "\uED3B" });
+            this.ThisPcItems.Add(new QuickAccessItem { Name = "本地磁盘 (" + drive.Name.TrimEnd(Path.DirectorySeparatorChar) + ")", Path = drive.Name, IconCategory = FileIconCatalog.Drive });
         }
 
-        this.AddUserFolder("桌面", Environment.SpecialFolder.Desktop, "\uE7F8");
-        this.AddUserFolder("我的文档", Environment.SpecialFolder.MyDocuments, "\uE8A5");
-        this.AddUserFolder("图片", Environment.SpecialFolder.MyPictures, "\uEB9F");
-        this.AddUserFolder("音乐", Environment.SpecialFolder.MyMusic, "\uEC4F");
-        this.AddUserFolder("视频", Environment.SpecialFolder.MyVideos, "\uE714");
+        this.AddUserFolder("桌面", Environment.SpecialFolder.Desktop, FileIconCatalog.Folder);
+        this.AddUserFolder("我的文档", Environment.SpecialFolder.MyDocuments, FileIconCatalog.Document);
+        this.AddUserFolder("图片", Environment.SpecialFolder.MyPictures, FileIconCatalog.Image);
+        this.AddUserFolder("音乐", Environment.SpecialFolder.MyMusic, FileIconCatalog.Audio);
+        this.AddUserFolder("视频", Environment.SpecialFolder.MyVideos, FileIconCatalog.Video);
 
         string downloadsPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
         if (Directory.Exists(downloadsPath))
         {
-            this.ThisPcItems.Add(new QuickAccessItem { Name = "下载", Path = downloadsPath, IconGlyph = "\uE896" });
+            this.ThisPcItems.Add(new QuickAccessItem { Name = "下载", Path = downloadsPath, IconCategory = FileIconCatalog.Folder });
         }
     }
 
     /// <summary>添加一个系统特殊文件夹。</summary>
-    private void AddUserFolder(string name, Environment.SpecialFolder folder, string glyph)
+    private void AddUserFolder(string name, Environment.SpecialFolder folder, string category)
     {
         string path = Environment.GetFolderPath(folder);
         if (!string.IsNullOrEmpty(path))
         {
-            this.ThisPcItems.Add(new QuickAccessItem { Name = name, Path = path, IconGlyph = glyph });
+            this.ThisPcItems.Add(new QuickAccessItem { Name = name, Path = path, IconCategory = category });
         }
     }
 
@@ -2538,7 +2632,7 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
             {
                 continue;
             }
-            this.QuickAccessItems.Add(new QuickAccessItem { Name = GetDisplayName(path), Path = path, IconGlyph = "\uE8B7" });
+            this.QuickAccessItems.Add(new QuickAccessItem { Name = GetDisplayName(path), Path = path, IconCategory = FileIconCatalog.Folder });
         }
         this.HasNoBookmarks = this.QuickAccessItems.Count == 0;
     }

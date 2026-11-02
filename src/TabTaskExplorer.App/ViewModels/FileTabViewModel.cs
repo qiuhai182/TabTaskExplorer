@@ -217,6 +217,7 @@ public class FileTabViewModel : INotifyPropertyChanged, IColumnWidthViewModel, I
             this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsContentLayout)));
             this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsRowStyleLayout)));
             this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(TileWidth)));
+            this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(TileIconSize)));
         }
     }
 
@@ -285,6 +286,35 @@ public class FileTabViewModel : INotifyPropertyChanged, IColumnWidthViewModel, I
                 return 64;
             }
             return 96;
+        }
+    }
+
+    /// <summary>图标模式下文件图标的显示边长：随视图模式放大或缩小。</summary>
+    public double TileIconSize
+    {
+        get
+        {
+            if (this.viewMode == FileViewMode.ExtraLargeIcons)
+            {
+                return 64;
+            }
+            if (this.viewMode == FileViewMode.LargeIcons)
+            {
+                return 48;
+            }
+            if (this.viewMode == FileViewMode.MediumIcons)
+            {
+                return 36;
+            }
+            if (this.viewMode == FileViewMode.SmallIcons)
+            {
+                return 24;
+            }
+            if (this.viewMode == FileViewMode.Tile)
+            {
+                return 40;
+            }
+            return 32;
         }
     }
 
@@ -1451,11 +1481,11 @@ public class FileRow : INotifyPropertyChanged
         }
     }
 
-    /// <summary>类型图标字符（Segoe MDL2）。</summary>
-    public string IconGlyph { get; set; } = "\uE7C3";
+    /// <summary>类型图标分类键（见 <see cref="FileIconCatalog"/>）。</summary>
+    public string IconCategory { get; set; } = FileIconCatalog.File;
 
     /// <summary>类型图标颜色（十六进制）。</summary>
-    public string IconColor { get; set; } = "#9AA0A6";
+    public string IconColor { get; set; } = FileIconCatalog.GetAccent(FileIconCatalog.File);
 
     /// <summary>原始长度（字节），供排序使用。</summary>
     public long LengthBytes { get; set; }
@@ -1477,8 +1507,8 @@ public class FileRow : INotifyPropertyChanged
         if (entry.IsDirectory)
         {
             row.TypeText = "文件夹";
-            row.IconGlyph = "\uE8B7";
-            row.IconColor = "#FFD75E";
+            row.IconCategory = FileIconCatalog.Folder;
+            row.IconColor = FileIconCatalog.GetAccent(FileIconCatalog.Folder);
         }
         else
         {
@@ -1493,9 +1523,9 @@ public class FileRow : INotifyPropertyChanged
                 row.TypeText = "文件";
             }
             row.SizeText = FormatSize(entry.LengthBytes);
-            (string glyph, string color) = GetIconForExtension(extension);
-            row.IconGlyph = glyph;
-            row.IconColor = color;
+            string category = FileIconCatalog.GetCategoryForName(entry.Name);
+            row.IconCategory = category;
+            row.IconColor = FileIconCatalog.GetAccent(category);
         }
         return row;
     }
@@ -1514,8 +1544,8 @@ public class FileRow : INotifyPropertyChanged
         if (result.IsDirectory)
         {
             row.TypeText = "文件夹";
-            row.IconGlyph = "\uE8B7";
-            row.IconColor = "#FFD75E";
+            row.IconCategory = FileIconCatalog.Folder;
+            row.IconColor = FileIconCatalog.GetAccent(FileIconCatalog.Folder);
         }
         else
         {
@@ -1530,25 +1560,11 @@ public class FileRow : INotifyPropertyChanged
                 row.TypeText = "文件";
             }
             row.SizeText = FormatSize(result.LengthBytes);
-            (string glyph, string color) = GetIconForExtension(extension);
-            row.IconGlyph = glyph;
-            row.IconColor = color;
+            string category = FileIconCatalog.GetCategoryForName(result.Name);
+            row.IconCategory = category;
+            row.IconColor = FileIconCatalog.GetAccent(category);
         }
         return row;
-    }
-
-    /// <summary>按扩展名映射类型图标与颜色（IDE 资源树复用同一套映射）。</summary>
-    public static (string Glyph, string Color) GetIconForExtension(string extension)
-    {
-        switch (extension.ToLowerInvariant())
-        {
-            case ".exe": case ".dll": case ".msi": return ("\uE7C8", "#4A9EFF");
-            case ".cs": case ".py": case ".js": case ".ts": case ".cpp": case ".h": case ".java": return ("\uE943", "#4EC9B0");
-            case ".md": case ".txt": case ".doc": case ".docx": return ("\uE8A5", "#569CD6");
-            case ".png": case ".jpg": case ".jpeg": case ".gif": case ".bmp": return ("\uEB9F", "#C586C0");
-            case ".zip": case ".rar": case ".7z": return ("\uE8B7", "#E8A33D");
-            default: return ("\uE7C3", "#9AA0A6");
-        }
     }
 
     /// <summary>从磁盘分区构建行数据（用于此电脑视图）。</summary>
@@ -1560,8 +1576,8 @@ public class FileRow : INotifyPropertyChanged
         row.IsDirectory = true;
         row.TypeText = "本地磁盘";
         row.ModifiedText = string.Empty;
-        row.IconGlyph = "\uE7F8";
-        row.IconColor = "#4CC2FF";
+        row.IconCategory = FileIconCatalog.Drive;
+        row.IconColor = FileIconCatalog.GetAccent(FileIconCatalog.Drive);
         return row;
     }
 

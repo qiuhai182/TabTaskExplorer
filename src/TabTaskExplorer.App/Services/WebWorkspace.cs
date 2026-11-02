@@ -1307,7 +1307,7 @@ public class WebWorkspace
             {
                 Name = "本地磁盘 (" + drive.Name.TrimEnd(Path.DirectorySeparatorChar) + ")",
                 Path = drive.Name,
-                IconGlyph = "\uED3B",
+                IconCategory = FileIconCatalog.Drive,
                 Selected = !string.IsNullOrEmpty(currentPath)
                     && currentPath.StartsWith(drive.Name, StringComparison.OrdinalIgnoreCase),
             });
