@@ -71,4 +71,19 @@ public class SystemContextMenuEntry
 
     /// <summary>唤起时是否需要管理员权限（动词名为 runas 即以管理员身份运行）。</summary>
     public bool RequiresElevation { get; set; }
+
+    /// <summary>是否为分隔线（由系统外壳菜单枚举得到时，用于还原资源管理器菜单里的分组）。</summary>
+    public bool IsSeparator { get; set; }
+
+    /// <summary>是否来自系统外壳实时菜单（由 IContextMenu 枚举，包含全部静态动词与外壳扩展）。</summary>
+    public bool IsShellMenuEntry { get; set; }
+
+    /// <summary>系统外壳菜单命令编号；仅 IsShellMenuEntry 为真时有效，-1 表示无命令。</summary>
+    public int ShellCommandId { get; set; } = -1;
+
+    /// <summary>系统外壳菜单命令的规范动词名；为空时按命令编号唤起。</summary>
+    public string ShellCanonicalVerb { get; set; } = string.Empty;
+
+    /// <summary>子菜单项：系统外壳菜单里的级联子菜单（例如“发送到”“打开方式”）。</summary>
+    public List<SystemContextMenuEntry> Children { get; } = new List<SystemContextMenuEntry>();
 }

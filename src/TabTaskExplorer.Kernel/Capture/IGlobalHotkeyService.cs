@@ -19,9 +19,10 @@ public interface IGlobalHotkeyService
     /// <param name="ctrl">是否需要控制键。</param>
     /// <param name="alt">是否需要替换键。</param>
     /// <param name="shift">是否需要上档键。</param>
+    /// <param name="win">是否需要 Windows 键（macOS 对应 Command 键）。</param>
     /// <param name="callback">触发回调（在后台消息线程调用，调用方需自行切换到界面线程）。</param>
-    /// <returns>注册成功返回 true；被占用或平台不支持返回 false。</returns>
-    bool Register(string actionName, string keyText, bool ctrl, bool alt, bool shift, Action callback);
+    /// <returns>注册成功返回 true；冲突、被占用或平台不支持返回 false。</returns>
+    bool Register(string actionName, string keyText, bool ctrl, bool alt, bool shift, bool win, Action callback);
 
     /// <summary>注销全部已注册的全局快捷键。</summary>
     void UnregisterAll();

@@ -465,7 +465,42 @@ public partial class IdeShellView : UserControl
 
     // ======== 资源树 ========
 
-    /// <summary>资源树双击：文件夹展开 / 收起，文件打开到编辑器。</summary>
+    /// <summary>资源树单击：文件夹仅选中；文件按预览方式打开（下一次预览会替换它）。</summary>
+    private void OnTreeItemTapped(object? sender, TappedEventArgs e)
+    {
+        IdeShellViewModel? shell = this.Shell;
+        FileTreeItemViewModel? item = FindTreeItem(e.Source);
+        if (shell == null || item == null)
+        {
+            UiLogger.Log("程序行为", "资源树节点单击：集成开发环境视图模型未就绪或单击位置不在资源树节点上 结果=未执行任何操作");
+            return;
+        }
+        if (item.IsPlaceholder)
+        {
+            UiLogger.Log("程序行为", "资源树节点单击：节点名称=" + item.Name
+                + " 结果=未执行，该节点是加载占位节点");
+            return;
+        }
+        if (item.IsDirectory)
+        {
+            UiLogger.Log("程序行为", "资源树节点单击：节点名称=" + item.Name + " 节点类型=文件夹"
+                + " 结果=仅选中，不打开也不展开（双击才展开或收起）");
+            return;
+        }
+        IdeEditorTabViewModel? active = shell.SelectedEditor;
+        if (active != null && active.IsPreview
+            && string.Equals(active.FilePath, item.FullPath, StringComparison.OrdinalIgnoreCase))
+        {
+            UiLogger.Log("程序行为", "资源树节点单击：文件=" + item.FullPath
+                + " 打开方式=预览 结果=该文件已处于预览状态，未重复打开");
+            return;
+        }
+        shell.OpenFile(item.FullPath, item.ContentAccess, item.ConnectionName, true);
+        UiLogger.Log("程序行为", "资源树节点单击：文件=" + item.FullPath + " 打开方式=预览"
+            + " 结果=" + shell.SolutionStatusText);
+    }
+
+    /// <summary>资源树双击：文件夹展开 / 收起，文件以普通方式打开（预览标签会同时固定）。</summary>
     private void OnTreeItemDoubleTapped(object? sender, TappedEventArgs e)
     {
         IdeShellViewModel? shell = this.Shell;
@@ -497,10 +532,25 @@ public partial class IdeShellView : UserControl
             }
         }
         shell.OpenFile(item.FullPath, item.ContentAccess, item.ConnectionName);
-        UiLogger.Log("程序行为", "资源树节点双击：文件=" + item.FullPath
+        UiLogger.Log("程序行为", "资源树节点双击：文件=" + item.FullPath + " 打开方式=普通"
             + " 结果=" + (alreadyOpen
-                ? "成功，该文件已在编辑器中打开，本次只是激活既有标签"
+                ? "成功，该文件已在编辑器中打开（预览标签已固定为普通标签），本次只是激活既有标签"
                 : shell.SolutionStatusText));
+    }
+
+    /// <summary>从单击命中的可视元素向上找资源树节点，返回该节点绑定的条目；不在节点上时返回空。</summary>
+    private static FileTreeItemViewModel? FindTreeItem(object? source)
+    {
+        Visual? current = source as Visual;
+        while (current != null)
+        {
+            if (current is Control control && control.DataContext is FileTreeItemViewModel item)
+            {
+                return item;
+            }
+            current = current.GetVisualParent();
+        }
+        return null;
     }
 
     // ======== 编辑器标签条 ========
@@ -544,6 +594,21 @@ public partial class IdeShellView : UserControl
     private Window? GetOwnerWindow()
     {
         return TopLevel.GetTopLevel(this) as Window;
+    }
+
+    /// <summary>编辑器标签标题双击：把预览标签固定为普通标签。</summary>
+    private void OnEditorTabTitleDoubleTapped(object? sender, TappedEventArgs e)
+    {
+        if (sender is not Control control || control.DataContext is not IdeEditorTabViewModel editor)
+        {
+            UiLogger.Log("程序行为", "编辑器标签标题双击：触发源没有绑定编辑器标签，结果=未固定任何标签");
+            return;
+        }
+        bool wasPreview = editor.IsPreview;
+        editor.PinPreview("双击标签");
+        UiLogger.Log("程序行为", "编辑器标签标题双击：文件=" + editor.FilePath
+            + " 结果=" + (wasPreview ? "成功，预览标签已固定为普通标签" : "未执行，该标签本来就是普通标签"));
+        e.Handled = true;
     }
 
     // ======== 查找替换 ========
@@ -703,7 +768,37 @@ public partial class IdeShellView : UserControl
         shell.OpenFindResult(item);
         list.SelectedItem = null;
         UiLogger.Log("程序行为", "查找结果列表选中变化：文件=" + item.FilePath + " 行号=" + item.LineNumber
-            + " 结果=成功，已打开该文件并定位到该行");
+            + " 结果=成功，已按预览方式打开该文件并定位到该行");
+    }
+
+    /// <summary>查找结果双击：把对应预览标签固定为普通标签。</summary>
+    private void OnFindResultDoubleTapped(object? sender, TappedEventArgs e)
+    {
+        IdeShellViewModel? shell = this.Shell;
+        FindResultItem? item = FindFindResult(e.Source);
+        if (shell == null || item == null)
+        {
+            UiLogger.Log("程序行为", "查找结果列表双击：集成开发环境视图模型未就绪或双击位置不在查找结果行上，结果=未固定任何标签");
+            return;
+        }
+        bool pinned = shell.PinEditorByPath(item.FilePath, "双击查找结果");
+        UiLogger.Log("程序行为", "查找结果列表双击：文件=" + item.FilePath + " 行号=" + item.LineNumber
+            + " 结果=" + (pinned ? "成功，预览标签已固定为普通标签" : "未执行，没有可固定的预览标签"));
+    }
+
+    /// <summary>从双击命中的可视元素向上找查找结果条目；不在结果行上时返回空。</summary>
+    private static FindResultItem? FindFindResult(object? source)
+    {
+        Visual? current = source as Visual;
+        while (current != null)
+        {
+            if (current is Control control && control.DataContext is FindResultItem item)
+            {
+                return item;
+            }
+            current = current.GetVisualParent();
+        }
+        return null;
     }
 
     // ======== 快速打开 ========

@@ -2,11 +2,11 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:svc="using:TabTaskExplorer.App.Services"
         x:Class="TabTaskExplorer.App.Views.SettingsWindow"
-        Title="TabTaskExplorer 设置" Width="700" Height="560"
+        Title="TabTaskExplorer 设置" Width="900" Height="640"
         WindowStartupLocation="CenterOwner">
   <Grid RowDefinitions="*,Auto">
     <Grid Grid.Row="0" ColumnDefinitions="150,*">
-      <ListBox Grid.Column="0" x:Name="SectionList" Margin="8" SelectionChanged="OnSectionChanged">
+      <ListBox Grid.Column="0" x:Name="SectionList" Classes="navlist" Margin="8" SelectionChanged="OnSectionChanged">
         <ListBoxItem Content="基本设置" />
         <ListBoxItem Content="快捷操作" />
         <ListBoxItem Content="文件/文件夹" />
@@ -15,6 +15,7 @@
         <ListBoxItem Content="媒体" />
         <ListBoxItem Content="网页端" />
         <ListBoxItem Content="右键菜单" />
+        <ListBoxItem Content="启动项管理" />
         <ListBoxItem Content="截图与录屏" />
         <ListBoxItem Content="关于" />
       </ListBox>
@@ -39,22 +40,36 @@
             <CheckBox Content="双击标签关闭当前标签" IsChecked="{Binding DoubleClickTabClose, Mode=TwoWay}" />
             <CheckBox Content="双击文件空白区域可返回上层目录（已默认启用）" IsEnabled="False" IsChecked="True" />
             <TextBlock Text="快捷键自定义" FontWeight="Medium" Margin="0,8,0,0" />
-            <Button Content="恢复默认快捷键" Click="OnResetHotkeysClick" HorizontalAlignment="Left" Margin="0,0,0,4" />
-            <ItemsControl ItemsSource="{Binding Hotkeys}">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Button Content="添加快捷键" Click="OnAddShortcutClick" />
+              <Button Content="恢复默认快捷键" Click="OnResetHotkeysClick" />
+            </StackPanel>
+            <ItemsControl x:Name="ShortcutList">
               <ItemsControl.ItemTemplate>
                 <DataTemplate>
-                  <Grid ColumnDefinitions="150,Auto,Auto,Auto,Auto" Margin="0,2">
-                    <TextBlock Grid.Column="0" Text="{Binding DisplayName}" VerticalAlignment="Center" />
-                    <CheckBox Grid.Column="1" Content="Ctrl" IsChecked="{Binding Ctrl, Mode=TwoWay}" Margin="0,0,10,0" />
-                    <CheckBox Grid.Column="2" Content="Alt" IsChecked="{Binding Alt, Mode=TwoWay}" Margin="0,0,10,0" />
-                    <CheckBox Grid.Column="3" Content="Shift" IsChecked="{Binding Shift, Mode=TwoWay}" Margin="0,0,10,0" />
-                    <ComboBox Grid.Column="4" Width="110" ItemsSource="{x:Static svc:HotkeySetting.KeyOptions}" SelectedItem="{Binding KeyText, Mode=TwoWay}" />
+                  <Grid ColumnDefinitions="200,60,Auto,Auto,Auto,Auto,130,60" Margin="0,3">
+                    <ComboBox Grid.Column="0" Width="190" ItemsSource="{x:Static svc:ShortcutActionCatalog.All}"
+                              SelectedItem="{Binding ActionOption, Mode=TwoWay}" VerticalAlignment="Center">
+                      <ComboBox.ItemTemplate>
+                        <DataTemplate>
+                          <TextBlock Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" />
+                        </DataTemplate>
+                      </ComboBox.ItemTemplate>
+                    </ComboBox>
+                    <CheckBox Grid.Column="1" Content="全局" IsChecked="{Binding IsGlobal, Mode=TwoWay}" VerticalAlignment="Center" />
+                    <CheckBox Grid.Column="2" Content="Ctrl" IsChecked="{Binding Ctrl, Mode=TwoWay}" Margin="0,0,8,0" VerticalAlignment="Center" />
+                    <CheckBox Grid.Column="3" Content="Alt" IsChecked="{Binding Alt, Mode=TwoWay}" Margin="0,0,8,0" VerticalAlignment="Center" />
+                    <CheckBox Grid.Column="4" Content="Shift" IsChecked="{Binding Shift, Mode=TwoWay}" Margin="0,0,8,0" VerticalAlignment="Center" />
+                    <CheckBox Grid.Column="5" Content="Win" IsChecked="{Binding Win, Mode=TwoWay}" Margin="0,0,8,0" VerticalAlignment="Center" />
+                    <ComboBox Grid.Column="6" Width="120" ItemsSource="{x:Static svc:HotkeySetting.KeyOptions}"
+                              SelectedItem="{Binding KeyText, Mode=TwoWay}" VerticalAlignment="Center" />
+                    <Button Grid.Column="7" Content="删除" Click="OnRemoveShortcutClick" VerticalAlignment="Center" />
                   </Grid>
                 </DataTemplate>
               </ItemsControl.ItemTemplate>
             </ItemsControl>
             <TextBlock TextWrapping="Wrap" Opacity="0.7" Margin="0,8,0,0"
-                       Text="说明：文件操作类快捷键（刷新、重命名、删除、复制、剪切、粘贴）在输入框内不会触发，避免误操作。改动点确定后立即生效。" />
+                       Text="说明：同一个功能可以通过「添加快捷键」绑定任意多条组合；「全局」勾选后由系统级键盘拦截触发，可覆盖其他程序注册的快捷键。「Ctrl+Alt+Del」「Win+L」等系统保留组合无法覆盖；以管理员身份运行时可覆盖以管理员身份运行的程序。文件操作类快捷键在输入框内不会触发。Linux / macOS 目前仅支持应用内快捷键。" />
           </StackPanel>
           <StackPanel x:Name="FilePage" Spacing="12" IsVisible="False">
             <CheckBox Content="显示隐藏的文件/文件夹" IsChecked="{Binding ShowHiddenFiles, Mode=TwoWay}" />
@@ -250,6 +265,16 @@
               </ListBox.ItemTemplate>
             </ListBox>
           </StackPanel>
+          <StackPanel x:Name="StartupPage" Spacing="12" IsVisible="False">
+            <TextBlock Text="启动项管理" FontWeight="Medium" />
+            <TextBlock TextWrapping="Wrap" Opacity="0.7"
+                       Text="系统开机自启程序、服务、计划任务与自定义启动项，在独立标签页中统一维护：支持刷新、启用或禁用、立即运行，以及新建自定义启动项。此处与侧边栏「启动项管理」入口指向同一份数据与操作。" />
+            <Button Content="打开启动项管理标签页" Click="OnOpenStartupManagerClick" HorizontalAlignment="Left" />
+            <TextBlock x:Name="StartupOpenStatusText" IsVisible="False" TextWrapping="Wrap"
+                       Foreground="{DynamicResource AccentGlyphBrush}" />
+            <TextBlock TextWrapping="Wrap" Opacity="0.7"
+                       Text="说明：启动项管理不在此分页内嵌列表，避免与标签页出现两份不同步的视图；从任一入口进入都会复用已打开的启动项管理标签，不会重复创建。" />
+          </StackPanel>
           <StackPanel x:Name="CapturePage" Spacing="10" IsVisible="False">
             <TextBlock Text="截图与录屏" FontWeight="Medium" />
             <TextBlock x:Name="CaptureEnvironmentText" TextWrapping="Wrap" Opacity="0.72"
@@ -299,23 +324,9 @@
             </StackPanel>
             <TextBlock TextWrapping="Wrap" Opacity="0.72"
                        Text="说明：录屏通过 FFmpeg 采集屏幕并编码为 MP4（H.264）。未安装 FFmpeg 时截图仍可用；录屏按钮会提示缺少 FFmpeg。截图或录屏完成后，默认自动新建（或复用）产物文件夹标签页。" />
-            <TextBlock Text="全局快捷键（系统任意程序在前台时生效）" FontWeight="Medium" Margin="0,8,0,0" />
-            <Button Content="恢复默认全局快捷键" Click="OnResetGlobalHotkeysClick" HorizontalAlignment="Left" />
-            <ItemsControl ItemsSource="{Binding GlobalHotkeys}">
-              <ItemsControl.ItemTemplate>
-                <DataTemplate>
-                  <Grid ColumnDefinitions="190,Auto,Auto,Auto,Auto" Margin="0,2">
-                    <TextBlock Grid.Column="0" Text="{Binding DisplayName}" VerticalAlignment="Center" />
-                    <CheckBox Grid.Column="1" Content="Ctrl" IsChecked="{Binding Ctrl, Mode=TwoWay}" Margin="0,0,10,0" />
-                    <CheckBox Grid.Column="2" Content="Alt" IsChecked="{Binding Alt, Mode=TwoWay}" Margin="0,0,10,0" />
-                    <CheckBox Grid.Column="3" Content="Shift" IsChecked="{Binding Shift, Mode=TwoWay}" Margin="0,0,10,0" />
-                    <ComboBox Grid.Column="4" Width="130" ItemsSource="{x:Static svc:HotkeySetting.KeyOptions}" SelectedItem="{Binding KeyText, Mode=TwoWay}" />
-                  </Grid>
-                </DataTemplate>
-              </ItemsControl.ItemTemplate>
-            </ItemsControl>
+            <TextBlock Text="快捷键" FontWeight="Medium" Margin="0,8,0,0" />
             <TextBlock TextWrapping="Wrap" Opacity="0.72"
-                       Text="说明：Windows 通过系统 RegisterHotKey 注册全局快捷键；若某个按键已被其他程序占用，注册会失败并写入程序日志，可在此更换按键。Linux / macOS 目前不提供全局快捷键，仍可使用应用内按钮。" />
+                       Text="截图、录屏以及其它功能的快捷键统一在左侧「快捷操作」分页配置；同一个功能可添加任意多条组合，并可选择应用内或系统全局作用域。" />
           </StackPanel>
           <StackPanel x:Name="AboutPage" Spacing="12" IsVisible="False">
             <TextBlock Text="TabTaskExplorer v0.1" FontWeight="Medium" />

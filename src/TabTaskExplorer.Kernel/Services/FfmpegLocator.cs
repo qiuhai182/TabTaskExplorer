@@ -17,7 +17,14 @@ public static class FfmpegLocator
             string configured = configuredPath.Trim();
             if (File.Exists(configured))
             {
-                return Path.GetFullPath(configured);
+                try
+                {
+                    return Path.GetFullPath(configured);
+                }
+                catch
+                {
+                    // 配置路径包含非法字符时继续按自动查找流程处理
+                }
             }
         }
 
@@ -58,10 +65,17 @@ public static class FfmpegLocator
                 {
                     continue;
                 }
-                string candidate = Path.Combine(folder, executableName);
-                if (File.Exists(candidate))
+                try
                 {
-                    return Path.GetFullPath(candidate);
+                    string candidate = Path.Combine(folder, executableName);
+                    if (File.Exists(candidate))
+                    {
+                        return Path.GetFullPath(candidate);
+                    }
+                }
+                catch
+                {
+                    // 个别 PATH 条目格式非法时跳过，不影响其余目录查找
                 }
             }
         }

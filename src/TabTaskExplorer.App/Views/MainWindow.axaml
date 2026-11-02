@@ -29,57 +29,62 @@
         </Button>
         <Border Grid.Column="1" Width="1" Height="24" Background="{DynamicResource SeparatorBrush}" Margin="2,0" VerticalAlignment="Center" />
 
-        <!-- 标签条 -->
-        <ListBox Grid.Column="3" x:Name="TabStrip" ItemsSource="{Binding Tabs}" SelectedItem="{Binding SelectedTab, Mode=TwoWay}"
-                 SelectionMode="Single" Background="Transparent" BorderThickness="0" Padding="0,5,0,0">
-          <ListBox.ItemsPanel>
-            <ItemsPanelTemplate>
-              <StackPanel Orientation="Horizontal" />
-            </ItemsPanelTemplate>
-          </ListBox.ItemsPanel>
-          <ListBox.ItemContainerTheme>
-            <ControlTheme TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
-              <Setter Property="MinHeight" Value="28" />
-              <Setter Property="Padding" Value="0" />
-              <Setter Property="VerticalContentAlignment" Value="Center" />
-            </ControlTheme>
-          </ListBox.ItemContainerTheme>
-          <ListBox.ItemTemplate>
-            <DataTemplate>
-              <Grid ColumnDefinitions="Auto,*,Auto" Margin="8,0,4,0" Height="28" DoubleTapped="OnTabHeaderDoubleTapped">
-                <Grid.ContextMenu>
-                  <ContextMenu>
-                    <MenuItem Header="新建标签" Click="OnTabMenuNewTab" />
-                    <MenuItem Header="复制当前标签" Click="OnTabMenuDuplicate" />
-                    <MenuItem Header="添加到书签栏" Click="OnTabMenuAddToBookmarks" />
-                    <MenuItem Header="关闭当前标签" Click="OnTabMenuClose" />
-                    <MenuItem Header="关闭其他标签" Click="OnTabMenuCloseOthers" />
-                    <MenuItem Header="固定 / 取消固定标签" Click="OnTabMenuTogglePin" />
-                    <MenuItem Header="粘贴" Click="OnTabMenuPasteClick" />
-                  </ContextMenu>
-                </Grid.ContextMenu>
-                <views:FileTypeIcon Grid.Column="0" Width="14" Height="14" Category="folder"
-                                   VerticalAlignment="Center" Margin="0,0,6,0" />
-                <TextBlock Grid.Column="1" Text="{Binding Title}" VerticalAlignment="Center" FontSize="12"
-                           Foreground="{DynamicResource TextPrimaryBrush}" MaxWidth="246" TextTrimming="CharacterEllipsis" />
-                <Button Grid.Column="2" Width="18" Height="18" Padding="0" Background="Transparent"
-                        HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
-                        Click="OnCloseTabClick" VerticalAlignment="Center" ToolTip.Tip="关闭">
-                  <views:VectorIcon Kind="close" Width="10" Height="10" Thickness="1.4"
-                                    IconBrush="{DynamicResource TextMutedBrush}" />
-                </Button>
-              </Grid>
-            </DataTemplate>
-          </ListBox.ItemTemplate>
-        </ListBox>
+        <!-- 标签条：新建标签按钮紧跟最后一个标签右侧；标签过多时标签条截断，按钮保持可见 -->
+        <Grid Grid.Column="3" x:Name="TabStripHost" ColumnDefinitions="Auto,*" ClipToBounds="True">
+          <ListBox Grid.Column="0" x:Name="TabStrip" ItemsSource="{Binding Tabs}" SelectedItem="{Binding SelectedTab, Mode=TwoWay}"
+                   SelectionMode="Single" Background="Transparent" BorderThickness="0" Padding="0,5,0,0"
+                   ScrollViewer.HorizontalScrollBarVisibility="Hidden">
+            <ListBox.ItemsPanel>
+              <ItemsPanelTemplate>
+                <StackPanel Orientation="Horizontal" />
+              </ItemsPanelTemplate>
+            </ListBox.ItemsPanel>
+            <ListBox.ItemContainerTheme>
+              <ControlTheme TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+                <Setter Property="MinHeight" Value="28" />
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="VerticalContentAlignment" Value="Center" />
+              </ControlTheme>
+            </ListBox.ItemContainerTheme>
+            <ListBox.ItemTemplate>
+              <DataTemplate>
+                <Grid ColumnDefinitions="Auto,*,Auto" Margin="8,0,4,0" Height="28" DoubleTapped="OnTabHeaderDoubleTapped">
+                  <Grid.ContextMenu>
+                    <ContextMenu>
+                      <MenuItem Header="新建标签" Click="OnTabMenuNewTab" />
+                      <MenuItem Header="新建比对标签" Click="OnCompareClick" />
+                      <MenuItem Header="复制当前标签" Click="OnTabMenuDuplicate" />
+                      <MenuItem Header="添加到书签栏" Click="OnTabMenuAddToBookmarks" />
+                      <MenuItem Header="关闭当前标签" Click="OnTabMenuClose" />
+                      <MenuItem Header="关闭其他标签" Click="OnTabMenuCloseOthers" />
+                      <MenuItem Header="固定 / 取消固定标签" Click="OnTabMenuTogglePin" />
+                      <MenuItem Header="粘贴" Click="OnTabMenuPasteClick" />
+                    </ContextMenu>
+                  </Grid.ContextMenu>
+                  <views:FileTypeIcon Grid.Column="0" Width="14" Height="14" Category="folder"
+                                     VerticalAlignment="Center" Margin="0,0,6,0" />
+                  <TextBlock Grid.Column="1" Text="{Binding Title}" VerticalAlignment="Center" FontSize="12"
+                             Foreground="{DynamicResource TextPrimaryBrush}" MaxWidth="246" TextTrimming="CharacterEllipsis" />
+                  <Button Grid.Column="2" Width="18" Height="18" Padding="0" Background="Transparent"
+                          HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                          Click="OnCloseTabClick" VerticalAlignment="Center" ToolTip.Tip="关闭">
+                    <views:VectorIcon Kind="close" Width="10" Height="10" Thickness="1.4"
+                                      IconBrush="{DynamicResource TextMutedBrush}" />
+                  </Button>
+                </Grid>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
 
-        <!-- 新建标签 -->
-        <Button Grid.Column="4" Classes="nav" Width="28" Height="28" Padding="0" Margin="2,0,6,0"
-                HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
-                VerticalAlignment="Center" Click="OnNewTabClick" ToolTip.Tip="新建标签 (Ctrl+T)">
-          <views:VectorIcon Kind="plus" Width="14" Height="14" Thickness="1.7"
-                            IconBrush="{DynamicResource TextMutedBrush}" />
-        </Button>
+          <!-- 新建标签：紧跟最后一个标签右侧；标签过多时贴住右侧边界 -->
+          <Button Grid.Column="1" Classes="nav" Width="28" Height="28" Padding="0" Margin="2,0,6,0"
+                  HorizontalAlignment="Left"
+                  HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                  VerticalAlignment="Center" Click="OnNewTabClick" ToolTip.Tip="新建标签 (Ctrl+T)">
+            <views:VectorIcon Kind="plus" Width="14" Height="14" Thickness="1.7"
+                              IconBrush="{DynamicResource TextMutedBrush}" />
+          </Button>
+        </Grid>
 
         <!-- 工具盒子（任务看板）+ IDE 模式切换 -->
         <StackPanel Grid.Column="5" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
@@ -372,7 +377,7 @@
                                 IconBrush="{DynamicResource AccentGlyphBrush}" VerticalAlignment="Center" />
               <TextBlock Text="快捷访问" FontWeight="Medium" Foreground="{DynamicResource AccentGlyphBrush}" VerticalAlignment="Center" />
             </StackPanel>
-            <ListBox x:Name="PinnedNavList" ItemsSource="{Binding QuickAccessItems}" SelectionMode="Single"
+            <ListBox x:Name="PinnedNavList" Classes="navlist" ItemsSource="{Binding QuickAccessItems}" SelectionMode="Single"
                      Background="Transparent" BorderThickness="0" SelectionChanged="OnNavSelectionChanged"
                      PointerReleased="OnNavPointerReleased">
               <ListBox.ItemTemplate>
@@ -399,7 +404,7 @@
                 <TextBlock Text="此电脑" FontWeight="Medium" Foreground="{DynamicResource AccentGlyphBrush}" VerticalAlignment="Center" />
               </StackPanel>
             </Button>
-            <ListBox x:Name="PcNavList" ItemsSource="{Binding ThisPcItems}" SelectionMode="Single"
+            <ListBox x:Name="PcNavList" Classes="navlist" ItemsSource="{Binding ThisPcItems}" SelectionMode="Single"
                      Background="Transparent" BorderThickness="0" SelectionChanged="OnNavSelectionChanged"
                      PointerReleased="OnNavPointerReleased">
               <ListBox.ItemTemplate>
@@ -440,6 +445,15 @@
               </StackPanel>
             </Button>
 
+            <!-- 目录 / 文件比对（WinMerge 逆向成果合并：目录双栏状态 + 文件按行对齐） -->
+            <Button Classes="nav" HorizontalAlignment="Stretch" Click="OnCompareClick">
+              <StackPanel Orientation="Horizontal" Spacing="7">
+                <views:VectorIcon Kind="compare" Width="15" Height="15" Thickness="1.6"
+                                  IconBrush="{DynamicResource AccentGlyphBrush}" VerticalAlignment="Center" />
+                <TextBlock Text="文件比对" VerticalAlignment="Center" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}" />
+              </StackPanel>
+            </Button>
+
             <!-- 磁盘视图（WizTree 逆向成果合并：目录占用统计） -->
             <Button Classes="nav" HorizontalAlignment="Stretch" Click="OnDiskViewClick">
               <StackPanel Orientation="Horizontal" Spacing="7">
@@ -455,6 +469,24 @@
                 <views:VectorIcon Kind="activity" Width="15" Height="15" Thickness="1.6"
                                   IconBrush="{DynamicResource AccentGlyphBrush}" VerticalAlignment="Center" />
                 <TextBlock Text="进程监控" VerticalAlignment="Center" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}" />
+              </StackPanel>
+            </Button>
+
+            <!-- 启动项管理（系统开机自启程序与服务 + 自定义启动项） -->
+            <Button Classes="nav" HorizontalAlignment="Stretch" Click="OnStartupManagerClick">
+              <StackPanel Orientation="Horizontal" Spacing="7">
+                <views:VectorIcon Kind="power" Width="15" Height="15" Thickness="1.6"
+                                  IconBrush="{DynamicResource AccentGlyphBrush}" VerticalAlignment="Center" />
+                <TextBlock Text="启动项管理" VerticalAlignment="Center" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}" />
+              </StackPanel>
+            </Button>
+
+            <!-- 右键管理（系统右键菜单项启停，与设置窗口「右键菜单」分页共用同一管理界面） -->
+            <Button Classes="nav" HorizontalAlignment="Stretch" Click="OnRightMenuManagerClick">
+              <StackPanel Orientation="Horizontal" Spacing="7">
+                <views:VectorIcon Kind="sliders" Width="15" Height="15" Thickness="1.6"
+                                  IconBrush="{DynamicResource AccentGlyphBrush}" VerticalAlignment="Center" />
+                <TextBlock Text="右键管理" VerticalAlignment="Center" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}" />
               </StackPanel>
             </Button>
 
@@ -505,6 +537,12 @@
           </DataTemplate>
           <DataTemplate DataType="vm:CaptureTabViewModel">
             <views:CapturePanel />
+          </DataTemplate>
+          <DataTemplate DataType="vm:CompareTabViewModel">
+            <views:ComparePanel />
+          </DataTemplate>
+          <DataTemplate DataType="vm:StartupManagerViewModel">
+            <views:StartupPanel />
           </DataTemplate>
         </ContentControl.DataTemplates>
       </ContentControl>

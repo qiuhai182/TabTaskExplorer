@@ -42,6 +42,12 @@ public static class TabKinds
     /// <summary>连接管理标签。</summary>
     public const string Connections = "connections";
 
+    /// <summary>启动项管理标签：管理系统开机自启程序与服务，并维护自定义启动项。</summary>
+    public const string Startup = "startup";
+
+    /// <summary>目录 / 文件比对标签。</summary>
+    public const string Compare = "compare";
+
     /// <summary>媒体标签（图片 / 视频 / 音频）：桌面专用，网页端暂不渲染播放内容。</summary>
     public const string Media = "media";
 
@@ -54,7 +60,7 @@ public static class TabKinds
     /// <summary>全部可打开且网页端可渲染的标签类型。</summary>
     public static IReadOnlyList<string> All { get; } = new string[]
     {
-        File, Disk, Process, Search, Board, Connections,
+        File, Disk, Process, Search, Board, Connections, Compare, Startup,
     };
 
     /// <summary>判断类型标识是否是受支持的标签类型。</summary>
@@ -142,6 +148,12 @@ public static class TabSnapshotFiller
             debugRow.IconColor = row.IconColor;
             tabState.Rows.Add(debugRow);
         }
+    }
+
+    /// <summary>目录 / 文件比对标签快照。</summary>
+    public static void FillCompare(CompareTabViewModel compareTab, DebugTabState tabState)
+    {
+        compareTab.FillSnapshot(tabState);
     }
 
     /// <summary>磁盘视图标签快照。</summary>
@@ -298,6 +310,47 @@ public static class TabSnapshotFiller
             debugRow.IconColor = item.IconColor;
             tabState.Rows.Add(debugRow);
         }
+    }
+
+    /// <summary>启动项管理标签快照：系统启动项、自定义启动项与平台说明。</summary>
+    public static void FillStartup(StartupManagerViewModel startupTab, DebugTabState tabState)
+    {
+        foreach (StartupRow row in startupTab.SystemItems)
+        {
+            DebugStartupRow mirror = new DebugStartupRow();
+            mirror.Id = row.Id;
+            mirror.Name = row.Name;
+            mirror.KindText = row.KindText;
+            mirror.SourceText = row.SourceText;
+            mirror.ScopeText = row.ScopeText;
+            mirror.CommandText = row.CommandText;
+            mirror.StateText = row.StateText;
+            mirror.Enabled = row.IsEnabled;
+            mirror.CanToggle = row.CanToggle;
+            mirror.ToggleHint = row.ToggleHint;
+            mirror.IsSelfAutoStart = row.Item.IsSelfAutoStart;
+            tabState.StartupRows.Add(mirror);
+        }
+        foreach (CustomStartupRow row in startupTab.CustomItems)
+        {
+            DebugCustomStartupRow mirror = new DebugCustomStartupRow();
+            mirror.Id = row.Id;
+            mirror.Name = row.Name;
+            mirror.KindText = row.KindText;
+            mirror.ItemType = row.Item.ItemType;
+            mirror.Target = row.Item.Target;
+            mirror.Arguments = row.Item.Arguments;
+            mirror.DelaySeconds = row.Item.DelaySeconds;
+            mirror.TargetText = row.TargetText;
+            mirror.DelayText = row.DelayText;
+            mirror.StateText = row.StateText;
+            mirror.Enabled = row.IsEnabled;
+            mirror.BootStateText = row.BootStateText;
+            mirror.ResultText = row.ResultText;
+            tabState.CustomStartupRows.Add(mirror);
+        }
+        tabState.StartupEnvironmentText = startupTab.EnvironmentText;
+        tabState.SummaryText = startupTab.SummaryText;
     }
 
     /// <summary>连接管理标签快照。</summary>

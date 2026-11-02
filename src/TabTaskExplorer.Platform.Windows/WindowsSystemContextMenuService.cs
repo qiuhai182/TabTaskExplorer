@@ -173,6 +173,18 @@ public class WindowsSystemContextMenuService : ISystemContextMenuService
         }
     }
 
+    /// <summary>取当前目标适用的系统外壳实时菜单（包含全部静态动词与已启用的外壳扩展）。</summary>
+    public IReadOnlyList<SystemContextMenuEntry> EnumerateShellMenu(string targetPath, bool isBackground)
+    {
+        return WindowsShellContextMenuReader.Enumerate(targetPath, isBackground);
+    }
+
+    /// <summary>唤起系统外壳实时菜单项。</summary>
+    public bool ExecuteShellMenuEntry(SystemContextMenuEntry entry, string targetPath, bool isBackground)
+    {
+        return WindowsShellContextMenuReader.Invoke(entry, targetPath, isBackground);
+    }
+
     /// <summary>扫描两套根键下的全部系统右键菜单位置，生成条目列表。</summary>
     private static List<SystemContextMenuEntry> ScanAll()
     {

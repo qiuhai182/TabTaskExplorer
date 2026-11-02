@@ -10,8 +10,10 @@
       <StackPanel Orientation="Horizontal" Spacing="8">
         <Button Content="全屏截图" Click="OnCaptureFullClick" IsEnabled="{Binding CanCaptureFullScreen}"
                 ToolTip.Tip="截取全部屏幕（多显示器合并为一整张图片）" />
+        <Button Content="主屏截图" Click="OnCapturePrimaryClick" IsEnabled="{Binding CanCapturePrimaryScreen}"
+                ToolTip.Tip="只截取主显示器" />
         <Button Content="区域截图" Click="OnCaptureRegionClick" IsEnabled="{Binding CanCaptureRegion}"
-                ToolTip.Tip="拖动鼠标框选任意区域" />
+                ToolTip.Tip="移动鼠标预选窗口 / 子视图后单击截图，也可拖动自由框选" />
         <Button Content="活动窗口" Click="OnCaptureWindowClick" IsEnabled="{Binding CanCaptureWindow}"
                 ToolTip.Tip="截取当前位于前台的窗口" />
         <Button Content="上次区域" Click="OnCaptureLastRegionClick" IsEnabled="{Binding CanCaptureLastRegion}"
@@ -40,7 +42,8 @@
         <Button Content="{Binding RecordingButtonText}" Click="OnToggleRecordingClick" IsEnabled="{Binding CanRecord}"
                 MinWidth="108" />
         <TextBlock Text="录制目标" VerticalAlignment="Center" Margin="8,0,0,0" />
-        <ComboBox Width="140" SelectedIndex="{Binding RecordingTargetIndex, Mode=TwoWay}" VerticalAlignment="Center">
+        <ComboBox Width="140" SelectedIndex="{Binding RecordingTargetIndex, Mode=TwoWay}" VerticalAlignment="Center"
+                  ToolTip.Tip="活动窗口：录制开始时位于最前面的窗口；从本程序点击时会录制本程序窗口，建议用全局快捷键在目标程序前台时开始">
           <ComboBoxItem Content="全部屏幕" />
           <ComboBoxItem Content="选择区域" />
           <ComboBoxItem Content="活动窗口" />

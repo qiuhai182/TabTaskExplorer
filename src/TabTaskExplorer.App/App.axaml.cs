@@ -73,6 +73,12 @@ public class App : Application
             // 开机自启：以配置为准重新写入系统注册并校验结果，保证设置与系统真实状态一致
             this.ReconcileAutoStart(mainViewModel);
 
+            // 自定义启动项：按开机标识检查，本次开机尚未拉起过的条目按延迟顺序自动拉起
+            mainViewModel.RunCustomStartupItemsOnBoot();
+            Services.UiLogger.Log("启动项", "程序启动时已提交自定义启动项检查：自定义启动项总数="
+                + mainViewModel.Settings.CustomStartupItems.Count + " 本次开机标识="
+                + mainViewModel.CustomStartup.CurrentBootId);
+
             // 采集未处理异常到网页端服务（浏览器 /api/diagnostics 可查看）
             Avalonia.Threading.Dispatcher.UIThread.UnhandledException += this.OnUiUnhandledException;
             AppDomain.CurrentDomain.UnhandledException += this.OnDomainUnhandledException;

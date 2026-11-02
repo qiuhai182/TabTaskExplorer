@@ -2,6 +2,7 @@
 using System.Text;
 using System.Text.Json;
 using TabTaskExplorer.Kernel.Media;
+using TabTaskExplorer.Kernel.Models;
 using TabTaskExplorer.Kernel.Services;
 
 namespace TabTaskExplorer.App.Services;
@@ -38,6 +39,12 @@ public class AppSettings
     /// <summary>是否开机自启（Windows 注册表 / Linux 自启动 / macOS LaunchAgent）。</summary>
     public bool AutoStart { get; set; } = false;
 
+    /// <summary>
+    /// 用户自定义启动项：本程序每次开机后首次启动时检查，未在本次开机拉起过的条目自动拉起。
+    /// 支持程序、快捷方式、脚本与网页链接，并可设置本程序启动后的延迟秒数。
+    /// </summary>
+    public List<CustomStartupItem> CustomStartupItems { get; set; } = new List<CustomStartupItem>();
+
     /// <summary>是否随程序启动网页端服务（仅绑定本机回环地址）。</summary>
     public bool EnableWebService { get; set; } = true;
 
@@ -62,11 +69,20 @@ public class AppSettings
     /// <summary>是否默认用本程序打开文件夹（Windows，仅当前用户）。</summary>
     public bool DefaultFileManager { get; set; } = false;
 
-    /// <summary>快捷键配置。</summary>
+    /// <summary>旧版应用内快捷键配置：仅用于从旧配置文件迁移到 <see cref="Shortcuts"/>。</summary>
     public List<HotkeySetting> Hotkeys { get; set; } = HotkeySetting.CreateDefaults();
 
-    /// <summary>全局快捷键配置：系统任何程序在前台时都能触发截图与录屏。</summary>
+    /// <summary>旧版全局快捷键配置：仅用于从旧配置文件迁移到 <see cref="Shortcuts"/>。</summary>
     public List<HotkeySetting> GlobalHotkeys { get; set; } = HotkeySetting.CreateGlobalDefaults();
+
+    /// <summary>
+    /// 统一快捷键配置：同一动作可有多条记录，每条记录可独立选择应用内或系统全局作用域。
+    /// 旧版 Hotkeys / GlobalHotkeys 会在首次加载时迁移到这里。
+    /// </summary>
+    public List<HotkeySetting> Shortcuts { get; set; } = new List<HotkeySetting>();
+
+    /// <summary>是否已完成旧快捷键配置迁移；用于区分「尚未迁移」与「用户主动删除了全部快捷键」。</summary>
+    public bool ShortcutsMigrated { get; set; } = false;
 
     /// <summary>截图与录屏产物保存目录；留空表示使用「我的图片\TabTaskExplorer\截图录屏」。</summary>
     public string CaptureSaveDirectory { get; set; } = string.Empty;
@@ -76,6 +92,18 @@ public class AppSettings
 
     /// <summary>截图或录屏完成后是否自动打开产物文件夹标签页。</summary>
     public bool CaptureOpenFolderAfter { get; set; } = true;
+
+    /// <summary>截图保存后是否自动打开标注编辑器（吸收 Snipaste 截图编辑流程，默认开启）。</summary>
+    public bool CaptureOpenEditorAfter { get; set; } = true;
+
+    /// <summary>贴图窗口是否始终置顶（默认开启，关闭后贴图可被其他窗口覆盖）。</summary>
+    public bool CapturePinTopmost { get; set; } = true;
+
+    /// <summary>文字识别语言；留空表示 Windows 使用系统已安装语言，Tesseract 使用 eng+chi_sim 默认值。</summary>
+    public string OcrLanguage { get; set; } = string.Empty;
+
+    /// <summary>Tesseract 可执行文件完整路径；留空表示自动查找（与 FFmpeg 相同的查找策略）。</summary>
+    public string OcrTesseractPath { get; set; } = string.Empty;
 
     /// <summary>截图与录屏是否包含鼠标指针。</summary>
     public bool CaptureIncludeCursor { get; set; } = true;
@@ -211,10 +239,10 @@ public class AppSettingsStore
                 AppSettings? settings = JsonSerializer.Deserialize<AppSettings>(json, jsonOptions);
                 if (settings != null)
                 {
-                    EnsureDefaultHotkeys(settings);
-                    EnsureGlobalHotkeys(settings);
+                    EnsureShortcuts(settings);
                     EnsureFileOpenRules(settings);
                     EnsureWebSettings(settings);
+                    EnsureCustomStartupItems(settings);
                     return settings;
                 }
             }
@@ -223,7 +251,9 @@ public class AppSettingsStore
         {
             // 文件损坏时回落默认设置，不影响程序启动
         }
-        return new AppSettings();
+        AppSettings fallback = new AppSettings();
+        EnsureShortcuts(fallback);
+        return fallback;
     }
 
     /// <summary>保存设置；写入失败时静默跳过，不影响主流程。</summary>
@@ -246,47 +276,71 @@ public class AppSettingsStore
     }
 
     /// <summary>
-    /// 补齐快捷键清单：旧配置文件缺少新增动作（IDE 保存 / 快速打开等）时追加默认项，
-    /// 已存在的动作保持用户自定义值不变。
+    /// 迁移并补齐统一快捷键清单：
+    /// 首次加载时把旧版 Hotkeys（应用内）与 GlobalHotkeys（全局）迁移到 Shortcuts；
+    /// 用户主动删除全部快捷键后保留空清单，不再强行追加默认项。
     /// </summary>
-    private static void EnsureDefaultHotkeys(AppSettings settings)
+    private static void EnsureShortcuts(AppSettings settings)
     {
-        settings.Hotkeys = EnsureHotkeyList(settings.Hotkeys, HotkeySetting.CreateDefaults());
-    }
-
-    /// <summary>
-    /// 补齐全局快捷键清单：旧配置文件没有全局热键时写入默认值，
-    /// 已存在的动作保持用户自定义按键不变。
-    /// </summary>
-    private static void EnsureGlobalHotkeys(AppSettings settings)
-    {
-        settings.GlobalHotkeys = EnsureHotkeyList(settings.GlobalHotkeys, HotkeySetting.CreateGlobalDefaults());
-    }
-
-    /// <summary>按动作标识补齐快捷键清单，返回可直接使用的列表。</summary>
-    private static List<HotkeySetting> EnsureHotkeyList(List<HotkeySetting>? current, List<HotkeySetting> defaults)
-    {
-        if (current == null)
+        if (!settings.ShortcutsMigrated)
         {
-            return defaults;
-        }
-        foreach (HotkeySetting candidate in defaults)
-        {
-            bool exists = false;
-            foreach (HotkeySetting existing in current)
+            List<HotkeySetting> migrated = new List<HotkeySetting>();
+            if (settings.Hotkeys != null)
             {
-                if (string.Equals(existing.ActionName, candidate.ActionName, StringComparison.Ordinal))
+                foreach (HotkeySetting legacy in settings.Hotkeys)
                 {
-                    exists = true;
-                    break;
+                    if (legacy != null)
+                    {
+                        migrated.Add(CopyShortcut(legacy, "Local"));
+                    }
                 }
             }
-            if (!exists)
+            if (settings.GlobalHotkeys != null)
             {
-                current.Add(candidate);
+                foreach (HotkeySetting legacy in settings.GlobalHotkeys)
+                {
+                    if (legacy != null)
+                    {
+                        migrated.Add(CopyShortcut(legacy, "Global"));
+                    }
+                }
+            }
+            settings.Shortcuts = migrated.Count > 0 ? migrated : HotkeySetting.CreateDefaultShortcuts();
+            settings.ShortcutsMigrated = true;
+        }
+        if (settings.Shortcuts == null)
+        {
+            settings.Shortcuts = new List<HotkeySetting>();
+        }
+        List<HotkeySetting> validShortcuts = new List<HotkeySetting>();
+        foreach (HotkeySetting shortcut in settings.Shortcuts)
+        {
+            if (shortcut != null)
+            {
+                validShortcuts.Add(shortcut);
             }
         }
-        return current;
+        if (validShortcuts.Count != settings.Shortcuts.Count)
+        {
+            settings.Shortcuts = validShortcuts;
+        }
+        // 迁移完成后清空旧字段，避免后续保存继续写入两份重复配置
+        settings.Hotkeys = new List<HotkeySetting>();
+        settings.GlobalHotkeys = new List<HotkeySetting>();
+    }
+
+    /// <summary>复制一条快捷键配置并指定作用域（迁移旧配置时使用）。</summary>
+    private static HotkeySetting CopyShortcut(HotkeySetting source, string scope)
+    {
+        HotkeySetting copy = new HotkeySetting();
+        copy.ActionName = source.ActionName;
+        copy.KeyText = source.KeyText;
+        copy.Ctrl = source.Ctrl;
+        copy.Alt = source.Alt;
+        copy.Shift = source.Shift;
+        copy.Win = source.Win;
+        copy.Scope = scope;
+        return copy;
     }
 
     /// <summary>
@@ -336,6 +390,27 @@ public class AppSettingsStore
             if (FindProfile(settings, port.ProfileName) == null)
             {
                 port.ProfileName = settings.WebAccessProfiles[0].Name;
+            }
+        }
+    }
+
+    /// <summary>补齐自定义启动项：旧配置没有该清单时补空列表，缺少编号的条目补发编号。</summary>
+    private static void EnsureCustomStartupItems(AppSettings settings)
+    {
+        if (settings.CustomStartupItems == null)
+        {
+            settings.CustomStartupItems = new List<CustomStartupItem>();
+            return;
+        }
+        foreach (CustomStartupItem item in settings.CustomStartupItems)
+        {
+            if (string.IsNullOrEmpty(item.Id))
+            {
+                item.Id = Guid.NewGuid().ToString("N");
+            }
+            if (string.IsNullOrEmpty(item.ItemType))
+            {
+                item.ItemType = StartupItemType.Program;
             }
         }
     }

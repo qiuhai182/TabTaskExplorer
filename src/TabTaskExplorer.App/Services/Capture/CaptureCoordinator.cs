@@ -1,7 +1,9 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
 using Avalonia.Controls;
+using Avalonia.Input.Platform;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Avalonia.Threading;
@@ -10,6 +12,7 @@ using TabTaskExplorer.App.Views;
 using TabTaskExplorer.Kernel.Abstractions;
 using TabTaskExplorer.Kernel.Capture;
 using TabTaskExplorer.Kernel.Media;
+using TabTaskExplorer.Kernel.Ocr;
 using TabTaskExplorer.Kernel.Services;
 
 namespace TabTaskExplorer.App.Services.Capture;
@@ -79,6 +82,8 @@ public class CaptureCoordinator : IDisposable
     private readonly IScreenRecordingService screenRecordingService;
     private readonly IGlobalHotkeyService globalHotkeyService;
     private readonly ISystemClipboardService systemClipboardService;
+    private readonly ITextRecognitionService ocrService;
+    private readonly IScreenRegionDetector screenRegionDetector;
     private readonly AppSettingsStore settingsStore = new AppSettingsStore();
     private MainWindowViewModel? viewModel;
     private DispatcherTimer? recordingWatchTimer;
@@ -89,12 +94,16 @@ public class CaptureCoordinator : IDisposable
     public CaptureCoordinator(IScreenCaptureService screenCaptureService,
         IScreenRecordingService screenRecordingService,
         IGlobalHotkeyService globalHotkeyService,
-        ISystemClipboardService systemClipboardService)
+        ISystemClipboardService systemClipboardService,
+        IScreenRegionDetector screenRegionDetector,
+        ITextRecognitionService textRecognitionService)
     {
         this.screenCaptureService = screenCaptureService;
         this.screenRecordingService = screenRecordingService;
         this.globalHotkeyService = globalHotkeyService;
         this.systemClipboardService = systemClipboardService;
+        this.screenRegionDetector = screenRegionDetector;
+        this.ocrService = textRecognitionService;
     }
 
     /// <summary>一次截图或录屏完成（无论成功、失败或取消），用于刷新历史列表与状态文字。</summary>
@@ -131,6 +140,12 @@ public class CaptureCoordinator : IDisposable
     public ScreenCaptureCapabilities CaptureCapabilities
     {
         get { return this.screenCaptureService.Capabilities; }
+    }
+
+    /// <summary>当前平台是否支持系统全局快捷键。</summary>
+    public bool IsGlobalHotkeySupported
+    {
+        get { return this.globalHotkeyService.IsSupported; }
     }
 
     /// <summary>当前是否具备录屏条件（平台支持且已找到 FFmpeg）。</summary>
@@ -173,29 +188,46 @@ public class CaptureCoordinator : IDisposable
         this.globalHotkeyService.UnregisterAll();
         if (!this.globalHotkeyService.IsSupported)
         {
-            this.hotkeyStatusText = "全局快捷键：当前平台不支持，仅可使用应用内按钮";
-            UiLogger.Log("全局热键", "重新注册被跳过：当前平台不支持全局快捷键，应用内按钮与快捷键仍然可用");
+            this.hotkeyStatusText = "全局快捷键：不可用（平台不支持或系统拒绝键盘拦截）";
+            UiLogger.Log("全局热键", "重新注册被跳过：全局快捷键不可用，原因可能是当前平台不支持或系统拒绝键盘钩子");
             return;
         }
         int successCount = 0;
         int failureCount = 0;
         string failureNames = string.Empty;
-        foreach (HotkeySetting setting in mainViewModel.Settings.GlobalHotkeys)
+        List<HotkeySetting> globalShortcuts = new List<HotkeySetting>();
+        if (mainViewModel.Settings.Shortcuts != null)
         {
+            foreach (HotkeySetting shortcut in mainViewModel.Settings.Shortcuts)
+            {
+                if (shortcut != null && shortcut.IsGlobal)
+                {
+                    globalShortcuts.Add(shortcut);
+                }
+            }
+        }
+        foreach (HotkeySetting setting in globalShortcuts)
+        {
+            if (string.IsNullOrEmpty(setting.KeyText))
+            {
+                UiLogger.Log("全局热键", "全局快捷键未设置主键，已跳过：功能=" + setting.DisplayName);
+                continue;
+            }
             string actionName = setting.ActionName;
             Action callback = delegate
             {
                 this.OnGlobalHotkeyTriggered(actionName);
             };
             bool registered = this.globalHotkeyService.Register(setting.ActionName, setting.KeyText,
-                setting.Ctrl, setting.Alt, setting.Shift, callback);
+                setting.Ctrl, setting.Alt, setting.Shift, setting.Win, callback);
             UiLogger.Log("全局热键", "注册全局快捷键：动作=" + setting.DisplayName
                 + " 动作标识=" + setting.ActionName
                 + " 主键=" + setting.KeyText
                 + " 控制键=" + setting.Ctrl
                 + " 替换键=" + setting.Alt
                 + " 上档键=" + setting.Shift
-                + " 结果=" + (registered ? "成功" : "失败，可能已被其他程序占用或主键名称无法识别"));
+                + " Windows键=" + setting.Win
+                + " 结果=" + (registered ? "成功" : "失败，可能与其他快捷键冲突或平台不支持"));
             if (registered)
             {
                 successCount++;
@@ -253,17 +285,50 @@ public class CaptureCoordinator : IDisposable
         {
             _ = this.CaptureAsync(CaptureTarget.FullScreen, mainViewModel.Settings.CaptureDelaySeconds);
         }
+        else if (string.Equals(actionName, "ScreenshotPrimary", StringComparison.Ordinal))
+        {
+            _ = this.CaptureAsync(CaptureTarget.PrimaryScreen, mainViewModel.Settings.CaptureDelaySeconds);
+        }
         else if (string.Equals(actionName, "ScreenshotWindow", StringComparison.Ordinal))
         {
             _ = this.CaptureAsync(CaptureTarget.ActiveWindow, mainViewModel.Settings.CaptureDelaySeconds);
+        }
+        else if (string.Equals(actionName, "ScreenshotLastRegion", StringComparison.Ordinal))
+        {
+            _ = this.CaptureLastRegionAsync(mainViewModel.Settings.CaptureDelaySeconds);
         }
         else if (string.Equals(actionName, "RecordToggle", StringComparison.Ordinal))
         {
             _ = this.ToggleRecordingAsync(this.ResolveRecordingTargetIndex(mainViewModel.Settings.CaptureRecordTarget));
         }
+        else if (string.Equals(actionName, "ColorPick", StringComparison.Ordinal))
+        {
+            _ = this.OpenScreenColorPickerAsync();
+        }
+        else if (string.Equals(actionName, "PastePin", StringComparison.Ordinal))
+        {
+            _ = this.PinClipboardImageAsync();
+        }
         else
         {
-            UiLogger.Log("全局热键", "全局快捷键动作被忽略：无法识别的动作标识=" + actionName);
+            // 非截图录屏动作：把主窗口带到前台后复用窗口内统一的快捷键分派逻辑
+            MainWindow? window = WindowRegistry.Primary;
+            if (window == null)
+            {
+                UiLogger.Log("全局热键", "全局快捷键动作无法执行：没有可用的主窗口 动作标识=" + actionName);
+                return;
+            }
+            if (!window.IsVisible)
+            {
+                window.Show();
+            }
+            if (window.WindowState == WindowState.Minimized)
+            {
+                window.WindowState = WindowState.Normal;
+            }
+            window.Activate();
+            UiLogger.Log("全局热键", "全局快捷键动作转交主窗口执行：动作标识=" + actionName);
+            window.ExecuteShortcutAction(actionName);
         }
     }
 
@@ -410,6 +475,19 @@ public class CaptureCoordinator : IDisposable
         else
         {
             UiLogger.Log("截图", "截图完成后未打开产物文件夹：用户已关闭「完成后自动打开产物文件夹」开关");
+        }
+        if (mainViewModel.Settings.CaptureOpenEditorAfter)
+        {
+            Dispatcher.UIThread.Post(delegate
+            {
+                this.OpenAnnotationEditor(screenshotPath, captureResult.Area);
+            });
+            UiLogger.Log("截图", "截图完成后已提交标注编辑器打开请求：图片路径=" + screenshotPath
+                + " 截图区域=" + captureResult.Area);
+        }
+        else
+        {
+            UiLogger.Log("截图", "截图完成后未打开标注编辑器：用户已关闭「截图后打开标注编辑器」开关");
         }
         return outcome;
     }
@@ -608,7 +686,20 @@ public class CaptureCoordinator : IDisposable
         UiLogger.Log("录屏", "检测到编码进程已退出：输出路径=" + recordingPath
             + " 录制时长=" + this.DescribeRecordingDuration());
         this.RecordingStateChanged?.Invoke();
+        long recordingFileSize = 0;
         if (recordingPath.Length > 0 && File.Exists(recordingPath))
+        {
+            try
+            {
+                FileInfo recordingFile = new FileInfo(recordingPath);
+                recordingFileSize = recordingFile.Length;
+            }
+            catch
+            {
+                recordingFileSize = 0;
+            }
+        }
+        if (recordingFileSize > 0)
         {
             CaptureOutcome outcome = CaptureOutcome.CreateSuccess(recordingPath, "录屏已结束：" + recordingPath);
             this.CaptureFinished?.Invoke(outcome);
@@ -636,7 +727,24 @@ public class CaptureCoordinator : IDisposable
         }
         MainWindow? ownerWindow = WindowRegistry.Primary;
         Screen? screen = null;
-        if (ownerWindow != null)
+        int pointerX = 0;
+        int pointerY = 0;
+        bool hasPointerPosition = this.screenRegionDetector.TryGetPointerPosition(out pointerX, out pointerY);
+        if (hasPointerPosition && ownerWindow != null)
+        {
+            foreach (Screen candidateScreen in ownerWindow.Screens.All)
+            {
+                if (pointerX >= candidateScreen.Bounds.X
+                    && pointerX < candidateScreen.Bounds.X + candidateScreen.Bounds.Width
+                    && pointerY >= candidateScreen.Bounds.Y
+                    && pointerY < candidateScreen.Bounds.Y + candidateScreen.Bounds.Height)
+                {
+                    screen = candidateScreen;
+                    break;
+                }
+            }
+        }
+        if (screen == null && ownerWindow != null)
         {
             screen = ownerWindow.Screens.ScreenFromWindow(ownerWindow);
             if (screen == null)
@@ -653,7 +761,11 @@ public class CaptureCoordinator : IDisposable
         ScreenBoundsInfo bounds = new ScreenBoundsInfo();
         bounds.Area = new CaptureArea(screen.Bounds.X, screen.Bounds.Y, screen.Bounds.Width, screen.Bounds.Height);
         bounds.Scaling = screen.Scaling;
-        UiLogger.Log("截图", "准备区域框选：屏幕区域=" + bounds.Area + " 缩放比例=" + bounds.Scaling);
+        UiLogger.Log("截图", "准备区域框选：屏幕区域=" + bounds.Area + " 缩放比例=" + bounds.Scaling
+            + " 鼠标位置可用=" + hasPointerPosition
+            + " 鼠标横坐标=" + pointerX
+            + " 鼠标纵坐标=" + pointerY
+            + " 屏幕选择依据=" + (hasPointerPosition ? "鼠标所在显示器（未匹配到时回落主窗口所在显示器）" : "主窗口所在显示器"));
 
         ScreenCaptureRequest previewRequest = new ScreenCaptureRequest();
         previewRequest.Target = CaptureTarget.Region;
@@ -667,14 +779,18 @@ public class CaptureCoordinator : IDisposable
             this.ShowFailure("区域截图失败", preview.ErrorMessage);
             return null;
         }
+        IReadOnlyList<ScreenRegionCandidate> regionCandidates = this.DetectRegionCandidates(bounds.Area);
         Bitmap? bitmap = null;
+        bool selectionWindowCreated = false;
         try
         {
             using (MemoryStream imageStream = new MemoryStream(preview.ImageBytes))
             {
                 bitmap = new Bitmap(imageStream);
             }
-            RegionSelectionWindow selectionWindow = new RegionSelectionWindow(bitmap, bounds.Area, bounds.Scaling);
+            RegionSelectionWindow selectionWindow = new RegionSelectionWindow(bitmap, bounds.Area, bounds.Scaling,
+                regionCandidates, this.screenRegionDetector);
+            selectionWindowCreated = true;
             CaptureArea? selected = await selectionWindow.SelectAreaAsync();
             if (selected == null)
             {
@@ -685,13 +801,56 @@ public class CaptureCoordinator : IDisposable
         }
         catch (Exception error)
         {
-            if (bitmap != null)
+            if (bitmap != null && !selectionWindowCreated)
             {
                 bitmap.Dispose();
             }
             UiLogger.LogError("截图", "区域框选窗口异常", error);
             this.ShowFailure("区域截图失败", "无法打开区域框选窗口：" + error.Message);
             return null;
+        }
+    }
+
+    /// <summary>枚举当前屏幕上的可预选区域；平台不支持时返回只含全屏的空列表，框选窗口降级为手工拖动。</summary>
+    private IReadOnlyList<ScreenRegionCandidate> DetectRegionCandidates(CaptureArea screenArea)
+    {
+        try
+        {
+            IReadOnlyList<ScreenRegionCandidate> candidates = this.screenRegionDetector.Detect(screenArea);
+            int windowCount = 0;
+            int childViewCount = 0;
+            foreach (ScreenRegionCandidate candidate in candidates)
+            {
+                if (candidate.Kind == ScreenRegionKind.Window)
+                {
+                    windowCount++;
+                }
+                else if (candidate.Kind == ScreenRegionKind.ChildView)
+                {
+                    childViewCount++;
+                }
+            }
+            UiLogger.Log("截图", "区域预选枚举：平台支持=" + this.screenRegionDetector.IsSupported
+                + " 屏幕区域=" + screenArea
+                + " 候选区域条数=" + candidates.Count
+                + " 窗口数量=" + windowCount
+                + " 子视图数量=" + childViewCount
+                + " 结果=成功");
+            return candidates;
+        }
+        catch (Exception error)
+        {
+            UiLogger.LogError("截图", "区域预选枚举异常：平台支持=" + this.screenRegionDetector.IsSupported
+                + " 结果=失败，回落为仅全屏候选", error);
+            List<ScreenRegionCandidate> fallback = new List<ScreenRegionCandidate>();
+            ScreenRegionCandidate fullScreen = new ScreenRegionCandidate();
+            fullScreen.Area = screenArea;
+            fullScreen.Kind = ScreenRegionKind.FullScreen;
+            fullScreen.Name = "全屏（当前显示器）";
+            fullScreen.Depth = 0;
+            fullScreen.ZOrder = -1;
+            fallback.Add(fullScreen);
+            return fallback;
         }
     }
 
@@ -745,6 +904,11 @@ public class CaptureCoordinator : IDisposable
             UiLogger.Log("截图录屏", "打开产物文件夹失败：没有可用的主窗口视图模型 目录=" + directory);
             return;
         }
+        if (mainViewModel.IsIdeMode)
+        {
+            UiLogger.Log("截图录屏", "当前处于 IDE 模式，先退出 IDE 模式以便显示产物文件夹标签");
+            mainViewModel.ExitIdeMode();
+        }
         mainViewModel.OpenFolderTab(directory);
         UiLogger.Log("截图录屏", "已自动打开产物文件夹标签：目录=" + directory
             + " 标签总数=" + mainViewModel.Tabs.Count);
@@ -772,7 +936,174 @@ public class CaptureCoordinator : IDisposable
             UiLogger.Log("截图录屏", "打开截图录屏标签失败：没有可用的主窗口视图模型");
             return;
         }
+        if (mainViewModel.IsIdeMode)
+        {
+            UiLogger.Log("截图录屏", "当前处于 IDE 模式，先退出 IDE 模式以便显示截图录屏标签");
+            mainViewModel.ExitIdeMode();
+        }
         mainViewModel.OpenCaptureTab();
+    }
+
+    /// <summary>打开标注编辑器（吸收 Snipaste 截图编辑流程）：装载截图、标注、取色、识别与贴图。</summary>
+    public void OpenAnnotationEditor(string filePath, CaptureArea area)
+    {
+        if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
+        {
+            UiLogger.Log("截图标注", "打开标注编辑器被拒绝：文件不存在 路径=" + filePath);
+            return;
+        }
+        MainWindowViewModel? mainViewModel = this.viewModel;
+        if (mainViewModel == null)
+        {
+            UiLogger.Log("截图标注", "打开标注编辑器被拒绝：主窗口视图模型未就绪 路径=" + filePath);
+            return;
+        }
+        ITextRecognitionService recognitionService = this.ResolveOcrService();
+        CaptureEditorWindow.Open(filePath, area, mainViewModel.Settings, recognitionService,
+            WindowRegistry.Primary);
+        UiLogger.Log("截图标注", "标注编辑器打开请求已提交：图片路径=" + filePath
+            + " 截图区域=" + area
+            + " 识别引擎=" + recognitionService.ProviderName
+            + " 识别可用=" + recognitionService.IsAvailable);
+    }
+
+    /// <summary>对已有图片打开标注编辑器（历史产物右键使用），贴图位置取主屏左上角。</summary>
+    public void OpenAnnotationEditorForFile(string filePath)
+    {
+        CaptureArea area = CaptureArea.Empty;
+        MainWindow? window = WindowRegistry.Primary;
+        if (window != null && window.Screens.Primary != null)
+        {
+            Screen primary = window.Screens.Primary;
+            area = new CaptureArea(primary.Bounds.X, primary.Bounds.Y,
+                primary.Bounds.Width, primary.Bounds.Height);
+        }
+        this.OpenAnnotationEditor(filePath, area);
+    }
+
+    /// <summary>
+    /// 解析当前可用的文字识别引擎：优先使用平台内置实现（Windows 内置识别），
+    /// 否则回退到按设置构造的 Tesseract；两者都不可用时返回平台实现并附带能力说明。
+    /// </summary>
+    private ITextRecognitionService ResolveOcrService()
+    {
+        MainWindowViewModel? mainViewModel = this.viewModel;
+        string configuredPath = mainViewModel == null ? string.Empty : mainViewModel.Settings.OcrTesseractPath;
+        string language = mainViewModel == null ? string.Empty : mainViewModel.Settings.OcrLanguage;
+        if (this.ocrService.IsAvailable)
+        {
+            return this.ocrService;
+        }
+        TesseractTextRecognitionService tesseract = new TesseractTextRecognitionService(configuredPath, language);
+        if (tesseract.IsAvailable)
+        {
+            UiLogger.Log("截图标注", "文字识别引擎解析：内置引擎不可用，改用 Tesseract 路径="
+                + tesseract.DescribeAvailability());
+            return tesseract;
+        }
+        UiLogger.Log("截图标注", "文字识别引擎解析：没有可用引擎 内置说明=" + this.ocrService.DescribeAvailability());
+        return this.ocrService;
+    }
+
+    /// <summary>打开全屏取色器：冻结整屏画面，移动鼠标查看颜色，单击复制十六进制颜色。</summary>
+    public async Task<CaptureOutcome> OpenScreenColorPickerAsync()
+    {
+        MainWindowViewModel? mainViewModel = this.viewModel;
+        MainWindow? ownerWindow = WindowRegistry.Primary;
+        if (mainViewModel == null || ownerWindow == null)
+        {
+            UiLogger.Log("屏幕取色", "打开取色器被拒绝：主窗口或视图模型未就绪");
+            return CaptureOutcome.CreateFailure("主窗口尚未就绪，无法打开取色器");
+        }
+        Screen? screen = ownerWindow.Screens.ScreenFromWindow(ownerWindow);
+        if (screen == null)
+        {
+            screen = ownerWindow.Screens.Primary;
+        }
+        if (screen == null)
+        {
+            UiLogger.Log("屏幕取色", "打开取色器被拒绝：无法获取屏幕信息");
+            return CaptureOutcome.CreateFailure("无法获取屏幕信息");
+        }
+        CaptureArea area = new CaptureArea(screen.Bounds.X, screen.Bounds.Y,
+            screen.Bounds.Width, screen.Bounds.Height);
+        ScreenCaptureRequest request = new ScreenCaptureRequest();
+        request.Target = CaptureTarget.Region;
+        request.Area = area;
+        request.IncludeCursor = false;
+        request.ToolPath = mainViewModel.Settings.FfmpegPath;
+        UiLogger.Log("屏幕取色", "正在获取整屏画面：屏幕区域=" + area
+            + " 缩放比例=" + screen.Scaling);
+        ScreenCaptureResult captureResult = await this.screenCaptureService.CaptureAsync(request);
+        if (!captureResult.Success)
+        {
+            UiLogger.Log("屏幕取色", "获取整屏画面失败：" + captureResult.ErrorMessage);
+            this.ShowFailure("取色器无法打开", captureResult.ErrorMessage);
+            return CaptureOutcome.CreateFailure(captureResult.ErrorMessage);
+        }
+        Bitmap bitmap;
+        try
+        {
+            using (MemoryStream stream = new MemoryStream(captureResult.ImageBytes))
+            {
+                bitmap = new Bitmap(stream);
+            }
+        }
+        catch (Exception error)
+        {
+            UiLogger.LogError("屏幕取色", "整屏画面解码失败", error);
+            return CaptureOutcome.CreateFailure("整屏画面解码失败：" + error.Message);
+        }
+        ScreenColorPickerWindow window = new ScreenColorPickerWindow(bitmap, area, screen.Scaling);
+        window.ShowPicker();
+        UiLogger.Log("屏幕取色", "取色器已打开：屏幕区域=" + area
+            + " 图像宽度=" + captureResult.PixelWidth
+            + " 图像高度=" + captureResult.PixelHeight);
+        return CaptureOutcome.CreateSuccess(string.Empty, "取色器已打开，单击复制颜色");
+    }
+
+    /// <summary>贴图（剪贴板）：把剪贴板中的图片贴到主屏左上角，可拖动、缩放、调透明度。</summary>
+    public async Task<CaptureOutcome> PinClipboardImageAsync()
+    {
+        MainWindowViewModel? mainViewModel = this.viewModel;
+        MainWindow? window = WindowRegistry.Primary;
+        if (mainViewModel == null || window == null)
+        {
+            UiLogger.Log("贴图", "剪贴板贴图被拒绝：主窗口或视图模型未就绪");
+            return CaptureOutcome.CreateFailure("主窗口尚未就绪，无法贴图");
+        }
+        IClipboard? clipboard = window.Clipboard;
+        Bitmap? bitmap = null;
+        if (clipboard != null)
+        {
+            try
+            {
+                bitmap = await clipboard.TryGetBitmapAsync();
+            }
+            catch (Exception error)
+            {
+                UiLogger.LogError("贴图", "读取剪贴板图片失败", error);
+            }
+        }
+        if (bitmap == null)
+        {
+            UiLogger.Log("贴图", "剪贴板贴图被拒绝：剪贴板中没有图片");
+            this.ShowFailure("无法贴图", "系统剪贴板中没有可用图片。\n请先复制一张图片，或使用截图后直接点击「贴图」。");
+            return CaptureOutcome.CreateFailure("系统剪贴板中没有可用图片");
+        }
+        PixelPoint position = new PixelPoint(60, 60);
+        Screen? screen = window.Screens.Primary;
+        if (screen != null)
+        {
+            PixelRect workingArea = screen.WorkingArea;
+            position = new PixelPoint(workingArea.X + 60, workingArea.Y + 60);
+        }
+        PinWindowManager.ShowPinnedImage(bitmap, position, mainViewModel.Settings);
+        UiLogger.Log("贴图", "剪贴板图片已贴到屏幕：像素宽度=" + bitmap.PixelSize.Width
+            + " 像素高度=" + bitmap.PixelSize.Height
+            + " 贴图横坐标=" + position.X
+            + " 贴图纵坐标=" + position.Y);
+        return CaptureOutcome.CreateSuccess(string.Empty, "剪贴板图片已贴到屏幕");
     }
 
     /// <summary>在媒体标签中打开截图 / 录像；非媒体文件交给系统默认程序。</summary>
@@ -801,6 +1132,11 @@ public class CaptureCoordinator : IDisposable
         {
             UiLogger.Log("截图录屏", "打开产物失败：没有可用的主窗口视图模型 路径=" + filePath);
             return;
+        }
+        if (mainViewModel.IsIdeMode)
+        {
+            UiLogger.Log("截图录屏", "当前处于 IDE 模式，先退出 IDE 模式以便在媒体标签打开产物");
+            mainViewModel.ExitIdeMode();
         }
         MediaKind kind = MediaFormatCatalog.Classify(filePath);
         if (kind == MediaKind.Unknown)
@@ -908,7 +1244,7 @@ public class CaptureCoordinator : IDisposable
             ? "录屏能力=" + (ffmpegPath.Length > 0 ? "可用" : "缺少 FFmpeg，暂不可用")
             : "录屏能力=当前平台不支持";
         string ffmpegText = ffmpegPath.Length > 0 ? "FFmpeg=" + ffmpegPath : "FFmpeg=未找到";
-        string hotkeyText = this.globalHotkeyService.IsSupported ? this.hotkeyStatusText : "全局快捷键=当前平台不支持";
+        string hotkeyText = this.globalHotkeyService.IsSupported ? this.hotkeyStatusText : "全局快捷键=不可用";
         return captureText + "；" + recordText + "；" + ffmpegText + "；" + hotkeyText;
     }
 
@@ -997,6 +1333,10 @@ public class CaptureCoordinator : IDisposable
     {
         this.StopRecordingWatchTimer();
         this.globalHotkeyService.UnregisterAll();
+        if (this.globalHotkeyService is IDisposable hotkeyDisposable)
+        {
+            hotkeyDisposable.Dispose();
+        }
         if (this.screenRecordingService is IDisposable recordingDisposable)
         {
             recordingDisposable.Dispose();

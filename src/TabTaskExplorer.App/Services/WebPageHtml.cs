@@ -85,6 +85,8 @@ public static class WebPageHtml
   .connForm label { font-size:12px; opacity:.85; }
   .connForm input, .connForm select { border:1px solid #D5D5D5; border-radius:3px; padding:4px 6px; font:13px 'Segoe UI','Microsoft YaHei'; outline:none; background:#fff; color:inherit; min-width:0; }
   .connForm .wide { grid-column:span 3; }
+  .connForm label.startupCheck { display:flex; align-items:center; gap:5px; }
+  .connForm label.startupCheck input { width:auto; min-width:0; }
   body.dark .connForm input, body.dark .connForm select { background:#202020; border-color:#3C3C3C; }
   .pop { position:absolute; top:100%; right:0; margin-top:3px; background:#fff; border:1px solid #DCDCDC; border-radius:6px; box-shadow:0 6px 18px rgba(0,0,0,.14); padding:4px; z-index:30; min-width:360px; max-height:320px; overflow:auto; }
   .pop .item { padding:5px 8px; border-radius:4px; cursor:pointer; font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
@@ -134,6 +136,23 @@ public static class WebPageHtml
   .tile .ttype { font-size:11px; color:#808080; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .tile .ttick { position:absolute; left:4px; top:4px; }
   .hint { color:#808080; margin:6px 0; }
+
+  /* ===== 目录 / 文件比对（与桌面 ComparePanel 同构） ===== */
+  .cmpBar { display:flex; align-items:center; gap:6px; padding:4px 0 8px; flex-wrap:wrap; }
+  .cmpBar .cmpLbl { font-size:12px; color:#808080; flex:none; }
+  .cmpBar .cmpInput { flex:1; min-width:180px; border:1px solid #D5D5D5; border-radius:3px; padding:5px 8px; font:13px 'Segoe UI','Microsoft YaHei'; outline:none; background:#fff; color:inherit; }
+  .cmpBar .cmpInput:focus { border-color:#4A8FD0; }
+  .cmpOpts { display:flex; align-items:center; gap:10px; flex-wrap:wrap; font-size:12px; padding:0 0 8px; }
+  .cmpOpts label { display:flex; align-items:center; gap:4px; cursor:pointer; }
+  .cmpOpts .cmpMode { color:#2F6FD0; font-weight:500; }
+  .cmpOpts .cmpPos { color:#808080; }
+  .cmpMeta { color:#808080; font-size:12px; padding:0 0 6px; }
+  .cmpBadge { display:inline-block; padding:1px 7px; border-radius:9px; color:#fff; font-size:11px; white-space:nowrap; }
+  .cmpTable td { vertical-align:middle; }
+  .cmpTable .cmpLineNo { width:52px; text-align:right; color:#9A9A9A; font:12px Consolas,'Cascadia Code',monospace; }
+  .cmpTable .cmpText { font:12px Consolas,'Cascadia Code',monospace; white-space:pre; overflow:hidden; text-overflow:ellipsis; }
+  .cmpTable .cmpChanged { border-radius:2px; padding:0 1px; }
+  body.dark .cmpBar .cmpInput { background:#202020; border-color:#3C3C3C; }
 
   /* ===== 进程监控（与桌面 ProcessPanel 同构：调节行 + 走势图 + 详情区） ===== */
   .procCtrl { display:flex; align-items:center; gap:6px; flex-wrap:wrap; padding:6px 0; font-size:13px; }
@@ -203,6 +222,7 @@ public static class WebPageHtml
   .ideTab { display:flex; align-items:center; gap:5px; padding:4px 6px 4px 8px; border:1px solid transparent; border-bottom:0; border-radius:4px 4px 0 0; font-size:12px; white-space:nowrap; cursor:default; }
   .ideTab:hover { background:#F5F7FA; }
   .ideTab.active { background:#FFFFFF; border-color:#E9E9E9; }
+  .ideTab.preview .ttl { font-style:italic; }
   .ideTab .x { color:#999; padding:0 3px; border-radius:3px; }
   .ideTab .x:hover { background:#FDE7E9; color:#E81123; }
   .ideMain { flex:1; display:flex; min-height:0; position:relative; }
@@ -404,7 +424,7 @@ public static class WebPageHtml
         <div class="ideMain">
           <div class="ideGutter" id="ideGutter">1</div>
           <textarea id="ideText" spellcheck="false" class="ideText hidden"></textarea>
-          <div class="ideEmpty" id="ideEmpty">从左侧资源树双击文件即可开始编辑，Ctrl+P 快速打开，Ctrl+F 查找。</div>
+          <div class="ideEmpty" id="ideEmpty">单击左侧资源树文件以预览方式打开，双击、编辑或保存后固定为普通标签；Ctrl+P 快速打开，Ctrl+F 查找。</div>
         </div>
         <div class="ideFind hidden" id="ideFind">
           <div class="ideFindRow">
@@ -549,6 +569,8 @@ const UI_PATHS = {
   saveall: 'M8 4 L17.6 4 L20 6.4 L20 17.6 C20 18.4 19.4 19 18.6 19 L8 19 C7.2 19 6.6 18.4 6.6 17.6 L6.6 5.4 C6.6 4.6 7.2 4 8 4 Z M3.4 8 L3.4 21 L16.6 21',
   quickopen: 'M6.4 3 L15 3 L19.4 7.4 L19.4 11.4 M6.4 3 C5.5 3 4.9 3.6 4.9 4.5 L4.9 19.5 C4.9 20.4 5.5 21 6.4 21 L11.6 21 M15 3 L15 7.4 L19.4 7.4 M10.4 17.6 A4.4 4.4 0 1 0 19.2 17.6 A4.4 4.4 0 1 0 10.4 17.6 M18.2 19.6 L21.8 23.2',
   chevronright: 'M9 5.4 L15.6 12 L9 18.6',
+  compare: 'M5 4.5 L5 19.5 M19 4.5 L19 19.5 M8.4 8.6 L11.8 12 L8.4 15.4 M15.6 8.6 L12.2 12 L15.6 15.4',
+  power: 'M12 3.2 L12 11.6 M7.4 5.4 A7.6 7.6 0 1 0 16.6 5.4',
   close: 'M5.6 5.6 L18.4 18.4 M18.4 5.6 L5.6 18.4'
 };
 
@@ -938,9 +960,11 @@ function renderSidebar() {
   html += navSection('此电脑', 'monitor', state.navPc, true);
   html += '<div class="navsec"><span class="ico">' + uiIcon('globe', 14, '#2F6FD0') + '</span>网络</div>'
     + '<div class="navitem" onclick="clickBtn(null,\'openconnections\')"><span class="ico">' + uiIcon('globe', 15, '#E8A317') + '</span>连接管理</div>'
+    + '<div class="navitem" onclick="clickBtn(null,\'opencompare\')"><span class="ico">' + uiIcon('compare', 15, '#2F6FD0') + '</span>文件比对</div>'
     + '<div class="navitem" onclick="clickBtn(null,\'opensearch\')"><span class="ico">' + uiIcon('search', 15, '#E8A317') + '</span>全局搜索</div>'
     + '<div class="navitem" onclick="clickBtn(null,\'opendisk\')"><span class="ico">' + uiIcon('donut', 15, '#E8A317') + '</span>磁盘视图</div>'
     + '<div class="navitem" onclick="clickBtn(null,\'openprocess\')"><span class="ico">' + uiIcon('activity', 15, '#E8A317') + '</span>进程监控</div>'
+    + '<div class="navitem" onclick="clickBtn(null,\'openstartup\')"><span class="ico">' + uiIcon('power', 15, '#E8A317') + '</span>启动项管理</div>'
     + '<div class="navitem" onclick="clickBtn(null,\'openboard\')"><span class="ico">' + uiIcon('board', 15, '#E8A317') + '</span>任务看板</div>';
   document.getElementById('sidebar').innerHTML = html;
 }
@@ -1025,7 +1049,12 @@ function renderContent(tab) {
     + '|' + tab.resourceText + '|' + JSON.stringify(tab.processRows)
     + '|' + tab.detailText + '|' + tab.affinityInput + '|' + tab.priorityIndex
     + '|' + tab.detailSupported + '|' + tab.trendVersion
-    + '|' + tab.sortField + '|' + tab.sortAscending;
+    + '|' + JSON.stringify(tab.startupRows) + '|' + JSON.stringify(tab.customStartupRows)
+    + '|' + tab.startupEnvironmentText + '|' + tab.summaryText
+    + '|' + tab.sortField + '|' + tab.sortAscending
+    + '|' + JSON.stringify(tab.compareRows) + '|' + tab.compareMode + '|' + tab.leftPathInput + '|' + tab.rightPathInput
+    + '|' + tab.compareShowOnlyDifferences + '|' + tab.compareIncludeSubDirectories + '|' + tab.compareFileContent
+    + '|' + tab.compareDifferencePosition + '|' + tab.leftMetaText + '|' + tab.rightMetaText;
   if (signature === lastContentSignature) { applyFocusHighlight(); return; }
   lastContentSignature = signature;
 
@@ -1042,11 +1071,18 @@ function renderContent(tab) {
     html = renderConnections(tab);
   } else if (tab.tabType === 'process') {
     html = renderProcess(tab);
+  } else if (tab.tabType === 'startup') {
+    html = renderStartup(tab);
+  } else if (tab.tabType === 'compare') {
+    html = renderCompare(tab);
   } else {
     html = renderGenericView(tab);
   }
-  if (tab.tabType !== 'process' && tab.totalRows && tab.totalRows > tab.rows.length) {
-    html += '<div class="hint">仅显示前 ' + tab.rows.length + ' 项，共 ' + tab.totalRows + ' 项</div>';
+  const listedRowCount = (tab.tabType === 'compare')
+    ? (tab.compareRows || []).length
+    : ((tab.rows || []).length);
+  if (tab.tabType !== 'process' && tab.totalRows && tab.totalRows > listedRowCount && listedRowCount > 0) {
+    html += '<div class="hint">仅显示前 ' + listedRowCount + ' 项，共 ' + tab.totalRows + ' 项</div>';
   }
   // 摘要栏：与桌面一致，显示在内容底部（桌面 FileListPanel 底部摘要）
   if (tab.summaryText) {
@@ -1203,6 +1239,127 @@ function renderDiskTable(tab) {
   }
   html += '</table>';
   return html;
+}
+
+// ===== 目录 / 文件比对（与桌面 ComparePanel 同构：路径栏 + 选项 + 对齐结果表） =====
+
+function cmpRowBackground(key) {
+  if (key === 'leftonly') { return 'rgba(242,178,62,.10)'; }
+  if (key === 'rightonly') { return 'rgba(47,111,208,.10)'; }
+  if (key === 'different' || key === 'modified') { return 'rgba(232,163,23,.10)'; }
+  if (key === 'leftnewer' || key === 'rightnewer') { return 'rgba(142,124,195,.10)'; }
+  if (key === 'type') { return 'rgba(224,82,82,.10)'; }
+  return 'transparent';
+}
+
+function renderCompare(tab) {
+  const rows = tab.compareRows || [];
+  const isFile = tab.compareMode === 'file';
+  let html = '<div class="cmpBar">'
+    + '<span class="cmpLbl">左侧</span>'
+    + '<input id="cmpLeft" class="cmpInput" placeholder="输入左侧目录或文件路径" value="' + escAttr(tab.leftPathInput || '') + '">'
+    + '<button class="btn" onclick="cmpApply()">开始比对</button>'
+    + '<span class="cmpLbl">右侧</span>'
+    + '<input id="cmpRight" class="cmpInput" placeholder="输入右侧目录或文件路径" value="' + escAttr(tab.rightPathInput || '') + '">'
+    + '<button class="btn" onclick="cmpSwap()">⇄ 交换</button>'
+    + '</div>';
+  html += '<div class="cmpOpts"><span class="cmpMode">' + (isFile ? '文件比对' : '目录比对') + '</span>';
+  if (!isFile) {
+    html += '<button class="btn" onclick="clickBtn(null,\'compareup\')">上一级</button>';
+  }
+  html += '<label><input type="checkbox"' + (tab.compareShowOnlyDifferences ? ' checked' : '')
+    + ' onclick="clickBtn(null,\'comparetoggle\',\'onlydiff\')"> 仅显示差异</label>';
+  if (!isFile) {
+    html += '<label><input type="checkbox"' + (tab.compareIncludeSubDirectories ? ' checked' : '')
+      + ' onclick="clickBtn(null,\'comparetoggle\',\'subdirs\')"> 包含子目录</label>'
+      + '<label><input type="checkbox"' + (tab.compareFileContent ? ' checked' : '')
+      + ' onclick="clickBtn(null,\'comparetoggle\',\'content\')"> 按内容比较</label>';
+  }
+  html += '<button class="btn" onclick="clickBtn(null,\'compareprev\')">上一处差异</button>'
+    + '<button class="btn" onclick="clickBtn(null,\'comparenext\')">下一处差异</button>'
+    + '<span class="cmpPos">' + esc(tab.compareDifferencePosition || '') + '</span></div>';
+  if (isFile) {
+    html += '<div class="cmpMeta">左：' + esc(tab.leftMetaText || '') + '　右：' + esc(tab.rightMetaText || '') + '</div>';
+  }
+  if (rows.length === 0) {
+    html += '<div class="hint">' + (tab.summaryText ? esc(tab.summaryText) : '请输入左右两侧路径后点击「开始比对」') + '</div>';
+    return html;
+  }
+  if (isFile) {
+    html += renderCompareFileTable(rows);
+  } else {
+    html += renderCompareDirectoryTable(rows);
+  }
+  return html;
+}
+
+function renderCompareDirectoryTable(rows) {
+  let html = '<table class="cmpTable" style="width:100%;max-width:100%">'
+    + '<colgroup><col style="width:100px"><col><col style="width:200px"><col style="width:200px"></colgroup>'
+    + '<tr><th>状态</th><th>相对路径</th><th>左侧（时间 · 大小）</th><th>右侧（时间 · 大小）</th></tr>';
+  for (let index = 0; index < rows.length; index++) {
+    const row = rows[index];
+    html += '<tr class="row" style="background:' + cmpRowBackground(row.statusKey) + '"'
+      + ' ondblclick="cmpOpen(' + index + ')">'
+      + '<td><span class="cmpBadge" style="background:' + escAttr(row.statusColor || '#4CAF50') + '">'
+      + esc(row.statusText || '') + '</span></td>'
+      + '<td class="name"><span class="fIco" style="width:16px;height:16px">'
+      + fileIcon(row.iconCategory || 'file', row.iconColor || '#8A94A6', 16) + '</span>'
+      + '<span class="text ' + (row.isDirectory ? 'dir' : 'file') + '" title="' + escAttr(row.name || '') + '">'
+      + esc(row.name || '') + '</span></td>'
+      + '<td class="clip" title="' + escAttr(row.leftInfo || '') + '">' + esc(row.leftInfo || '') + '</td>'
+      + '<td class="clip" title="' + escAttr(row.rightInfo || '') + '">' + esc(row.rightInfo || '') + '</td></tr>';
+  }
+  html += '</table>';
+  return html;
+}
+
+function renderCompareFileTable(rows) {
+  let html = '<table class="cmpTable" style="width:100%;max-width:100%">'
+    + '<colgroup><col style="width:52px"><col><col style="width:52px"><col></colgroup>'
+    + '<tr><th>行</th><th>左侧内容</th><th>行</th><th>右侧内容</th></tr>';
+  for (let index = 0; index < rows.length; index++) {
+    const row = rows[index];
+    html += '<tr style="background:' + cmpRowBackground(row.kindKey) + '">'
+      + '<td class="cmpLineNo">' + esc(row.leftNumber || '') + '</td>'
+      + '<td class="cmpText">' + cmpChangedHtml(row.leftPrefix, row.leftChanged, row.leftSuffix, row.kindKey, 'left') + '</td>'
+      + '<td class="cmpLineNo">' + esc(row.rightNumber || '') + '</td>'
+      + '<td class="cmpText">' + cmpChangedHtml(row.rightPrefix, row.rightChanged, row.rightSuffix, row.kindKey, 'right') + '</td></tr>';
+  }
+  html += '</table>';
+  return html;
+}
+
+function cmpChangedHtml(prefix, changed, suffix, kind, side) {
+  let color = 'rgba(232,163,23,.35)';
+  if (kind === 'leftonly') { color = 'rgba(224,82,82,.35)'; }
+  else if (kind === 'rightonly') { color = 'rgba(51,168,82,.35)'; }
+  let html = esc(prefix || '');
+  if (changed) {
+    html += '<span class="cmpChanged" style="background:' + color + '">' + esc(changed) + '</span>';
+  }
+  html += esc(suffix || '');
+  return html;
+}
+
+function cmpApply() {
+  const leftElement = document.getElementById('cmpLeft');
+  const rightElement = document.getElementById('cmpRight');
+  const left = leftElement ? leftElement.value.trim() : '';
+  const right = rightElement ? rightElement.value.trim() : '';
+  if (left === '' && right === '') {
+    flash('请输入左右两侧路径后再开始比对');
+    return;
+  }
+  doAction('compareapply', left + '\n' + right);
+}
+
+function cmpSwap() {
+  doAction('compareswap');
+}
+
+function cmpOpen(index) {
+  doAction('compareopen', String(index));
 }
 
 // 进程监控：与桌面 ProcessPanel 同构（操作按钮 + 调节行 + 资源摘要 + 进程表格 + 走势图 + 详情区）
@@ -1544,6 +1701,182 @@ function connOpenTerminal() {
   doAction('connopenterminal', connEditingId);
 }
 
+// ======== 启动项管理（与桌面 StartupPanel 同构） ========
+let startupEditingId = '';
+
+function startupKindIndex(itemType) {
+  if (itemType === 'Shortcut') { return 1; }
+  if (itemType === 'Script') { return 2; }
+  if (itemType === 'WebLink') { return 3; }
+  return 0;
+}
+
+function renderStartup(tab) {
+  const systemRows = tab.startupRows || [];
+  const customRows = tab.customStartupRows || [];
+  let html = '<div class="connToolbar">'
+    + '<span class="btn" onclick="clickBtn(null,\'startuprefresh\')">刷新</span>'
+    + '<span class="btn' + (permissions.canCreateDelete ? '' : ' disabled') + '" onclick="startupNew()">新建自定义项</span>'
+    + '<span class="btn' + (permissions.canCreateDelete ? '' : ' disabled') + '" onclick="startupSave()">保存</span>'
+    + '<span class="btn' + (permissions.canCreateDelete ? '' : ' disabled') + '" onclick="startupDelete()">删除</span>'
+    + '<span class="btn' + (permissions.canModify ? '' : ' disabled') + '" onclick="startupRun()">立即运行</span>'
+    + '</div>';
+  if (tab.startupEnvironmentText) {
+    html += '<div class="hint">' + esc(tab.startupEnvironmentText) + '</div>';
+  }
+  html += '<div class="hint">自定义启动项在本程序每次开机后首次启动时检查；本次开机已拉起过的条目不会重复拉起。</div>';
+
+  html += '<div class="hint">系统启动项（程序与服务）</div>';
+  html += tableOpenHtml('startup', [180, 80, 90, 80, 320, 60, 80])
+    + '<tr><th>名称</th><th>类型</th><th>来源</th><th>范围</th><th>启动目标</th><th>状态</th><th>操作</th></tr>';
+  if (systemRows.length === 0) {
+    html += '<tr><td class="hint" colspan="7">暂无系统启动项，或当前平台不支持读取</td></tr>';
+  }
+  for (const row of systemRows) {
+    const actionClass = row.canToggle && permissions.canModify ? 'btn' : 'btn disabled';
+    html += '<tr>'
+      + '<td class="name"><span class="text" title="' + escAttr(row.commandText) + '">' + esc(row.name)
+      + (row.isSelfAutoStart ? '（本程序）' : '') + '</span></td>'
+      + '<td>' + esc(row.kindText) + '</td>'
+      + '<td>' + esc(row.sourceText) + '</td>'
+      + '<td>' + esc(row.scopeText) + '</td>'
+      + '<td class="clip" title="' + escAttr(row.commandText) + '">' + esc(row.commandText) + '</td>'
+      + '<td>' + esc(row.stateText) + '</td>'
+      + '<td><span class="' + actionClass + '" data-id="' + escAttr(row.id) + '"'
+      + ' title="' + escAttr(row.toggleHint || '') + '"'
+      + ' onclick="startupToggleRow(this)">' + (row.enabled ? '禁用' : '启用') + '</span></td></tr>';
+  }
+  html += '</table>';
+
+  html += '<div class="hint">自定义启动项（程序 / 快捷方式 / 脚本 / 网页链接）</div>';
+  html += tableOpenHtml('startupcustom', [180, 90, 300, 100, 170, 70, 190])
+    + '<tr><th>名称</th><th>类型</th><th>启动目标</th><th>延迟</th><th>本次开机</th><th>状态</th><th>操作</th></tr>';
+  if (customRows.length === 0) {
+    html += '<tr><td class="hint" colspan="7">暂无自定义启动项，可在下方表单新建</td></tr>';
+  }
+  for (const row of customRows) {
+    html += '<tr class="row startupCustomRow" data-id="' + escAttr(row.id) + '" onclick="startupSelectRow(this)">'
+      + '<td class="name"><span class="text" title="' + escAttr(row.targetText) + '">' + esc(row.name) + '</span></td>'
+      + '<td>' + esc(row.kindText) + '</td>'
+      + '<td class="clip" title="' + escAttr(row.targetText) + '">' + esc(row.targetText) + '</td>'
+      + '<td>' + esc(row.delayText) + '</td>'
+      + '<td>' + esc(row.bootStateText) + '</td>'
+      + '<td>' + esc(row.stateText) + '</td>'
+      + '<td><span class="btn' + (permissions.canModify ? '' : ' disabled') + '" onclick="event.stopPropagation();startupRunRow(this)" data-id="' + escAttr(row.id) + '">运行</span>'
+      + '<span class="btn' + (permissions.canModify ? '' : ' disabled') + '" onclick="event.stopPropagation();startupToggleCustomRow(this)" data-id="' + escAttr(row.id) + '">'
+      + (row.enabled ? '禁用' : '启用') + '</span>'
+      + '<span class="btn' + (permissions.canCreateDelete ? '' : ' disabled') + '" onclick="event.stopPropagation();startupDeleteRow(this)" data-id="' + escAttr(row.id) + '">删除</span></td></tr>';
+  }
+  html += '</table>';
+
+  const selected = startupEditingId
+    ? customRows.find(function (row) { return row.id === startupEditingId; })
+    : null;
+  const value = selected || { name: '', itemType: 'Program', target: '', arguments: '', delaySeconds: 0, enabled: true };
+  html += '<div class="connForm">'
+    + '<label>名称</label><input id="startupName" class="wide" value="' + escAttr(value.name) + '">'
+    + '<label>类型</label><select id="startupKind">'
+    + '<option value="0"' + (startupKindIndex(value.itemType) === 0 ? ' selected' : '') + '>程序</option>'
+    + '<option value="1"' + (startupKindIndex(value.itemType) === 1 ? ' selected' : '') + '>快捷方式</option>'
+    + '<option value="2"' + (startupKindIndex(value.itemType) === 2 ? ' selected' : '') + '>脚本</option>'
+    + '<option value="3"' + (startupKindIndex(value.itemType) === 3 ? ' selected' : '') + '>网页链接</option></select>'
+    + '<label>延迟秒数</label><input id="startupDelay" value="' + escAttr(String(value.delaySeconds)) + '" placeholder="0-600">'
+    + '<label>启动目标</label><input id="startupTarget" class="wide" value="' + escAttr(value.target) + '" placeholder="程序路径 / 快捷方式 / 脚本 / https://...">'
+    + '<label>启动参数</label><input id="startupArguments" class="wide" value="' + escAttr(value.arguments) + '">'
+    + '<label>启用</label><label class="startupCheck"><input id="startupEnabled" type="checkbox"'
+    + (value.enabled ? ' checked' : '') + '> 启用该自定义启动项</label>'
+    + '</div>';
+  return html;
+}
+
+// 系统启动项：按行内按钮回传的编号启停
+function startupToggleRow(element) {
+  if (!permissions.canModify) { flash('该端口未放行修改权限，无法启停系统启动项'); return; }
+  if (!element || element.classList.contains('disabled')) { flash('该条目不允许从本程序修改'); return; }
+  clickBtn(null, 'startuptoggle', element.getAttribute('data-id'));
+}
+
+// 自定义启动项：点击行回填编辑表单
+function startupSelectRow(element) {
+  if (!element || !currentTab) { return; }
+  const id = element.getAttribute('data-id');
+  const rows = currentTab.customStartupRows || [];
+  const row = rows.find(function (item) { return item.id === id; });
+  if (!row) { return; }
+  startupEditingId = row.id;
+  document.getElementById('startupName').value = row.name || '';
+  document.getElementById('startupKind').value = String(startupKindIndex(row.itemType));
+  document.getElementById('startupTarget').value = row.target || '';
+  document.getElementById('startupArguments').value = row.arguments || '';
+  document.getElementById('startupDelay').value = String(row.delaySeconds == null ? 0 : row.delaySeconds);
+  document.getElementById('startupEnabled').checked = !!row.enabled;
+  for (const element of document.querySelectorAll('.startupCustomRow')) {
+    element.classList.toggle('checked', element.getAttribute('data-id') === id);
+  }
+  flash('已载入自定义启动项：' + row.name);
+}
+
+function startupNew() {
+  startupEditingId = '';
+  const textIds = ['startupName', 'startupTarget', 'startupArguments', 'startupDelay'];
+  for (const id of textIds) {
+    const element = document.getElementById(id);
+    if (element) { element.value = ''; }
+  }
+  const kind = document.getElementById('startupKind');
+  if (kind) { kind.value = '0'; }
+  const enabled = document.getElementById('startupEnabled');
+  if (enabled) { enabled.checked = true; }
+  for (const element of document.querySelectorAll('.startupCustomRow')) {
+    element.classList.remove('checked');
+  }
+  flash('已切换到新建自定义启动项，填写完成后再点「保存」');
+}
+
+function startupSave() {
+  if (!permissions.canCreateDelete) { flash('该端口未放行新建与删除权限，无法保存自定义启动项'); return; }
+  function valueOf(id) {
+    const element = document.getElementById(id);
+    return element ? element.value : '';
+  }
+  const values = [
+    valueOf('startupName'), valueOf('startupKind'), valueOf('startupTarget'),
+    valueOf('startupArguments'), valueOf('startupDelay'),
+    document.getElementById('startupEnabled') && document.getElementById('startupEnabled').checked ? '1' : '0'
+  ];
+  doAction('startupcustomsave', [startupEditingId].concat(values).join('\n'));
+}
+
+function startupDelete() {
+  if (!permissions.canCreateDelete) { flash('该端口未放行新建与删除权限，无法删除自定义启动项'); return; }
+  if (!startupEditingId) { flash('请先在下方列表选中要删除的自定义启动项'); return; }
+  const id = startupEditingId;
+  startupEditingId = '';
+  doAction('startupcustomdelete', id);
+}
+
+function startupRun() {
+  if (!startupEditingId) { flash('请先在下方列表选中要立即运行的自定义启动项'); return; }
+  doAction('startupcustomrun', startupEditingId);
+}
+
+function startupRunRow(element) {
+  if (!permissions.canModify) { flash('该端口未放行修改权限，无法立即运行自定义启动项'); return; }
+  doAction('startupcustomrun', element.getAttribute('data-id'));
+}
+
+function startupToggleCustomRow(element) {
+  if (!permissions.canModify) { flash('该端口未放行修改权限，无法切换自定义启动项'); return; }
+  doAction('startupcustomtoggle', element.getAttribute('data-id'));
+}
+
+function startupDeleteRow(element) {
+  if (!permissions.canCreateDelete) { flash('该端口未放行新建与删除权限，无法删除自定义启动项'); return; }
+  const id = element.getAttribute('data-id');
+  if (id === startupEditingId) { startupEditingId = ''; }
+  doAction('startupcustomdelete', id);
+}
+
 function renderCrumb(tab) {
   const crumb = document.getElementById('crumb');
   if (tab.tabType === 'disk') {
@@ -1875,8 +2208,10 @@ function onContentContextMenu(event) {
 function showContextMenu(event, row) {
   const ctx = document.getElementById('ctx');
   const canEdit = permissions.canCreateDelete;
+  const canCompare = currentTab && currentTab.tabType === 'file' && checked.size === 2;
   ctx.innerHTML = '<div class="item" data-ctx="open">打开</div>'
     + '<div class="item" data-ctx="newtab">在新标签打开</div>'
+    + (canCompare ? '<div class="item" data-ctx="compare">比较所选两项</div>' : '')
     + '<div class="item" data-ctx="copy">复制</div>'
     + (canEdit ? '<div class="item" data-ctx="cut">剪切</div>' : '')
     + (canEdit && row.isDirectory ? '<div class="item" data-ctx="pasteto">粘贴到该文件夹</div>' : '')
@@ -1897,6 +2232,7 @@ function showContextMenu(event, row) {
     else if (kind === 'newtab') {
       if (row.isDirectory) { post('/api/tabs/new', { p: row.fullPath }); } else { openFile(row.fullPath); }
     }
+    else if (kind === 'compare') { doAction('comparechecked'); }
     else if (kind === 'copy') { doAction('copy'); }
     else if (kind === 'cut') { clickBtn('btnCut', 'cut'); }
     else if (kind === 'pasteto') { doAction('pasteto', row.fullPath); }
@@ -2296,7 +2632,7 @@ function renderIde() {
   renderIdeStatus(ide);
 }
 
-// 资源树：按深度缩进拍平节点；单击选中，双击目录展开、双击文件打开
+// 资源树：按深度缩进拍平节点；单击文件按预览方式打开，双击目录展开、双击文件固定为普通标签
 function renderIdeTree(ide) {
   const root = document.getElementById('ideRoot');
   root.textContent = ide.workspaceRootText || '';
@@ -2332,9 +2668,10 @@ function renderIdeTabs(ide) {
   let html = '';
   for (const editor of ideEditorList) {
     const active = editor.index === ide.activeEditorIndex ? ' active' : '';
-    html += '<div class="ideTab' + active + '" data-i="' + editor.index + '" title="' + escAttr(editor.toolTipText) + '">'
+    const preview = editor.isPreview ? ' preview' : '';
+    html += '<div class="ideTab' + active + preview + '" data-i="' + editor.index + '" title="' + escAttr(editor.toolTipText) + '">'
       + '<span class="fIco" style="width:14px;height:14px">' + fileIcon(editor.iconCategory, editor.iconColor, 14) + '</span>'
-      + '<span>' + esc(editor.displayTitle) + '</span>'
+      + '<span class="ttl">' + esc(editor.displayTitle) + '</span>'
       + '<span class="x" data-close="' + editor.index + '" title="关闭">&times;</span></div>';
   }
   if (ideTabsSignature !== html) {
@@ -2445,7 +2782,13 @@ function ideFlushPush() {
 // 保存前立即推送本地未同步的编辑，避免防抖窗口内保存到旧内容
 async function ideFlushPushNow() {
   if (idePushTimer) { clearTimeout(idePushTimer); idePushTimer = null; }
-  if (!ideLocalDirty || idePushPending || ideLoadedIndex < 0) { return; }
+  // 等已在途的推送完成，确保接下来的打开 / 保存动作在服务端看到的是最新文本（最多等 1 秒，避免推送异常时卡住）
+  let pushWaitCount = 0;
+  while (idePushPending && pushWaitCount < 50) {
+    await new Promise(function (resolve) { setTimeout(resolve, 20); });
+    pushWaitCount++;
+  }
+  if (!ideLocalDirty || ideLoadedIndex < 0) { return; }
   await idePushText(ideLoadedIndex, document.getElementById('ideText').value);
 }
 
@@ -2864,8 +3207,8 @@ document.getElementById('editorText').addEventListener('keydown', function (even
 
 // ======== IDE 模式事件挂接 ========
 
-// 资源树：单击选中；双击目录展开 / 收起，双击文件打开
-document.getElementById('ideTreeList').addEventListener('click', function (event) {
+// 资源树：单击选中；单击文件按预览方式打开（下一次预览替换它），双击目录展开 / 收起、双击文件固定为普通标签
+document.getElementById('ideTreeList').addEventListener('click', async function (event) {
   const element = event.target.closest('[data-i]');
   if (!element) { return; }
   const node = ideTreeNodes[Number(element.getAttribute('data-i'))];
@@ -2874,6 +3217,11 @@ document.getElementById('ideTreeList').addEventListener('click', function (event
   const nodes = document.querySelectorAll('#ideTreeList .ideNode');
   for (const item of nodes) { item.classList.remove('sel'); }
   element.classList.add('sel');
+  if (!node.isPlaceholder && !node.isDirectory) {
+    // 预览可能替换上一个预览标签：先推送本地尚未同步的编辑，让服务端把它标记为已编辑而固定保留
+    await ideFlushPushNow();
+    doAction('ideopenpreview', node.fullPath);
+  }
 });
 
 document.getElementById('ideTreeList').addEventListener('dblclick', function (event) {
@@ -2894,6 +3242,26 @@ document.getElementById('ideTabs').addEventListener('click', function (event) {
   const index = Number(tabElement.getAttribute('data-i'));
   const activeIndex = (state && state.ide) ? state.ide.activeEditorIndex : -1;
   if (index !== activeIndex) { doAction('ideselect', String(index)); }
+});
+
+// 编辑器标签：双击标签标题把预览标签固定为普通标签
+document.getElementById('ideTabs').addEventListener('dblclick', function (event) {
+  if (event.target.closest('[data-close]')) { return; }
+  const tabElement = event.target.closest('[data-i]');
+  if (!tabElement) { return; }
+  doAction('idepin', tabElement.getAttribute('data-i'));
+});
+
+// 工作区搜索结果：单击按预览方式打开并跳到行，双击固定为普通标签
+document.getElementById('ideFindList').addEventListener('click', async function (event) {
+  const element = event.target.closest('[data-i]');
+  if (!element) { return; }
+  const item = ideFindResults[Number(element.getAttribute('data-i'))];
+  if (!item) { return; }
+  // 预览可能替换上一个预览标签：先推送本地尚未同步的编辑，让服务端把它标记为已编辑而固定保留
+  await ideFlushPushNow();
+  idePendingCaretLine = item.lineNumber;
+  doAction('idefindpreview', item.filePath + '\n' + item.lineNumber);
 });
 
 // 工作区搜索结果：双击打开对应文件并跳到行

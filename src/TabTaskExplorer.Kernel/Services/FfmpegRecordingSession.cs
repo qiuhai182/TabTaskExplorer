@@ -165,7 +165,10 @@ public class FfmpegRecordingSession
                     // 标准输入已关闭时直接进入等待与强制结束流程
                 }
             }
-            bool exited = await Task.Run(() => currentProcess.WaitForExit(8000));
+            bool exited = await Task.Run(delegate
+            {
+                return currentProcess.WaitForExit(8000);
+            });
             if (!exited)
             {
                 try
@@ -176,7 +179,10 @@ public class FfmpegRecordingSession
                 {
                     // 进程可能刚好自行退出，忽略强制结束失败
                 }
-                await Task.Run(() => currentProcess.WaitForExit(3000));
+                await Task.Run(delegate
+                {
+                    return currentProcess.WaitForExit(3000);
+                });
             }
         }
         catch (Exception error)
@@ -193,8 +199,17 @@ public class FfmpegRecordingSession
         {
             return ScreenRecordingResult.CreateFailure(targetPath, "录制文件未生成，FFmpeg 错误输出=" + tail);
         }
-        FileInfo fileInfo = new FileInfo(targetPath);
-        if (fileInfo.Length <= 0)
+        long fileLength = 0;
+        try
+        {
+            FileInfo fileInfo = new FileInfo(targetPath);
+            fileLength = fileInfo.Length;
+        }
+        catch (Exception error)
+        {
+            return ScreenRecordingResult.CreateFailure(targetPath, "读取录制文件信息失败：" + error.Message);
+        }
+        if (fileLength <= 0)
         {
             return ScreenRecordingResult.CreateFailure(targetPath, "录制文件为空，FFmpeg 错误输出=" + tail);
         }

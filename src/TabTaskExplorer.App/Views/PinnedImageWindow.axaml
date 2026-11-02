@@ -1,0 +1,28 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="TabTaskExplorer.App.Views.PinnedImageWindow"
+        WindowDecorations="None" ShowInTaskbar="False" CanResize="False"
+        WindowStartupLocation="Manual" Background="Transparent" Topmost="True">
+  <Border x:Name="Frame" BorderBrush="#FF3B82F6" BorderThickness="1"
+          BoxShadow="0 6 20 0 #99000000" Background="Transparent">
+    <Border.ContextMenu>
+      <ContextMenu>
+        <MenuItem Header="复制图片（Ctrl+C）" Click="OnCopyClick" />
+        <MenuItem Header="保存为…（Ctrl+S）" Click="OnSaveClick" />
+        <Separator />
+        <MenuItem Header="旋转 90°（R）" Click="OnRotateClick" />
+        <MenuItem Header="原始大小（100%）" Click="OnActualSizeClick" />
+        <MenuItem Header="适应屏幕" Click="OnFitScreenClick" />
+        <Separator />
+        <MenuItem Header="不透明度 100%" Tag="100" Click="OnOpacityClick" />
+        <MenuItem Header="不透明度 80%" Tag="80" Click="OnOpacityClick" />
+        <MenuItem Header="不透明度 60%" Tag="60" Click="OnOpacityClick" />
+        <MenuItem Header="不透明度 40%" Tag="40" Click="OnOpacityClick" />
+        <Separator />
+        <MenuItem Header="关闭（Esc）" Click="OnCloseClick" />
+        <MenuItem Header="关闭全部贴图" Click="OnCloseAllClick" />
+      </ContextMenu>
+    </Border.ContextMenu>
+    <Image x:Name="Picture" Stretch="Fill" />
+  </Border>
+</Window>

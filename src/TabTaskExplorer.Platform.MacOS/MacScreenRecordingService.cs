@@ -45,13 +45,19 @@ public class MacScreenRecordingService : IScreenRecordingService, IDisposable
             return Task.FromResult(ScreenRecordingResult.CreateFailure(options.OutputPath,
                 "区域录制的宽高必须大于零"));
         }
+        CaptureArea evenArea;
+        if (!CaptureGeometry.TryMakeEven(options.Area.IsValid ? options.Area : new CaptureArea(0, 0, 2, 2), out evenArea))
+        {
+            return Task.FromResult(ScreenRecordingResult.CreateFailure(options.OutputPath,
+                "录制区域过小：H.264 编码至少需要两个像素的宽度与高度"));
+        }
         string ffmpegPath = FfmpegLocator.Find(options.FfmpegPath) ?? string.Empty;
         if (ffmpegPath.Length == 0)
         {
             return Task.FromResult(ScreenRecordingResult.CreateFailure(options.OutputPath,
                 "没有找到 FFmpeg。请先安装，或在设置中心填写 FFmpeg 完整路径"));
         }
-        List<string> arguments = this.BuildArguments(options);
+        List<string> arguments = this.BuildArguments(options, evenArea);
         return this.session.StartAsync(ffmpegPath, arguments, options.OutputPath);
     }
 
@@ -68,7 +74,7 @@ public class MacScreenRecordingService : IScreenRecordingService, IDisposable
     }
 
     /// <summary>拼接 avfoundation 录制参数。</summary>
-    private List<string> BuildArguments(ScreenRecordingOptions options)
+    private List<string> BuildArguments(ScreenRecordingOptions options, CaptureArea area)
     {
         int framesPerSecond = options.FramesPerSecond;
         if (framesPerSecond < 1 || framesPerSecond > 120)
@@ -99,8 +105,8 @@ public class MacScreenRecordingService : IScreenRecordingService, IDisposable
         if (options.Target == CaptureTarget.Region)
         {
             arguments.Add("-vf");
-            arguments.Add("crop=" + options.Area.Width + ":" + options.Area.Height
-                + ":" + options.Area.X + ":" + options.Area.Y);
+            arguments.Add("crop=" + area.Width + ":" + area.Height
+                + ":" + area.X + ":" + area.Y);
         }
         arguments.Add("-c:v");
         arguments.Add("libx264");

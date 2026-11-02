@@ -45,13 +45,19 @@ public class LinuxScreenRecordingService : IScreenRecordingService, IDisposable
             return Task.FromResult(ScreenRecordingResult.CreateFailure(options.OutputPath,
                 "区域录制的宽高必须大于零"));
         }
+        CaptureArea evenArea;
+        if (!CaptureGeometry.TryMakeEven(options.Area.IsValid ? options.Area : new CaptureArea(0, 0, 2, 2), out evenArea))
+        {
+            return Task.FromResult(ScreenRecordingResult.CreateFailure(options.OutputPath,
+                "录制区域过小：H.264 编码至少需要两个像素的宽度与高度"));
+        }
         string ffmpegPath = FfmpegLocator.Find(options.FfmpegPath) ?? string.Empty;
         if (ffmpegPath.Length == 0)
         {
             return Task.FromResult(ScreenRecordingResult.CreateFailure(options.OutputPath,
                 "没有找到 FFmpeg。请先安装，或在设置中心填写 FFmpeg 完整路径"));
         }
-        List<string> arguments = this.BuildArguments(options);
+        List<string> arguments = this.BuildArguments(options, evenArea);
         return this.session.StartAsync(ffmpegPath, arguments, options.OutputPath);
     }
 
@@ -68,7 +74,7 @@ public class LinuxScreenRecordingService : IScreenRecordingService, IDisposable
     }
 
     /// <summary>拼接 x11grab 录制参数。</summary>
-    private List<string> BuildArguments(ScreenRecordingOptions options)
+    private List<string> BuildArguments(ScreenRecordingOptions options, CaptureArea area)
     {
         int framesPerSecond = options.FramesPerSecond;
         if (framesPerSecond < 1 || framesPerSecond > 120)
@@ -103,9 +109,9 @@ public class LinuxScreenRecordingService : IScreenRecordingService, IDisposable
         if (options.Target == CaptureTarget.Region)
         {
             arguments.Add("-video_size");
-            arguments.Add(options.Area.Width.ToString() + "x" + options.Area.Height.ToString());
+            arguments.Add(area.Width.ToString() + "x" + area.Height.ToString());
             arguments.Add("-i");
-            arguments.Add(display + "+" + options.Area.X + "," + options.Area.Y);
+            arguments.Add(display + "+" + area.X + "," + area.Y);
         }
         else
         {

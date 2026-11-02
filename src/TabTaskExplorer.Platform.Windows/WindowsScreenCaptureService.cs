@@ -37,7 +37,10 @@ public class WindowsScreenCaptureService : IScreenCaptureService
     /// <inheritdoc />
     public Task<ScreenCaptureResult> CaptureAsync(ScreenCaptureRequest request)
     {
-        return Task.Run(() => this.CaptureCore(request));
+        return Task.Run(delegate
+        {
+            return this.CaptureCore(request);
+        });
     }
 
     /// <summary>在后台线程执行实际截图，避免阻塞界面。</summary>

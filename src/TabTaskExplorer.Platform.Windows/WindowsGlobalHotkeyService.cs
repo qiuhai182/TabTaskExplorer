@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -9,54 +8,68 @@ using TabTaskExplorer.Kernel.Capture;
 namespace TabTaskExplorer.Platform.Windows;
 
 /// <summary>
-/// Windows 全局快捷键：在独立线程上注册线程级热键并自建消息循环接收 WM_HOTKEY。
-/// 注册动作通过线程队列同步执行，避免跨线程调用 RegisterHotKey 导致热键绑定到错误线程。
+/// Windows 全局快捷键：使用 WH_KEYBOARD_LL 低级键盘钩子在系统级拦截配置过的组合键，
+/// 再通过后台消息循环分派动作。相比 RegisterHotKey，低级钩子可以覆盖其他程序注册的快捷键；
+/// Ctrl+Alt+Del、Win+L 等由系统安全桌面处理的组合无法覆盖。
 /// </summary>
 public class WindowsGlobalHotkeyService : IGlobalHotkeyService, IDisposable
 {
-    private const uint ModifierAlt = 0x0001;
+    private const int HookKeyboardLowLevel = 13;
 
-    private const uint ModifierControl = 0x0002;
+    private const int MessageKeyDown = 0x0100;
 
-    private const uint ModifierShift = 0x0004;
+    private const int MessageKeyUp = 0x0101;
 
-    private const uint ModifierNoRepeat = 0x4000;
+    private const int MessageSystemKeyDown = 0x0104;
 
-    private const uint WindowMessageHotkey = 0x0312;
+    private const int MessageSystemKeyUp = 0x0105;
 
-    private const uint PeekMessageRemove = 0x0001;
+    private const int MessageQuit = 0x0012;
 
-    private const int MaximumHotkeyIdentifier = 0xBFFF;
+    private const uint HookFlagInjected = 0x10;
 
-    /// <summary>一次注册或注销请求，Done 用于让调用线程等待执行结果。</summary>
-    private sealed class HotkeyCommand
+    private const int VirtualKeyShift = 0x10;
+
+    private const int VirtualKeyControl = 0x11;
+
+    private const int VirtualKeyAlt = 0x12;
+
+    private const int VirtualKeyLeftShift = 0xA0;
+
+    private const int VirtualKeyRightShift = 0xA1;
+
+    private const int VirtualKeyLeftControl = 0xA2;
+
+    private const int VirtualKeyRightControl = 0xA3;
+
+    private const int VirtualKeyLeftAlt = 0xA4;
+
+    private const int VirtualKeyRightAlt = 0xA5;
+
+    private const int VirtualKeyLeftWin = 0x5B;
+
+    private const int VirtualKeyRightWin = 0x5C;
+
+    /// <summary>一条已经注册的全局快捷键。</summary>
+    private sealed class Registration
     {
-        /// <summary>是否注销全部热键。</summary>
-        public bool UnregisterAll;
-
-        /// <summary>热键编号。</summary>
-        public int Identifier;
-
-        /// <summary>动作标识。</summary>
         public string ActionName = string.Empty;
-
-        /// <summary>主键名称。</summary>
-        public string KeyText = string.Empty;
-
-        /// <summary>是否需要控制键。</summary>
-        public bool Control;
-
-        /// <summary>是否需要替换键。</summary>
+        public uint VirtualKey;
+        public bool Ctrl;
         public bool Alt;
-
-        /// <summary>是否需要上档键。</summary>
         public bool Shift;
-
-        /// <summary>触发回调。</summary>
+        public bool Win;
         public Action? Callback;
+    }
 
-        /// <summary>执行结果。</summary>
-        public TaskCompletionSource<bool> Done = new TaskCompletionSource<bool>();
+    [StructLayout(LayoutKind.Sequential)]
+    private struct KeyboardHookData
+    {
+        public uint VirtualKeyCode;
+        public uint ScanCode;
+        public uint Flags;
+        public uint Time;
+        public IntPtr ExtraInformation;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -78,200 +91,321 @@ public class WindowsGlobalHotkeyService : IGlobalHotkeyService, IDisposable
         public uint Private;
     }
 
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool RegisterHotKey(IntPtr windowHandle, int identifier, uint modifiers, uint virtualKey);
+    [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+    private delegate IntPtr LowLevelKeyboardProc(int code, IntPtr parameterW, IntPtr parameterL);
 
     [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool UnregisterHotKey(IntPtr windowHandle, int identifier);
+    private static extern IntPtr SetWindowsHookExW(int hookIdentifier, LowLevelKeyboardProc callback,
+        IntPtr moduleHandle, uint threadIdentifier);
 
     [DllImport("user32.dll")]
-    private static extern bool PeekMessage(out NativeMessage message, IntPtr windowHandle,
-        uint minimum, uint maximum, uint remove);
+    private static extern bool UnhookWindowsHookEx(IntPtr hookHandle);
 
-    private readonly ConcurrentQueue<HotkeyCommand> commands = new ConcurrentQueue<HotkeyCommand>();
-    private readonly Dictionary<int, Action> callbacks = new Dictionary<int, Action>();
-    private readonly Dictionary<int, string> actionNames = new Dictionary<int, string>();
-    private readonly AutoResetEvent threadReady = new AutoResetEvent(false);
+    [DllImport("user32.dll")]
+    private static extern IntPtr CallNextHookEx(IntPtr hookHandle, int code, IntPtr parameterW, IntPtr parameterL);
+
+    [DllImport("user32.dll")]
+    private static extern int GetMessageW(out NativeMessage message, IntPtr windowHandle,
+        uint filterMinimum, uint filterMaximum);
+
+    [DllImport("user32.dll")]
+    private static extern bool TranslateMessage(ref NativeMessage message);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr DispatchMessageW(ref NativeMessage message);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool PostThreadMessageW(uint threadIdentifier, uint message, IntPtr parameterW, IntPtr parameterL);
+
+    [DllImport("kernel32.dll")]
+    private static extern uint GetCurrentThreadId();
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
+    private static extern IntPtr GetModuleHandleW(string? moduleName);
+
+    private readonly List<Registration> registrations = new List<Registration>();
+    private readonly object registrationLock = new object();
+    private readonly Dictionary<int, Registration> suppressedKeys = new Dictionary<int, Registration>();
+    private readonly HashSet<int> pressedKeys = new HashSet<int>();
+    private readonly LowLevelKeyboardProc hookCallback;
+    private readonly ManualResetEventSlim readyEvent = new ManualResetEventSlim(false);
     private readonly object startLock = new object();
-    private Thread? messageThread;
+    private Thread? hookThread;
+    private IntPtr hookHandle = IntPtr.Zero;
+    private uint hookThreadIdentifier;
     private volatile bool running;
-    private int nextIdentifier = 1;
+    private volatile bool disposed;
+    private bool ctrlDown;
+    private bool altDown;
+    private bool shiftDown;
+    private bool winDown;
+    private bool winUsedInCombination;
+
+    public WindowsGlobalHotkeyService()
+    {
+        this.hookCallback = this.OnLowLevelKeyboardMessage;
+    }
 
     /// <inheritdoc />
     public bool IsSupported
     {
-        get { return true; }
+        get
+        {
+            if (this.disposed)
+            {
+                return false;
+            }
+            this.EnsureHookThread();
+            return this.hookHandle != IntPtr.Zero;
+        }
     }
 
     /// <inheritdoc />
-    public bool Register(string actionName, string keyText, bool ctrl, bool alt, bool shift, Action callback)
+    public bool Register(string actionName, string keyText, bool ctrl, bool alt, bool shift, bool win, Action callback)
     {
-        this.EnsureMessageThread();
-        HotkeyCommand command = new HotkeyCommand();
-        command.ActionName = actionName;
-        command.KeyText = keyText;
-        command.Control = ctrl;
-        command.Alt = alt;
-        command.Shift = shift;
-        command.Callback = callback;
-        command.Identifier = this.AllocateIdentifier();
-        this.commands.Enqueue(command);
-        if (!command.Done.Task.Wait(3000))
+        if (this.disposed)
         {
             return false;
         }
-        return command.Done.Task.Result;
+        uint virtualKey = ToVirtualKey(keyText);
+        if (virtualKey == 0)
+        {
+            return false;
+        }
+        if (!this.IsSupported)
+        {
+            return false;
+        }
+        Registration registration = new Registration();
+        registration.ActionName = actionName;
+        registration.VirtualKey = virtualKey;
+        registration.Ctrl = ctrl;
+        registration.Alt = alt;
+        registration.Shift = shift;
+        registration.Win = win;
+        registration.Callback = callback;
+        lock (this.registrationLock)
+        {
+            foreach (Registration existing in this.registrations)
+            {
+                if (existing.VirtualKey == virtualKey
+                    && existing.Ctrl == ctrl
+                    && existing.Alt == alt
+                    && existing.Shift == shift
+                    && existing.Win == win)
+                {
+                    // 同一个按键组合只允许绑定一个动作，避免一次按键触发多个功能
+                    return false;
+                }
+            }
+            this.registrations.Add(registration);
+        }
+        return true;
     }
 
     /// <inheritdoc />
     public void UnregisterAll()
     {
-        if (this.messageThread == null)
+        lock (this.registrationLock)
         {
-            return;
+            this.registrations.Clear();
         }
-        HotkeyCommand command = new HotkeyCommand();
-        command.UnregisterAll = true;
-        this.commands.Enqueue(command);
-        command.Done.Task.Wait(3000);
     }
 
-    /// <summary>完成注册请求：只允许在消息线程内调用。</summary>
-    private bool ExecuteRegister(HotkeyCommand command)
+    /// <summary>确保低级键盘钩子线程已经启动。</summary>
+    private void EnsureHookThread()
     {
-        uint virtualKey = ToVirtualKey(command.KeyText);
-        if (virtualKey == 0)
+        if (this.hookThread != null)
         {
-            return false;
-        }
-        uint modifiers = ModifierNoRepeat;
-        if (command.Control)
-        {
-            modifiers = modifiers | ModifierControl;
-        }
-        if (command.Alt)
-        {
-            modifiers = modifiers | ModifierAlt;
-        }
-        if (command.Shift)
-        {
-            modifiers = modifiers | ModifierShift;
-        }
-        if (!RegisterHotKey(IntPtr.Zero, command.Identifier, modifiers, virtualKey))
-        {
-            return false;
-        }
-        if (command.Callback != null)
-        {
-            this.callbacks[command.Identifier] = command.Callback;
-        }
-        this.actionNames[command.Identifier] = command.ActionName;
-        return true;
-    }
-
-    /// <summary>注销全部热键：只允许在消息线程内调用。</summary>
-    private void ExecuteUnregisterAll()
-    {
-        foreach (int identifier in this.actionNames.Keys)
-        {
-            UnregisterHotKey(IntPtr.Zero, identifier);
-        }
-        this.callbacks.Clear();
-        this.actionNames.Clear();
-    }
-
-    /// <summary>消息线程：轮询线程消息队列，处理 WM_HOTKEY 与注册命令。</summary>
-    private void RunMessageLoop()
-    {
-        this.running = true;
-        this.threadReady.Set();
-        while (this.running)
-        {
-            bool processedMessage = false;
-            NativeMessage message;
-            while (PeekMessage(out message, IntPtr.Zero, 0, 0, PeekMessageRemove))
-            {
-                processedMessage = true;
-                if (message.Message == WindowMessageHotkey)
-                {
-                    int identifier = message.ParameterW.ToInt32();
-                    Action? callback = null;
-                    if (this.callbacks.TryGetValue(identifier, out Action? registered))
-                    {
-                        callback = registered;
-                    }
-                    if (callback != null)
-                    {
-                        // 热键回调转入线程池，避免阻塞消息循环导致后续热键延迟
-                        ThreadPool.QueueUserWorkItem(delegate (object? state)
-                        {
-                            try
-                            {
-                                callback();
-                            }
-                            catch
-                            {
-                                // 回调异常不能终止消息线程
-                            }
-                        });
-                    }
-                }
-            }
-
-            HotkeyCommand? command;
-            while (this.commands.TryDequeue(out command))
-            {
-                bool result = false;
-                if (command.UnregisterAll)
-                {
-                    this.ExecuteUnregisterAll();
-                    result = true;
-                }
-                else
-                {
-                    result = this.ExecuteRegister(command);
-                }
-                command.Done.TrySetResult(result);
-            }
-
-            if (!processedMessage)
-            {
-                Thread.Sleep(10);
-            }
-        }
-        this.ExecuteUnregisterAll();
-    }
-
-    /// <summary>确保消息线程已经启动且完成初始化。</summary>
-    private void EnsureMessageThread()
-    {
-        if (this.messageThread != null)
-        {
+            // 钩子线程可能仍在安装中，等待一次就绪信号，避免并发读取到零句柄
+            this.readyEvent.Wait(2000);
             return;
         }
         lock (this.startLock)
         {
-            if (this.messageThread != null)
+            if (this.hookThread != null)
             {
+                this.readyEvent.Wait(2000);
                 return;
             }
-            this.messageThread = new Thread(new ThreadStart(this.RunMessageLoop));
-            this.messageThread.IsBackground = true;
-            this.messageThread.Name = "全局快捷键消息线程";
-            this.messageThread.Start();
-            this.threadReady.WaitOne(2000);
+            this.readyEvent.Reset();
+            this.hookThread = new Thread(new ThreadStart(this.RunHookThread));
+            this.hookThread.IsBackground = true;
+            this.hookThread.Name = "全局快捷键键盘钩子线程";
+            this.hookThread.Start();
+            this.readyEvent.Wait(2000);
         }
     }
 
-    private int AllocateIdentifier()
+    /// <summary>钩子线程：安装低级键盘钩子并运行消息循环。</summary>
+    private void RunHookThread()
     {
-        int identifier = Interlocked.Increment(ref this.nextIdentifier);
-        if (identifier > MaximumHotkeyIdentifier)
+        this.hookThreadIdentifier = GetCurrentThreadId();
+        this.hookHandle = SetWindowsHookExW(HookKeyboardLowLevel, this.hookCallback,
+            GetModuleHandleW(null), 0);
+        this.readyEvent.Set();
+        if (this.hookHandle == IntPtr.Zero)
         {
-            Interlocked.Exchange(ref this.nextIdentifier, 1);
-            identifier = 1;
+            return;
         }
-        return identifier;
+        this.running = true;
+        NativeMessage message;
+        while (this.running && GetMessageW(out message, IntPtr.Zero, 0, 0) > 0)
+        {
+            TranslateMessage(ref message);
+            DispatchMessageW(ref message);
+        }
+        this.running = false;
+        if (this.hookHandle != IntPtr.Zero)
+        {
+            UnhookWindowsHookEx(this.hookHandle);
+            this.hookHandle = IntPtr.Zero;
+        }
+    }
+
+    /// <summary>低级键盘回调：匹配配置过的组合键，命中时返回 1 阻止按键继续传递给其他程序。</summary>
+    private IntPtr OnLowLevelKeyboardMessage(int code, IntPtr parameterW, IntPtr parameterL)
+    {
+        if (code < 0)
+        {
+            return CallNextHookEx(this.hookHandle, code, parameterW, parameterL);
+        }
+        KeyboardHookData data = Marshal.PtrToStructure<KeyboardHookData>(parameterL);
+        if ((data.Flags & HookFlagInjected) != 0u)
+        {
+            // 忽略程序模拟注入的按键，避免与自动化脚本互相触发
+            return CallNextHookEx(this.hookHandle, code, parameterW, parameterL);
+        }
+        int message = parameterW.ToInt32();
+        bool isDown = message == MessageKeyDown || message == MessageSystemKeyDown;
+        bool isUp = message == MessageKeyUp || message == MessageSystemKeyUp;
+        if (!isDown && !isUp)
+        {
+            return CallNextHookEx(this.hookHandle, code, parameterW, parameterL);
+        }
+        int virtualKey = (int)data.VirtualKeyCode;
+        this.UpdateModifierState(virtualKey, isDown);
+        if (IsModifierKey(virtualKey))
+        {
+            if (isUp && IsWinKey(virtualKey) && this.winUsedInCombination)
+            {
+                // 组合键使用过 Win 键时吞掉 Win 抬起事件，避免同时弹出开始菜单
+                this.winUsedInCombination = false;
+                return (IntPtr)1;
+            }
+            return CallNextHookEx(this.hookHandle, code, parameterW, parameterL);
+        }
+
+        if (isDown)
+        {
+            if (this.pressedKeys.Contains(virtualKey))
+            {
+                if (this.suppressedKeys.ContainsKey(virtualKey))
+                {
+                    return (IntPtr)1;
+                }
+                return CallNextHookEx(this.hookHandle, code, parameterW, parameterL);
+            }
+            this.pressedKeys.Add(virtualKey);
+            Registration? matched = this.FindMatch(virtualKey);
+            if (matched == null)
+            {
+                return CallNextHookEx(this.hookHandle, code, parameterW, parameterL);
+            }
+            this.suppressedKeys[virtualKey] = matched;
+            if (matched.Win)
+            {
+                this.winUsedInCombination = true;
+            }
+            Action? callback = matched.Callback;
+            if (callback != null)
+            {
+                ThreadPool.QueueUserWorkItem(delegate (object? state)
+                {
+                    try
+                    {
+                        callback();
+                    }
+                    catch
+                    {
+                        // 回调异常不能终止键盘钩子线程
+                    }
+                });
+            }
+            return (IntPtr)1;
+        }
+
+        this.pressedKeys.Remove(virtualKey);
+        if (this.suppressedKeys.Remove(virtualKey))
+        {
+            return (IntPtr)1;
+        }
+        return CallNextHookEx(this.hookHandle, code, parameterW, parameterL);
+    }
+
+    /// <summary>按当前修饰键状态在已注册组合中查找匹配项。</summary>
+    private Registration? FindMatch(int virtualKey)
+    {
+        lock (this.registrationLock)
+        {
+            foreach (Registration registration in this.registrations)
+            {
+                if ((int)registration.VirtualKey != virtualKey)
+                {
+                    continue;
+                }
+                if (registration.Ctrl != this.ctrlDown
+                    || registration.Alt != this.altDown
+                    || registration.Shift != this.shiftDown
+                    || registration.Win != this.winDown)
+                {
+                    continue;
+                }
+                return registration;
+            }
+        }
+        return null;
+    }
+
+    /// <summary>更新修饰键按下状态；低级键盘钩子线程独占访问。</summary>
+    private void UpdateModifierState(int virtualKey, bool isDown)
+    {
+        if (virtualKey == VirtualKeyLeftControl || virtualKey == VirtualKeyRightControl || virtualKey == VirtualKeyControl)
+        {
+            this.ctrlDown = isDown;
+        }
+        else if (virtualKey == VirtualKeyLeftAlt || virtualKey == VirtualKeyRightAlt || virtualKey == VirtualKeyAlt)
+        {
+            this.altDown = isDown;
+        }
+        else if (virtualKey == VirtualKeyLeftShift || virtualKey == VirtualKeyRightShift || virtualKey == VirtualKeyShift)
+        {
+            this.shiftDown = isDown;
+        }
+        else if (virtualKey == VirtualKeyLeftWin || virtualKey == VirtualKeyRightWin)
+        {
+            this.winDown = isDown;
+        }
+    }
+
+    private static bool IsModifierKey(int virtualKey)
+    {
+        return virtualKey == VirtualKeyShift
+            || virtualKey == VirtualKeyControl
+            || virtualKey == VirtualKeyAlt
+            || virtualKey == VirtualKeyLeftShift
+            || virtualKey == VirtualKeyRightShift
+            || virtualKey == VirtualKeyLeftControl
+            || virtualKey == VirtualKeyRightControl
+            || virtualKey == VirtualKeyLeftAlt
+            || virtualKey == VirtualKeyRightAlt
+            || virtualKey == VirtualKeyLeftWin
+            || virtualKey == VirtualKeyRightWin;
+    }
+
+    private static bool IsWinKey(int virtualKey)
+    {
+        return virtualKey == VirtualKeyLeftWin || virtualKey == VirtualKeyRightWin;
     }
 
     /// <summary>把 Avalonia 按键名称转换为 Windows 虚拟键码；无法识别时返回零。</summary>
@@ -347,6 +481,14 @@ public class WindowsGlobalHotkeyService : IGlobalHotkeyService, IDisposable
                 return 0x90;
             case "CAPSLOCK":
                 return 0x14;
+            case "LEFT":
+                return 0x25;
+            case "RIGHT":
+                return 0x27;
+            case "UP":
+                return 0x26;
+            case "DOWN":
+                return 0x28;
             default:
                 return 0;
         }
@@ -355,12 +497,24 @@ public class WindowsGlobalHotkeyService : IGlobalHotkeyService, IDisposable
     /// <inheritdoc />
     public void Dispose()
     {
+        this.disposed = true;
         this.running = false;
-        if (this.messageThread != null)
+        if (this.hookThreadIdentifier != 0)
         {
-            this.messageThread.Join(1000);
-            this.messageThread = null;
+            PostThreadMessageW(this.hookThreadIdentifier, (uint)MessageQuit, IntPtr.Zero, IntPtr.Zero);
         }
-        this.threadReady.Dispose();
+        Thread? thread = this.hookThread;
+        if (thread != null)
+        {
+            if (!thread.Join(1000) && this.hookThreadIdentifier != 0)
+            {
+                // 线程可能刚创建、消息队列尚未建立，再次投递退出消息
+                PostThreadMessageW(this.hookThreadIdentifier, (uint)MessageQuit, IntPtr.Zero, IntPtr.Zero);
+                thread.Join(500);
+            }
+            this.hookThread = null;
+        }
+        this.readyEvent.Dispose();
+        this.UnregisterAll();
     }
 }

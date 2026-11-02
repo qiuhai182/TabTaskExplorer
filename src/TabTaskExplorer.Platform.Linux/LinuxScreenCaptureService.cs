@@ -19,11 +19,10 @@ public class LinuxScreenCaptureService : IScreenCaptureService
         get
         {
             ScreenCaptureCapabilities capabilities = new ScreenCaptureCapabilities();
-            bool hasFfmpeg = FfmpegLocator.Find(null) != null;
-            bool hasImport = CaptureToolRunner.FindExecutableOnPath("import").Length > 0;
-            capabilities.FullScreen = hasFfmpeg || hasImport;
-            capabilities.PrimaryScreen = capabilities.FullScreen;
-            capabilities.Region = capabilities.FullScreen;
+            // 截图工具可能稍后通过设置指定或安装，这里保持按钮可用；真正缺少工具时由截图调用返回中文原因
+            capabilities.FullScreen = true;
+            capabilities.PrimaryScreen = true;
+            capabilities.Region = true;
             capabilities.ActiveWindow = false;
             return capabilities;
         }
@@ -43,7 +42,7 @@ public class LinuxScreenCaptureService : IScreenCaptureService
         }
 
         string tempFile = Path.Combine(Path.GetTempPath(),
-            "TabTaskExplorer-截图-" + Guid.NewGuid().ToString("N") + ".png");
+            "TabTaskExplorer-capture-" + Guid.NewGuid().ToString("N") + ".png");
         string ffmpegPath = FfmpegLocator.Find(request.ToolPath) ?? string.Empty;
         if (ffmpegPath.Length > 0)
         {

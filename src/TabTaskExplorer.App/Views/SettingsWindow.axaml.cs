@@ -40,6 +40,9 @@ public partial class SettingsWindow : Window
 
     private readonly ObservableCollection<FileOpenRule> openRules = new ObservableCollection<FileOpenRule>();
 
+    // 快捷键编辑副本：窗口内增删改只作用于副本，点击确定后才写回共享设置
+    private readonly ObservableCollection<HotkeySetting> shortcutRows = new ObservableCollection<HotkeySetting>();
+
     // 网页端配置的编辑副本：窗口内改动只作用于副本，点击确定后才写回共享设置
     private List<WebPortSetting> webPorts = new List<WebPortSetting>();
     private List<WebAccessProfile> webProfiles = new List<WebAccessProfile>();
@@ -63,12 +66,24 @@ public partial class SettingsWindow : Window
     private bool capturePageLoaded;
     // 填充列表期间屏蔽开关事件，避免回填勾选状态被当成用户启停操作
     private bool suppressSystemMenuToggle;
+    // 主窗口注入的启动项管理标签打开回调：设置窗口内不重复实现启动项列表，只做统一入口跳转
+    private readonly Action? openStartupManager;
+
+    /// <summary>「基本设置」分页在左侧分页列表中的序号。</summary>
+    public const int BasicSectionIndex = 0;
+
+    /// <summary>「右键菜单」分页在左侧分页列表中的序号。</summary>
+    public const int RightMenuSectionIndex = 7;
+
+    /// <summary>「启动项管理」分页在左侧分页列表中的序号。</summary>
+    public const int StartupSectionIndex = 8;
 
     public SettingsWindow()
     {
         this.InitializeComponent();
         UiLogger.AttachWindow(this);
         this.OpenRuleList.ItemsSource = this.openRules;
+        this.ShortcutList.ItemsSource = this.shortcutRows;
         this.WebPortList.ItemsSource = this.webPortLabels;
         this.WebProfileList.ItemsSource = this.webProfileLabels;
         this.WebProfileBox.ItemsSource = this.webProfileChoices;
@@ -78,10 +93,15 @@ public partial class SettingsWindow : Window
         this.SectionList.SelectedIndex = 0;
     }
 
-    /// <summary>绑定共享设置对象与系统右键菜单服务：改动即时生效，点确定保存到磁盘。</summary>
-    public SettingsWindow(AppSettings settings, ISystemContextMenuService systemContextMenus, string captureEnvironmentText) : this()
+    /// <summary>
+    /// 绑定共享设置对象与系统右键菜单服务：改动即时生效，点确定保存到磁盘。
+    /// 初始分页序号用于侧边栏「右键管理」等入口直接定位到对应分页。
+    /// </summary>
+    public SettingsWindow(AppSettings settings, ISystemContextMenuService systemContextMenus, string captureEnvironmentText,
+        int initialSectionIndex = 0, Action? openStartupManager = null) : this()
     {
         this.systemContextMenus = systemContextMenus;
+        this.openStartupManager = openStartupManager;
         this.DataContext = settings;
         this.EditorFontSizeBox.Text = settings.EditorFontSize.ToString();
         this.EditorTabWidthBox.Text = settings.EditorTabWidth.ToString();
@@ -98,9 +118,22 @@ public partial class SettingsWindow : Window
             }
         }
         this.InitializeWebSettings(settings);
+        this.LoadShortcuts(settings);
+        this.LoadCaptureSettings();
         if (!string.IsNullOrEmpty(captureEnvironmentText))
         {
             this.CaptureEnvironmentText.Text = captureEnvironmentText;
+        }
+        // 按调用入口定位初始分页：侧边栏「右键管理」直接进入右键菜单分页，默认仍为基本设置
+        if (initialSectionIndex >= 0 && initialSectionIndex < this.SectionList.ItemCount)
+        {
+            this.SectionList.SelectedIndex = initialSectionIndex;
+            UiLogger.Log("设置窗口", "按入口定位分页：初始分页序号=" + initialSectionIndex + " 结果=成功");
+        }
+        else
+        {
+            UiLogger.Log("设置窗口", "按入口定位分页：初始分页序号=" + initialSectionIndex
+                + " 超出分页总数=" + this.SectionList.ItemCount + " 结果=失败，保持默认分页");
         }
     }
 
@@ -110,28 +143,29 @@ public partial class SettingsWindow : Window
         // XAML 初始化时 ListBox 会因第一项 IsSelected="True" 触发本事件，此时各分页容器尚未创建，直接跳过
         if (this.BasicPage == null || this.MousePage == null || this.FilePage == null
             || this.EditorPage == null || this.OpenWithPage == null || this.MediaPage == null
-            || this.WebPage == null || this.RightMenuPage == null || this.CapturePage == null
-            || this.AboutPage == null)
+            || this.WebPage == null || this.RightMenuPage == null || this.StartupPage == null
+            || this.CapturePage == null || this.AboutPage == null)
         {
             UiLogger.Log("设置窗口", "分页切换：初始化阶段分页容器尚未创建，跳过 index=" + index);
             return;
         }
         UiLogger.Log("设置窗口", "分页切换：index=" + index);
-        this.BasicPage.IsVisible = index == 0;
+        this.BasicPage.IsVisible = index == BasicSectionIndex;
         this.MousePage.IsVisible = index == 1;
         this.FilePage.IsVisible = index == 2;
         this.EditorPage.IsVisible = index == 3;
         this.OpenWithPage.IsVisible = index == 4;
         this.MediaPage.IsVisible = index == 5;
         this.WebPage.IsVisible = index == 6;
-        this.RightMenuPage.IsVisible = index == 7;
-        this.CapturePage.IsVisible = index == 8;
-        this.AboutPage.IsVisible = index == 9;
+        this.RightMenuPage.IsVisible = index == RightMenuSectionIndex;
+        this.StartupPage.IsVisible = index == StartupSectionIndex;
+        this.CapturePage.IsVisible = index == 9;
+        this.AboutPage.IsVisible = index == 10;
         if (index == 5 && !this.mediaPageLoaded)
         {
             this.LoadMediaSettings();
         }
-        if (index == 8 && !this.capturePageLoaded)
+        if (index == 9 && !this.capturePageLoaded)
         {
             this.LoadCaptureSettings();
         }
@@ -173,28 +207,113 @@ public partial class SettingsWindow : Window
             + " 结果=成功");
     }
 
-    /// <summary>把快捷键配置恢复为默认值。</summary>
+    /// <summary>新增一条快捷键记录：默认绑定「新建标签」，等待用户选择功能与按键。</summary>
+    private void OnAddShortcutClick(object? sender, RoutedEventArgs e)
+    {
+        HotkeySetting row = new HotkeySetting();
+        row.ActionName = "NewTab";
+        row.Scope = "Local";
+        row.KeyText = string.Empty;
+        this.shortcutRows.Add(row);
+        UiLogger.Log("设置窗口", "添加快捷键：已新增一条待配置记录 当前快捷键条数=" + this.shortcutRows.Count);
+    }
+
+    /// <summary>删除按钮所在行的快捷键记录。</summary>
+    private void OnRemoveShortcutClick(object? sender, RoutedEventArgs e)
+    {
+        Button? button = sender as Button;
+        HotkeySetting? row = button == null ? null : button.DataContext as HotkeySetting;
+        if (row == null)
+        {
+            UiLogger.Log("设置窗口", "删除快捷键失败：未取到快捷键记录 结果=未删除");
+            return;
+        }
+        this.shortcutRows.Remove(row);
+        UiLogger.Log("设置窗口", "删除快捷键：功能=" + row.DisplayName
+            + " 主键=" + (string.IsNullOrEmpty(row.KeyText) ? "未设置" : row.KeyText)
+            + " 剩余快捷键条数=" + this.shortcutRows.Count
+            + " 结果=成功");
+    }
+
+    /// <summary>把快捷键配置恢复为默认值（应用内默认项 + 全局截图录屏默认项）。</summary>
     private void OnResetHotkeysClick(object? sender, RoutedEventArgs e)
     {
-        if (this.DataContext is AppSettings settings)
+        this.shortcutRows.Clear();
+        foreach (HotkeySetting setting in HotkeySetting.CreateDefaultShortcuts())
         {
-            settings.Hotkeys.Clear();
-            foreach (HotkeySetting setting in HotkeySetting.CreateDefaults())
+            this.shortcutRows.Add(CloneShortcut(setting));
+        }
+        UiLogger.Log("设置窗口", "恢复默认快捷键：已重建默认项"
+            + " 快捷键条数=" + this.shortcutRows.Count
+            + " 结果=成功");
+    }
+
+    /// <summary>把共享设置里的快捷键复制到窗口内编辑副本。</summary>
+    private void LoadShortcuts(AppSettings settings)
+    {
+        this.shortcutRows.Clear();
+        if (settings.Shortcuts != null)
+        {
+            foreach (HotkeySetting setting in settings.Shortcuts)
             {
-                settings.Hotkeys.Add(setting);
+                if (setting != null)
+                {
+                    this.shortcutRows.Add(CloneShortcut(setting));
+                }
             }
-            UiLogger.Log("设置窗口", "点击恢复默认快捷键：已重建默认快捷键"
-                + " 快捷键条数=" + settings.Hotkeys.Count
-                + " 结果=成功");
         }
-        else
+        UiLogger.Log("设置窗口", "快捷键分页初始化：快捷键条数=" + this.shortcutRows.Count
+            + " 其中全局条数=" + CountGlobalShortcuts(this.shortcutRows));
+    }
+
+    /// <summary>把窗口内编辑副本写回共享设置。</summary>
+    private void CommitShortcuts(AppSettings settings)
+    {
+        if (settings.Shortcuts == null)
         {
-            UiLogger.Log("设置窗口", "点击恢复默认快捷键失败：设置数据未绑定 结果=失败");
+            settings.Shortcuts = new List<HotkeySetting>();
         }
+        settings.Shortcuts.Clear();
+        foreach (HotkeySetting row in this.shortcutRows)
+        {
+            settings.Shortcuts.Add(row);
+        }
+        settings.ShortcutsMigrated = true;
+        UiLogger.Log("配置更改", "快捷键设置：快捷键条数=" + settings.Shortcuts.Count
+            + " 其中全局条数=" + CountGlobalShortcuts(settings.Shortcuts));
+    }
+
+    /// <summary>复制一条快捷键配置，避免窗口内修改直接影响磁盘设置。</summary>
+    private static HotkeySetting CloneShortcut(HotkeySetting source)
+    {
+        HotkeySetting copy = new HotkeySetting();
+        copy.ActionName = source.ActionName;
+        copy.KeyText = source.KeyText;
+        copy.Ctrl = source.Ctrl;
+        copy.Alt = source.Alt;
+        copy.Shift = source.Shift;
+        copy.Win = source.Win;
+        copy.Scope = source.Scope;
+        return copy;
+    }
+
+    /// <summary>统计全局作用域的快捷键条数。</summary>
+    private static int CountGlobalShortcuts(IList<HotkeySetting> shortcuts)
+    {
+        int count = 0;
+        for (int index = 0; index < shortcuts.Count; index++)
+        {
+            if (shortcuts[index].IsGlobal)
+            {
+                count++;
+            }
+        }
+        return count;
     }
 
     private void OnOkClick(object? sender, RoutedEventArgs e)
     {
+        this.CommitShortcuts(this.DataContext as AppSettings ?? new AppSettings());
         this.CommitWebSettings();
         this.CommitEditorSettings();
         this.CommitOpenRules();
@@ -210,8 +329,8 @@ public partial class SettingsWindow : Window
                 + " 默认打开模式=" + settings.DefaultOpenMode
                 + " 打开方式默认优先级=" + settings.FileOpenDefaultPriority
                 + " 打开方式规则数=" + (settings.FileOpenRules != null ? settings.FileOpenRules.Count : 0)
-                + " 快捷键条数=" + settings.Hotkeys.Count
-                + " 全局快捷键条数=" + settings.GlobalHotkeys.Count
+                + " 快捷键条数=" + settings.Shortcuts.Count
+                + " 全局快捷键条数=" + CountGlobalShortcuts(settings.Shortcuts)
                 + " 截图保存目录=" + (string.IsNullOrEmpty(settings.CaptureSaveDirectory) ? "默认图片目录" : settings.CaptureSaveDirectory)
                 + " 截图后复制到剪贴板=" + settings.CaptureCopyToClipboard
                 + " 完成后自动打开产物文件夹=" + settings.CaptureOpenFolderAfter
@@ -346,7 +465,8 @@ public partial class SettingsWindow : Window
             + " 帧率=" + settings.CaptureRecordFps
             + " 画质参数=" + settings.CaptureRecordQuality
             + " 麦克风设备=" + (string.IsNullOrEmpty(settings.CaptureMicrophoneDevice) ? "未启用" : settings.CaptureMicrophoneDevice)
-            + " 全局快捷键条数=" + settings.GlobalHotkeys.Count);
+            + " 快捷键总条数=" + settings.Shortcuts.Count
+            + " 全局快捷键条数=" + CountGlobalShortcuts(settings.Shortcuts));
     }
 
     /// <summary>提交截图录屏分页设置：文本与下拉框写入共享设置对象，确定后由主窗口统一保存。</summary>
@@ -355,6 +475,12 @@ public partial class SettingsWindow : Window
         AppSettings? settings = this.DataContext as AppSettings;
         if (settings == null)
         {
+            return;
+        }
+        if (!this.capturePageLoaded)
+        {
+            // 从未初始化控件时不要回写空值，避免把用户已有的截图录屏设置覆盖为默认值
+            UiLogger.Log("设置窗口", "截图录屏设置未提交：控件尚未初始化");
             return;
         }
         settings.CaptureSaveDirectory = this.CaptureSaveDirectoryBox.Text == null
@@ -478,26 +604,6 @@ public partial class SettingsWindow : Window
     {
         this.FfmpegPathBox.Text = string.Empty;
         UiLogger.Log("设置窗口", "FFmpeg 路径已清空：将按 PATH 与程序目录自动查找");
-    }
-
-    /// <summary>把全局快捷键恢复为默认按键。</summary>
-    private void OnResetGlobalHotkeysClick(object? sender, RoutedEventArgs e)
-    {
-        if (this.DataContext is AppSettings settings)
-        {
-            settings.GlobalHotkeys.Clear();
-            foreach (HotkeySetting setting in HotkeySetting.CreateGlobalDefaults())
-            {
-                settings.GlobalHotkeys.Add(setting);
-            }
-            UiLogger.Log("设置窗口", "恢复默认全局快捷键：已重建默认项"
-                + " 全局快捷键条数=" + settings.GlobalHotkeys.Count
-                + " 结果=成功");
-        }
-        else
-        {
-            UiLogger.Log("设置窗口", "恢复默认全局快捷键失败：设置数据未绑定 结果=失败");
-        }
     }
 
     /// <summary>提交打开方式设置：扩展名统一规整为小写带点形式，重复类型只保留一条规则。</summary>
@@ -1359,6 +1465,22 @@ public partial class SettingsWindow : Window
         {
             UiLogger.Log("设置窗口", "切换系统右键菜单项开关：开关或菜单行为空 结果=失败，本次启停未执行");
         }
+    }
+
+    /// <summary>「启动项管理」分页：请求主窗口打开（或切换到）启动项管理标签页，本窗口内不重复承载列表视图。</summary>
+    private void OnOpenStartupManagerClick(object? sender, RoutedEventArgs e)
+    {
+        if (this.openStartupManager == null)
+        {
+            this.StartupOpenStatusText.Text = "当前入口未连接主窗口，无法打开启动项管理标签页。";
+            this.StartupOpenStatusText.IsVisible = true;
+            UiLogger.Log("设置窗口", "点击打开启动项管理标签页：未注入打开回调 结果=失败");
+            return;
+        }
+        this.openStartupManager();
+        this.StartupOpenStatusText.Text = "已打开启动项管理标签页（若已存在则直接切换到该标签），关闭本窗口后即可操作。";
+        this.StartupOpenStatusText.IsVisible = true;
+        UiLogger.Log("设置窗口", "点击打开启动项管理标签页：结果=成功，已请求主窗口复用或新建启动项管理标签");
     }
 
     private void OnCancelClick(object? sender, RoutedEventArgs e)

@@ -60,7 +60,7 @@
             <TextBlock Grid.Row="0" Text="资源管理器" FontSize="11" Margin="10,8,8,4"
                        Foreground="{DynamicResource TextMutedBrush}" />
             <TreeView Grid.Row="1" x:Name="FileTree" ItemsSource="{Binding RootItems}"
-                      Background="Transparent" BorderThickness="0" Padding="4,0">
+                      Background="Transparent" BorderThickness="0" Padding="4,0" Tapped="OnTreeItemTapped">
               <TreeView.ItemTemplate>
                 <TreeDataTemplate ItemsSource="{Binding Children}">
                   <StackPanel Orientation="Horizontal" Spacing="5" DoubleTapped="OnTreeItemDoubleTapped">
@@ -98,8 +98,9 @@
                                          Category="{Binding IconCategory}" AccentColor="{Binding IconColor}"
                                          VerticalAlignment="Center" Margin="0,0,5,0" />
                       <TextBlock Grid.Column="1" Text="{Binding DisplayTitle}" FontSize="12" VerticalAlignment="Center"
+                                 FontStyle="{Binding DisplayFontStyle}"
                                  Foreground="{DynamicResource TextPrimaryBrush}" ToolTip.Tip="{Binding ToolTipText}"
-                                 TextTrimming="CharacterEllipsis" MaxWidth="180" />
+                                 TextTrimming="CharacterEllipsis" MaxWidth="180" DoubleTapped="OnEditorTabTitleDoubleTapped" />
                       <Button Grid.Column="2" Classes="nav" Width="18" Height="18" Padding="0" Margin="4,0,0,0"
                               HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
                               VerticalAlignment="Center" Tag="{Binding}" Click="OnCloseEditorTabClick" ToolTip.Tip="关闭">
@@ -131,7 +132,7 @@
               </TextBox>
             </Border>
             <!-- 空状态提示 -->
-            <TextBlock Grid.Column="1" Text="从左侧资源树双击文件即可开始编辑，Ctrl+P 快速打开，Ctrl+F 查找。"
+            <TextBlock Grid.Column="1" Text="单击左侧资源树文件以预览方式打开，双击、编辑或保存后固定为普通标签；Ctrl+P 快速打开，Ctrl+F 查找。"
                        FontSize="12" Foreground="{DynamicResource TextMutedBrush}" HorizontalAlignment="Center"
                        VerticalAlignment="Center" IsVisible="{Binding HasNoActiveEditor}" />
           </Grid>
@@ -157,7 +158,8 @@
                 <TextBlock Grid.Row="0" Text="{Binding FindStatusText}" FontSize="11" Margin="10,0,8,4"
                            Foreground="{DynamicResource TextMutedBrush}" />
                 <ListBox Grid.Row="1" x:Name="FindResultList" ItemsSource="{Binding FindResults}"
-                         Background="Transparent" BorderThickness="0" SelectionChanged="OnFindResultSelected">
+                         Background="Transparent" BorderThickness="0" SelectionChanged="OnFindResultSelected"
+                         DoubleTapped="OnFindResultDoubleTapped">
                   <ListBox.ItemTemplate>
                     <DataTemplate>
                       <Grid ColumnDefinitions="Auto,*" Margin="4,1">

@@ -362,7 +362,7 @@ public class WebServiceHost
                 this.WriteText(stream, "缺少动作名称", 400);
                 return;
             }
-            if (!this.CheckActionPermission(stream, profile, request, action))
+            if (!this.CheckActionPermission(stream, profile, request, action, argument))
             {
                 return;
             }
@@ -395,14 +395,32 @@ public class WebServiceHost
         }
 
         /// <summary>按动作判定所需权限：增删类要放行新建与删除，改配置与写文件类要放行修改。</summary>
-        private bool CheckActionPermission(NetworkStream stream, WebAccessProfile profile, HttpRequest request, string action)
+        private bool CheckActionPermission(NetworkStream stream, WebAccessProfile profile, HttpRequest request, string action,
+            string argument)
         {
+            // 比对路径来自用户在网页端手动输入，必须与文件访问走同一份路径白名单，避免绕过权限方案读取任意本机文件
+            if (action == "compareapply" && profile.AllowedPaths != null && profile.AllowedPaths.Count > 0)
+            {
+                foreach (string line in argument.Split('\n'))
+                {
+                    string comparePath = line.TrimEnd('\r').Trim();
+                    if (comparePath.Length > 0 && !WebAccessControl.IsPathAllowed(profile, comparePath))
+                    {
+                        UiLogger.Log("网页端访问", "拒绝：" + action + " 目标路径不在放行范围 端口=" + this.runtime.Port
+                            + " 来源=" + request.RemoteAddress + " 目标=" + comparePath + " 方案=" + profile.Name);
+                        this.WriteText(stream, "比对路径不在当前权限方案放行范围内：" + comparePath, 403);
+                        return false;
+                    }
+                }
+            }
             bool needCreateDelete = action == "cut" || action == "paste" || action == "pasteto" || action == "deletechecked"
                 || action == "batchrename" || action == "encodepreview" || action == "encodeapply"
-                || action == "connsave" || action == "conndelete" || action == "connimport";
+                || action == "connsave" || action == "conndelete" || action == "connimport"
+                || action == "startupcustomsave" || action == "startupcustomdelete";
             bool needModify = action == "togglehidden" || action == "toggleextensions" || action == "pin" || action == "unpin" || action == "chmod"
                 || action == "idetext" || action == "idesave" || action == "idesaveall" || action == "idereplace" || action == "idereplaceall"
-                || action == "processkill" || action == "processpriority" || action == "processaffinity";
+                || action == "processkill" || action == "processpriority" || action == "processaffinity"
+                || action == "startuptoggle" || action == "startupcustomtoggle" || action == "startupcustomrun";
             if (needCreateDelete && !profile.AllowCreateDelete)
             {
                 UiLogger.Log("网页端访问", "拒绝：" + action + " 未放行新建与删除权限 端口=" + this.runtime.Port

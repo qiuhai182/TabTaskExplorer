@@ -1,0 +1,182 @@
+﻿<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:views="using:TabTaskExplorer.App.Views"
+             x:Class="TabTaskExplorer.App.Views.ComparePanel">
+
+  <UserControl.Styles>
+    <Style Selector="Border.compareRow">
+      <Setter Property="MinHeight" Value="28" />
+      <Setter Property="Padding" Value="2,0" />
+    </Style>
+    <Style Selector="Border.compareRow.leftonly">
+      <Setter Property="Background" Value="#22F2B23E" />
+    </Style>
+    <Style Selector="Border.compareRow.rightonly">
+      <Setter Property="Background" Value="#222F6FD0" />
+    </Style>
+    <Style Selector="Border.compareRow.newer">
+      <Setter Property="Background" Value="#228E7CC3" />
+    </Style>
+    <Style Selector="Border.compareRow.type">
+      <Setter Property="Background" Value="#22E05252" />
+    </Style>
+    <Style Selector="Border.compareRow.different">
+      <Setter Property="Background" Value="#22E8A317" />
+    </Style>
+    <Style Selector="Border.diffRow">
+      <Setter Property="MinHeight" Value="22" />
+    </Style>
+    <Style Selector="Border.diffRow.modified">
+      <Setter Property="Background" Value="#1FE8A317" />
+    </Style>
+    <Style Selector="Border.diffRow.leftonly">
+      <Setter Property="Background" Value="#1FF2B23E" />
+    </Style>
+    <Style Selector="Border.diffRow.rightonly">
+      <Setter Property="Background" Value="#1F2F6FD0" />
+    </Style>
+    <Style Selector="Border.changedSpan">
+      <Setter Property="Background" Value="#55E8A317" />
+      <Setter Property="CornerRadius" Value="2" />
+    </Style>
+    <Style Selector="Border.changedSpan.removed">
+      <Setter Property="Background" Value="#55E05252" />
+    </Style>
+    <Style Selector="Border.changedSpan.added">
+      <Setter Property="Background" Value="#5533A852" />
+    </Style>
+    <Style Selector="TextBlock.diffLine">
+      <Setter Property="FontFamily" Value="Cascadia Mono,Consolas,DejaVu Sans Mono,monospace" />
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+  </UserControl.Styles>
+
+  <Grid RowDefinitions="Auto,Auto,*,Auto" Margin="10,8,10,8">
+
+    <!-- 行 0：左右路径输入与开始比对 -->
+    <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto,*,Auto">
+      <TextBlock Grid.Column="0" Text="左侧" VerticalAlignment="Center" Margin="0,0,8,0"
+                 Foreground="{DynamicResource TextMutedBrush}" />
+      <TextBox Grid.Column="1" Text="{Binding LeftPathInput, Mode=TwoWay}" MinHeight="30"
+               PlaceholderText="输入左侧目录或文件路径" />
+      <Button Grid.Column="2" Content="⇄" Margin="8,0" MinWidth="34" Click="OnSwapClick" ToolTip.Tip="交换左右两侧" />
+      <TextBox Grid.Column="3" Text="{Binding RightPathInput, Mode=TwoWay}" MinHeight="30"
+               PlaceholderText="输入右侧目录或文件路径" />
+      <Button Grid.Column="4" Content="开始比对" Margin="8,0,0,0" MinWidth="76" Click="OnCompareClick" />
+    </Grid>
+
+    <!-- 行 1：模式与选项 -->
+    <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="10" Margin="0,8,0,6">
+      <TextBlock Text="{Binding ModeText}" FontWeight="Medium" VerticalAlignment="Center"
+                 Foreground="{DynamicResource AccentGlyphBrush}" />
+      <Button Content="上一级" Click="OnNavigateUpClick" IsVisible="{Binding IsDirectoryMode}" />
+      <CheckBox Content="仅显示差异" IsChecked="{Binding ShowOnlyDifferences, Mode=TwoWay}" VerticalAlignment="Center" />
+      <CheckBox Content="包含子目录" IsChecked="{Binding IncludeSubDirectories, Mode=TwoWay}"
+                IsVisible="{Binding IsDirectoryMode}" VerticalAlignment="Center" />
+      <CheckBox Content="按内容比较" IsChecked="{Binding CompareFileContent, Mode=TwoWay}"
+                IsVisible="{Binding IsDirectoryMode}" VerticalAlignment="Center" />
+      <Button Content="上一处差异" Click="OnPreviousDifferenceClick" />
+      <Button Content="下一处差异" Click="OnNextDifferenceClick" />
+      <TextBlock Text="{Binding DifferencePositionText}" VerticalAlignment="Center"
+                 Foreground="{DynamicResource TextMutedBrush}" />
+    </StackPanel>
+
+    <!-- 行 2：结果列表（目录模式与文件模式共用同一块区域） -->
+    <Grid Grid.Row="2">
+      <!-- 目录比对 -->
+      <Grid IsVisible="{Binding IsDirectoryMode}" RowDefinitions="Auto,*">
+        <Grid Grid.Row="0" ColumnDefinitions="100,3*,180,180" Margin="0,0,0,4">
+          <TextBlock Text="状态" Foreground="{DynamicResource TextMutedBrush}" />
+          <TextBlock Grid.Column="1" Text="相对路径" Foreground="{DynamicResource TextMutedBrush}" />
+          <TextBlock Grid.Column="2" Text="左侧（时间 · 大小）" Foreground="{DynamicResource TextMutedBrush}" />
+          <TextBlock Grid.Column="3" Text="右侧（时间 · 大小）" Foreground="{DynamicResource TextMutedBrush}" />
+        </Grid>
+        <ListBox Grid.Row="1" x:Name="DirectoryList" ItemsSource="{Binding DirectoryRows}"
+                 SelectedItem="{Binding SelectedDirectoryRow, Mode=TwoWay}"
+                 SelectionMode="Single" Background="Transparent" Padding="0" BorderThickness="0">
+          <ListBox.ItemTemplate>
+            <DataTemplate>
+              <Border Classes="compareRow"
+                      Classes.leftonly="{Binding IsLeftOnlyStatus}"
+                      Classes.rightonly="{Binding IsRightOnlyStatus}"
+                      Classes.newer="{Binding IsNewerStatus}"
+                      Classes.type="{Binding IsTypeMismatchStatus}"
+                      Classes.different="{Binding IsDifferentStatus}"
+                      DoubleTapped="OnDirectoryRowDoubleTapped">
+                <Grid ColumnDefinitions="100,3*,180,180">
+                  <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                    <Border Width="4" Height="16" CornerRadius="2" Background="{Binding StatusColor}" />
+                    <TextBlock Text="{Binding StatusText}" FontSize="12" VerticalAlignment="Center" />
+                  </StackPanel>
+                  <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <views:FileTypeIcon Width="16" Height="16" Category="{Binding IconCategory}"
+                                        AccentColor="{Binding IconColor}" VerticalAlignment="Center" />
+                    <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                  </StackPanel>
+                  <TextBlock Grid.Column="2" Text="{Binding LeftInfoText}" FontSize="12" Opacity="0.8"
+                             TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                  <TextBlock Grid.Column="3" Text="{Binding RightInfoText}" FontSize="12" Opacity="0.8"
+                             TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                </Grid>
+              </Border>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+      </Grid>
+
+      <!-- 文件比对：左右行号与对齐文本 -->
+      <Grid IsVisible="{Binding IsFileMode}" RowDefinitions="Auto,*">
+        <Grid Grid.Row="0" ColumnDefinitions="52,*,52,*" Margin="0,0,0,4">
+          <TextBlock Text="行" Foreground="{DynamicResource TextMutedBrush}" />
+          <TextBlock Grid.Column="1" Text="左侧内容" Foreground="{DynamicResource TextMutedBrush}" />
+          <TextBlock Grid.Column="2" Text="行" Foreground="{DynamicResource TextMutedBrush}" />
+          <TextBlock Grid.Column="3" Text="右侧内容" Foreground="{DynamicResource TextMutedBrush}" />
+        </Grid>
+        <ListBox Grid.Row="1" x:Name="FileList" ItemsSource="{Binding FileRows}"
+                 SelectedItem="{Binding SelectedFileRow, Mode=TwoWay}"
+                 SelectionMode="Single" Background="Transparent" Padding="0" BorderThickness="0">
+          <ListBox.ItemTemplate>
+            <DataTemplate>
+              <Border Classes="diffRow"
+                      Classes.modified="{Binding IsModified}"
+                      Classes.leftonly="{Binding IsLeftOnly}"
+                      Classes.rightonly="{Binding IsRightOnly}">
+                <Grid ColumnDefinitions="52,*,52,*">
+                  <TextBlock Grid.Column="0" Classes="diffLine" Text="{Binding LeftLineNumberText}"
+                             TextAlignment="Right" Margin="0,0,8,0" Opacity="0.65" />
+                  <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Classes="diffLine" Text="{Binding LeftPrefix}" />
+                    <Border Classes="changedSpan" Classes.removed="{Binding IsLeftOnly}"
+                            IsVisible="{Binding HasLeftChange}">
+                      <TextBlock Classes="diffLine" Text="{Binding LeftChanged}" />
+                    </Border>
+                    <TextBlock Classes="diffLine" Text="{Binding LeftSuffix}" />
+                  </StackPanel>
+                  <TextBlock Grid.Column="2" Classes="diffLine" Text="{Binding RightLineNumberText}"
+                             TextAlignment="Right" Margin="8,0" Opacity="0.65" />
+                  <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Classes="diffLine" Text="{Binding RightPrefix}" />
+                    <Border Classes="changedSpan" Classes.added="{Binding IsRightOnly}"
+                            IsVisible="{Binding HasRightChange}">
+                      <TextBlock Classes="diffLine" Text="{Binding RightChanged}" />
+                    </Border>
+                    <TextBlock Classes="diffLine" Text="{Binding RightSuffix}" />
+                  </StackPanel>
+                </Grid>
+              </Border>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+      </Grid>
+    </Grid>
+
+    <!-- 行 3：摘要 -->
+    <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="8" Margin="0,6,0,0">
+      <TextBlock Text="{Binding SummaryText}" Foreground="{DynamicResource TextMutedBrush}" FontSize="12" />
+      <TextBlock Text="{Binding LeftMetaText}" Foreground="{DynamicResource TextMutedBrush}" FontSize="12" IsVisible="{Binding IsFileMode}" />
+      <TextBlock Text="{Binding RightMetaText}" Foreground="{DynamicResource TextMutedBrush}" FontSize="12" IsVisible="{Binding IsFileMode}" />
+      <TextBlock Text="{Binding DetailText}" Foreground="{DynamicResource TextMutedBrush}" FontSize="12" />
+    </StackPanel>
+  </Grid>
+</UserControl>

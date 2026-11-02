@@ -10,6 +10,7 @@ using Avalonia.Controls;
 using TabTaskExplorer.App.Services;
 using TabTaskExplorer.App.Services.Capture;
 using TabTaskExplorer.Kernel.Abstractions;
+using TabTaskExplorer.Kernel.Capture;
 using TabTaskExplorer.Kernel.Media;
 using TabTaskExplorer.Kernel.Models;
 using TabTaskExplorer.Kernel.Services;
@@ -43,6 +44,7 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
     private readonly IServiceProvider services;
     private readonly AppSettingsStore settingsStore = new AppSettingsStore();
     private readonly CaptureCoordinator captureCoordinator;
+    private readonly CustomStartupService customStartupService;
     private object? selectedTab;
     private bool showToolbar = true;
     private bool showBookmarkBar = true;
@@ -60,6 +62,12 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
 
     /// <summary>应用设置（所有标签页共享同一份实例）。</summary>
     public AppSettings Settings { get; private set; }
+
+    /// <summary>自定义启动项服务：本次开机首次启动检查与启动项管理标签共用同一实例。</summary>
+    public CustomStartupService CustomStartup
+    {
+        get { return this.customStartupService; }
+    }
 
     /// <summary>网页端服务的状态文字：真实监听地址，或未启动原因（状态栏展示）。</summary>
     public string WebServiceStatus
@@ -146,6 +154,11 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
                 {
                     newCaptureTab.OnActivated();
                 }
+                // 启动项管理标签切入台前时重新读取系统启动项与本次开机执行状态
+                if (value is StartupManagerViewModel newStartupTab)
+                {
+                    newStartupTab.OnActivated();
+                }
             }
             this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SelectedTab)));
         }
@@ -208,6 +221,7 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
         this.services = services;
         this.Settings = this.settingsStore.Load();
         this.captureCoordinator = services.GetRequiredService<CaptureCoordinator>();
+        this.customStartupService = new CustomStartupService(this.Settings, this.settingsStore);
         this.IdeShell = new IdeShellViewModel(this.Settings, services);
         this.FillThisPcItems();
         this.FillQuickAccessItems();
@@ -243,6 +257,7 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
         this.services = services;
         this.Settings = sharedSettings;
         this.captureCoordinator = services.GetRequiredService<CaptureCoordinator>();
+        this.customStartupService = new CustomStartupService(this.Settings, this.settingsStore);
         this.IdeShell = new IdeShellViewModel(this.Settings, services);
         this.FillThisPcItems();
         this.FillQuickAccessItems();
@@ -536,6 +551,37 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
         UiLogger.Log("程序行为", "新建全局搜索标签：标签总数=" + this.Tabs.Count);
     }
 
+    /// <summary>打开比对标签页：存在目录时进入目录比对，否则进入文件文本比对；同一路径不新建重复标签。</summary>
+    public CompareTabViewModel OpenCompareTab(string leftPath, string rightPath)
+    {
+        foreach (object tab in this.Tabs)
+        {
+            CompareTabViewModel? existing = tab as CompareTabViewModel;
+            if (existing != null
+                && string.Equals(existing.LeftPathInput, leftPath ?? string.Empty, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(existing.RightPathInput, rightPath ?? string.Empty, StringComparison.OrdinalIgnoreCase))
+            {
+                this.SelectedTab = existing;
+                UiLogger.Log("比对", "复用已打开的比对标签：左侧路径=" + leftPath + " 右侧路径=" + rightPath);
+                return existing;
+            }
+        }
+        CompareTabViewModel compareTab = new CompareTabViewModel(this.Settings,
+            this.services.GetRequiredService<ITextFileService>(), leftPath ?? string.Empty, rightPath ?? string.Empty);
+        compareTab.FileCompareRequested += this.OnCompareFileCompareRequested;
+        this.Tabs.Add(compareTab);
+        this.SelectedTab = compareTab;
+        UiLogger.Log("程序行为", "新建比对标签：左侧路径=" + (leftPath ?? string.Empty)
+            + " 右侧路径=" + (rightPath ?? string.Empty) + " 标签总数=" + this.Tabs.Count);
+        return compareTab;
+    }
+
+    /// <summary>目录比对中双击文件行：新开文件比对标签。</summary>
+    private void OnCompareFileCompareRequested(object? sender, ComparePairEventArgs args)
+    {
+        this.OpenCompareTab(args.LeftPath, args.RightPath);
+    }
+
     /// <summary>打开连接管理标签页（已存在时直接选中）。</summary>
     public void OpenConnectionsTab()
     {
@@ -553,6 +599,36 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
         this.Tabs.Add(newManager);
         this.SelectedTab = newManager;
         UiLogger.Log("程序行为", "新建连接管理标签：标签总数=" + this.Tabs.Count);
+    }
+
+    /// <summary>打开启动项管理标签页（已存在时直接选中）。</summary>
+    public void OpenStartupManagerTab()
+    {
+        foreach (object tab in this.Tabs)
+        {
+            if (tab is StartupManagerViewModel startupTab)
+            {
+                this.SelectedTab = startupTab;
+                startupTab.OnActivated();
+                UiLogger.Log("启动项", "切换到已打开的启动项管理标签：标签总数=" + this.Tabs.Count);
+                return;
+            }
+        }
+        StartupManagerViewModel newStartupTab = new StartupManagerViewModel(
+            this.services.GetRequiredService<IStartupItemProvider>(),
+            this.Settings, this.settingsStore, this.customStartupService);
+        this.Tabs.Add(newStartupTab);
+        this.SelectedTab = newStartupTab;
+        UiLogger.Log("程序行为", "新建启动项管理标签：标签总数=" + this.Tabs.Count);
+    }
+
+    /// <summary>
+    /// 程序启动时检查自定义启动项：按开机标识只拉起本次开机尚未执行过的条目。
+    /// 由 App 在界面线程调用，内部按延迟顺序异步执行，不阻塞窗口显示。
+    /// </summary>
+    public void RunCustomStartupItemsOnBoot()
+    {
+        this.customStartupService.RunBootItemsIfNeeded();
     }
 
     /// <summary>打开进程监控标签页（已存在时直接选中）。</summary>
@@ -599,6 +675,11 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
     /// <summary>打开截图与录屏标签页（已存在时直接选中）。</summary>
     public void OpenCaptureTab()
     {
+        if (this.IsIdeMode)
+        {
+            UiLogger.Log("截图录屏", "打开截图录屏标签前退出 IDE 模式，保证标签在资源管理器区域可见");
+            this.ExitIdeMode();
+        }
         foreach (object tab in this.Tabs)
         {
             if (tab is CaptureTabViewModel captureTab)
@@ -625,6 +706,11 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
             UiLogger.Log("截图录屏", "打开产物文件夹标签被跳过：路径为空");
             return;
         }
+        if (this.IsIdeMode)
+        {
+            UiLogger.Log("截图录屏", "打开产物文件夹标签前退出 IDE 模式，保证文件夹标签在资源管理器区域可见");
+            this.ExitIdeMode();
+        }
         string normalizedPath = Path.GetFullPath(path);
         foreach (object tab in this.Tabs)
         {
@@ -649,6 +735,56 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
         get { return this.captureCoordinator.DescribeEnvironment(); }
     }
 
+    /// <summary>当前平台是否支持系统全局快捷键（用于把全局配置降级为应用内触发）。</summary>
+    public bool IsGlobalHotkeySupported
+    {
+        get { return this.captureCoordinator.IsGlobalHotkeySupported; }
+    }
+
+    /// <summary>执行截图 / 录屏类快捷键动作（应用内快捷键与全局快捷键共用）。</summary>
+    public void ExecuteCaptureShortcut(string actionName)
+    {
+        int delaySeconds = this.Settings.CaptureDelaySeconds;
+        if (string.Equals(actionName, "ScreenshotRegion", StringComparison.Ordinal))
+        {
+            UiLogger.Log("截图录屏", "快捷键触发区域截图：延迟秒数=" + delaySeconds);
+            _ = this.captureCoordinator.CaptureRegionAsync(delaySeconds);
+            return;
+        }
+        if (string.Equals(actionName, "ScreenshotFull", StringComparison.Ordinal))
+        {
+            UiLogger.Log("截图录屏", "快捷键触发全屏截图：延迟秒数=" + delaySeconds);
+            _ = this.captureCoordinator.CaptureAsync(CaptureTarget.FullScreen, delaySeconds);
+            return;
+        }
+        if (string.Equals(actionName, "ScreenshotPrimary", StringComparison.Ordinal))
+        {
+            UiLogger.Log("截图录屏", "快捷键触发主屏截图：延迟秒数=" + delaySeconds);
+            _ = this.captureCoordinator.CaptureAsync(CaptureTarget.PrimaryScreen, delaySeconds);
+            return;
+        }
+        if (string.Equals(actionName, "ScreenshotWindow", StringComparison.Ordinal))
+        {
+            UiLogger.Log("截图录屏", "快捷键触发活动窗口截图：延迟秒数=" + delaySeconds);
+            _ = this.captureCoordinator.CaptureAsync(CaptureTarget.ActiveWindow, delaySeconds);
+            return;
+        }
+        if (string.Equals(actionName, "ScreenshotLastRegion", StringComparison.Ordinal))
+        {
+            UiLogger.Log("截图录屏", "快捷键触发上次区域截图：延迟秒数=" + delaySeconds);
+            _ = this.captureCoordinator.CaptureLastRegionAsync(delaySeconds);
+            return;
+        }
+        if (string.Equals(actionName, "RecordToggle", StringComparison.Ordinal))
+        {
+            int targetIndex = this.captureCoordinator.ResolveRecordingTargetIndex(this.Settings.CaptureRecordTarget);
+            UiLogger.Log("截图录屏", "快捷键触发开始或停止录屏：录制目标索引=" + targetIndex);
+            _ = this.captureCoordinator.ToggleRecordingAsync(targetIndex);
+            return;
+        }
+        UiLogger.Log("截图录屏", "截图录屏快捷键动作被忽略：无法识别的动作标识=" + actionName);
+    }
+
     /// <summary>按最新设置重新注册全部全局快捷键；设置窗口关闭后调用。</summary>
     public void ReloadGlobalHotkeys()
     {
@@ -671,6 +807,11 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
             this.AddTab(string.Empty);
             return;
         }
+        if (kind == TabKinds.Compare)
+        {
+            this.OpenCompareTab(string.Empty, string.Empty);
+            return;
+        }
         if (kind == TabKinds.Board)
         {
             this.OpenTaskBoardTab();
@@ -684,6 +825,11 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
         if (kind == TabKinds.Connections)
         {
             this.OpenConnectionsTab();
+            return;
+        }
+        if (kind == TabKinds.Startup)
+        {
+            this.OpenStartupManagerTab();
             return;
         }
         if (kind == TabKinds.Disk)
@@ -1000,6 +1146,16 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
         if (tab is CaptureTabViewModel closingCaptureTab)
         {
             closingCaptureTab.Detach();
+        }
+        // 启动项管理标签关闭时停止后续枚举回调
+        if (tab is StartupManagerViewModel closingStartupTab)
+        {
+            closingStartupTab.Close();
+        }
+        // 比对标签关闭时丢弃在途比对结果
+        if (tab is CompareTabViewModel closingCompareTab)
+        {
+            closingCompareTab.Close();
         }
         int index = this.Tabs.IndexOf(tab);
         if (index < 0)
@@ -1435,6 +1591,19 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
     public void SaveSettingsAndApply()
     {
         this.settingsStore.Save(this.Settings);
+        int globalShortcutCount = 0;
+        int shortcutCount = 0;
+        if (this.Settings.Shortcuts != null)
+        {
+            shortcutCount = this.Settings.Shortcuts.Count;
+            foreach (HotkeySetting shortcut in this.Settings.Shortcuts)
+            {
+                if (shortcut != null && shortcut.IsGlobal)
+                {
+                    globalShortcutCount++;
+                }
+            }
+        }
         UiLogger.Log("配置更改", "保存设置并应用：隐藏文件=" + this.Settings.ShowHiddenFiles
             + " 显示扩展名=" + this.Settings.ShowFileExtensions
             + " 双击标签关闭=" + this.Settings.DoubleClickTabClose
@@ -1453,8 +1622,8 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
             + " 编辑器Tab宽度=" + this.Settings.EditorTabWidth
             + " 快捷访问固定数=" + this.Settings.PinnedPaths.Count
             + " 打开方式规则数=" + (this.Settings.FileOpenRules != null ? this.Settings.FileOpenRules.Count : 0)
-            + " 快捷键条数=" + this.Settings.Hotkeys.Count
-            + " 全局快捷键条数=" + this.Settings.GlobalHotkeys.Count
+            + " 快捷键条数=" + shortcutCount
+            + " 全局快捷键条数=" + globalShortcutCount
             + " 截图保存目录=" + CapturePaths.ResolveOutputDirectory(this.Settings)
             + " 截图复制到剪贴板=" + this.Settings.CaptureCopyToClipboard
             + " 完成后打开产物文件夹=" + this.Settings.CaptureOpenFolderAfter
@@ -1470,6 +1639,12 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
             if (tab is FileTabViewModel fileTab)
             {
                 fileTab.Refresh();
+            }
+            else if (tab is CaptureTabViewModel captureTab)
+            {
+                // 设置窗口可能修改了保存目录、FFmpeg 路径或产物选项，立即刷新截图录屏标签页
+                captureTab.RefreshEnvironment();
+                captureTab.RefreshHistory();
             }
         }
     }
@@ -1745,6 +1920,80 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
                 UiLogger.Log("网页端访问", "修改文件失败：模式=跟随桌面 目标=" + path + " 原因=" + error.Message);
             }
         });
+    }
+
+    /// <summary>执行网页端比对动作（跟随桌面模式）：设置路径、切换选项、差异导航与进入子目录。</summary>
+    private string ExecuteCompareAction(string action, string argument)
+    {
+        CompareTabViewModel? tab = this.SelectedTab as CompareTabViewModel;
+        if (tab == null)
+        {
+            return "当前标签不是比对视图";
+        }
+        if (action == "compareapply")
+        {
+            List<string> paths = MainWindowViewModel.SplitPathLines(argument);
+            string left = paths.Count > 0 ? paths[0] : string.Empty;
+            string right = paths.Count > 1 ? paths[1] : string.Empty;
+            tab.LeftPathInput = left;
+            tab.RightPathInput = right;
+            tab.Reload();
+            return "已开始比对：左侧=" + left + " 右侧=" + right;
+        }
+        if (action == "comparetoggle")
+        {
+            if (argument == "onlydiff")
+            {
+                tab.ShowOnlyDifferences = !tab.ShowOnlyDifferences;
+                return "仅显示差异=" + (tab.ShowOnlyDifferences ? "开" : "关");
+            }
+            if (argument == "subdirs")
+            {
+                tab.IncludeSubDirectories = !tab.IncludeSubDirectories;
+                return "包含子目录=" + (tab.IncludeSubDirectories ? "开" : "关");
+            }
+            if (argument == "content")
+            {
+                tab.CompareFileContent = !tab.CompareFileContent;
+                return "按内容比较=" + (tab.CompareFileContent ? "开" : "关");
+            }
+            return "无法识别的比对选项：" + argument;
+        }
+        if (action == "comparenext")
+        {
+            tab.SelectNextDifference();
+            return tab.DifferencePositionText;
+        }
+        if (action == "compareprev")
+        {
+            tab.SelectPreviousDifference();
+            return tab.DifferencePositionText;
+        }
+        if (action == "compareswap")
+        {
+            tab.SwapSides();
+            return "已交换左右两侧并重新比对";
+        }
+        if (action == "compareup")
+        {
+            tab.NavigateUp();
+            return "已返回上一层";
+        }
+        if (action == "compareopen")
+        {
+            int index;
+            if (!int.TryParse(argument, out index))
+            {
+                return "缺少要打开的行号";
+            }
+            if (index < 0 || index >= tab.DirectoryRows.Count)
+            {
+                return "行号超出范围";
+            }
+            tab.OpenRow(tab.DirectoryRows[index]);
+            return string.Empty;
+        }
+        return "未知比对动作：" + action;
     }
 
     /// <summary>执行网页端连接管理动作（跟随桌面模式）：选择、保存、删除、测试、一键导入、打开远程目录或终端。</summary>
@@ -2080,6 +2329,34 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
         {
             this.Unpin(argument);
             return "已从书签移除";
+        }
+        if (action == "comparechecked")
+        {
+            if (fileTab == null) { return "当前标签不是文件列表"; }
+            if (fileTab.ContentAccess != null || fileTab.FileSystemProvider is ArchiveFileSystemProvider)
+            {
+                return "远程连接或压缩包内的条目暂不支持比对";
+            }
+            List<FileRow> compareRows = fileTab.GetCheckedRows();
+            if (compareRows.Count != 2)
+            {
+                return "请先勾选恰好两项（两个文件夹或两个文件）再开始比对";
+            }
+            this.OpenCompareTab(compareRows[0].FullPath, compareRows[1].FullPath);
+            return "已打开比对：左侧=" + compareRows[0].FullPath + " 右侧=" + compareRows[1].FullPath;
+        }
+        if (action.StartsWith("compare", StringComparison.Ordinal))
+        {
+            return this.ExecuteCompareAction(action, argument);
+        }
+        if (action.StartsWith("startup", StringComparison.Ordinal))
+        {
+            StartupManagerViewModel? startupTab = this.SelectedTab as StartupManagerViewModel;
+            if (startupTab == null)
+            {
+                return "当前标签不是启动项管理";
+            }
+            return startupTab.ExecuteAction(action, argument);
         }
         if (action.StartsWith("conn", StringComparison.Ordinal))
         {

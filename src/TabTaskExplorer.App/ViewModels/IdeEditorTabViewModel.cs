@@ -1,5 +1,6 @@
 ﻿using System;
 using System.ComponentModel;
+using Avalonia.Media;
 using TabTaskExplorer.App.Services;
 using TabTaskExplorer.Kernel.Models;
 
@@ -21,6 +22,7 @@ public class IdeEditorTabViewModel : INotifyPropertyChanged
     private int selectionLength;
     private bool readOnly;
     private string encodingName = "UTF-8";
+    private bool isPreview;
 
     /// <inheritdoc />
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -38,6 +40,32 @@ public class IdeEditorTabViewModel : INotifyPropertyChanged
     public string DisplayTitle
     {
         get { return this.IsDirty ? this.Title + " ●" : this.Title; }
+    }
+
+    /// <summary>是否为预览标签：单击文件打开时进入预览状态，可被下一次预览替换。</summary>
+    public bool IsPreview
+    {
+        get { return this.isPreview; }
+    }
+
+    /// <summary>标签标题字体样式：预览标签用斜体，普通标签用正体。</summary>
+    public FontStyle DisplayFontStyle
+    {
+        get { return this.isPreview ? FontStyle.Italic : FontStyle.Normal; }
+    }
+
+    /// <summary>把预览标签固定为普通标签（双击、编辑、保存时调用）。</summary>
+    /// <param name="reason">触发固定的原因，用于日志说明。</param>
+    public void PinPreview(string reason)
+    {
+        if (!this.isPreview)
+        {
+            return;
+        }
+        this.isPreview = false;
+        this.RaisePropertyChanged(nameof(this.IsPreview));
+        this.RaisePropertyChanged(nameof(this.DisplayFontStyle));
+        UiLogger.Log("IDE 编辑器", "预览标签固定为普通标签：文件=" + this.FilePath + " 触发原因=" + reason);
     }
 
     /// <summary>标签提示：完整位置。</summary>
@@ -86,12 +114,18 @@ public class IdeEditorTabViewModel : INotifyPropertyChanged
             {
                 return;
             }
+            bool wasPreview = this.isPreview;
             this.text = value;
             this.RaisePropertyChanged(nameof(this.Text));
             this.RaisePropertyChanged(nameof(this.IsDirty));
             this.RaisePropertyChanged(nameof(this.DisplayTitle));
             this.RaisePropertyChanged(nameof(this.HasText));
             this.RefreshLineCount();
+            if (wasPreview)
+            {
+                // 预览标签一旦被编辑就固定为普通标签，避免后续预览把它连同修改一起替换掉
+                this.PinPreview("编辑内容");
+            }
         }
     }
 
@@ -185,9 +219,13 @@ public class IdeEditorTabViewModel : INotifyPropertyChanged
     public int LineCount { get; private set; } = 1;
 
     /// <summary>构建编辑器标签（读取内容由调用方在后台线程预先完成）。</summary>
-    public IdeEditorTabViewModel(IEditorFileAccess fileAccess, TextFileContent content)
+    /// <param name="fileAccess">文件访问能力。</param>
+    /// <param name="content">已读取的文件内容。</param>
+    /// <param name="isPreview">是否以预览方式打开（单击文件时为 true）。</param>
+    public IdeEditorTabViewModel(IEditorFileAccess fileAccess, TextFileContent content, bool isPreview = false)
     {
         this.fileAccess = fileAccess;
+        this.isPreview = isPreview;
         this.EncodingName = content.EncodingName;
         if (content.IsBinary)
         {
@@ -220,7 +258,13 @@ public class IdeEditorTabViewModel : INotifyPropertyChanged
     /// <summary>把编辑内容写回（后台线程执行）。</summary>
     public async void Save()
     {
-        if (this.Saving || this.IsReadOnly || !this.IsDirty)
+        if (this.IsReadOnly)
+        {
+            return;
+        }
+        // 保存动作本身即视为真打开：预览标签先固定为普通标签
+        this.PinPreview("保存");
+        if (this.Saving || !this.IsDirty)
         {
             return;
         }

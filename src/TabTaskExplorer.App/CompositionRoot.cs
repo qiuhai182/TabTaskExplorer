@@ -98,6 +98,9 @@ public static class CompositionRoot
 
             // 进程详情与调节（优先级、CPU 亲和性）：Windows 平台实现
             services.AddSingleton<IProcessDetailService, WindowsProcessDetailService>();
+
+            // 启动项管理：注册表 Run / RunOnce、启动文件夹与 Win32 自动启动服务
+            services.AddSingleton<IStartupItemProvider, WindowsStartupItemProvider>();
         }
         else
         {
@@ -113,6 +116,8 @@ public static class CompositionRoot
                 services.AddSingleton<ISystemMetricsProvider, LinuxSystemMetricsProvider>();
                 // 进程详情与调节（优先级、CPU 亲和性）：Linux 平台实现
                 services.AddSingleton<IProcessDetailService, LinuxProcessDetailService>();
+                // 启动项管理：XDG autostart 桌面文件与 systemd 服务
+                services.AddSingleton<IStartupItemProvider, LinuxStartupItemProvider>();
             }
             else if (OperatingSystem.IsMacOS())
             {
@@ -120,6 +125,12 @@ public static class CompositionRoot
                 services.AddSingleton<ISystemMetricsProvider, MacSystemMetricsProvider>();
                 // 进程详情与调节（优先级、CPU 亲和性）：macOS 平台实现
                 services.AddSingleton<IProcessDetailService, MacOSProcessDetailService>();
+                // 启动项管理：launchd 代理与守护进程 plist
+                services.AddSingleton<IStartupItemProvider, MacStartupItemProvider>();
+            }
+            else
+            {
+                services.AddSingleton<IStartupItemProvider, NullStartupItemProvider>();
             }
         }
 
@@ -158,8 +169,62 @@ public static class CompositionRoot
             services.AddSingleton<Kernel.Capture.IScreenRecordingService, NullScreenRecordingService>();
             services.AddSingleton<Kernel.Capture.IGlobalHotkeyService, NullGlobalHotkeyService>();
         }
+
+        // 区域截图预选：Windows 枚举可见窗口与 Win32 子视图；其他平台留空，框选窗口回落为全屏与手工拖动
+        if (OperatingSystem.IsWindows())
+        {
+            services.AddSingleton<Kernel.Capture.IScreenRegionDetector, WindowsScreenRegionDetector>();
+        }
+        else
+        {
+            services.AddSingleton<Kernel.Capture.IScreenRegionDetector, Kernel.Capture.NullScreenRegionDetector>();
+        }
         services.AddSingleton<Services.Capture.CaptureCoordinator>();
 
+        // 文字识别：Windows 使用系统内置 Windows.Media.Ocr（离线），其他平台使用可选的 Tesseract；
+        // 两个实现都实现同一内核接口，找不到引擎时通过能力说明明确告知用户
+        if (OperatingSystem.IsWindows())
+        {
+            services.AddSingleton<Kernel.Ocr.ITextRecognitionService, WindowsOcrService>();
+        }
+        else
+        {
+            services.AddSingleton<Kernel.Ocr.ITextRecognitionService, TesseractTextRecognitionServicePlaceholder>();
+        }
+
         return services.BuildServiceProvider();
+    }
+}
+
+/// <summary>
+/// 非 Windows 平台的 Tesseract 文字识别占位服务：运行时按用户设置构造真实的 Tesseract 服务，
+/// 保证 Linux 与 macOS 的接口与 Windows 完全一致。
+/// </summary>
+internal sealed class TesseractTextRecognitionServicePlaceholder : Kernel.Ocr.ITextRecognitionService
+{
+    /// <inheritdoc />
+    public bool IsAvailable
+    {
+        get { return false; }
+    }
+
+    /// <inheritdoc />
+    public string ProviderName
+    {
+        get { return "Tesseract"; }
+    }
+
+    /// <inheritdoc />
+    public string DescribeAvailability()
+    {
+        return "文字识别=Tesseract 需在设置中指定可执行文件路径后可用";
+    }
+
+    /// <inheritdoc />
+    public System.Threading.Tasks.Task<Kernel.Ocr.TextRecognitionResult> RecognizeAsync(byte[] pngBytes, string language)
+    {
+        return System.Threading.Tasks.Task.FromResult(
+            Kernel.Ocr.TextRecognitionResult.CreateFailure(
+                "请在设置中指定 Tesseract 可执行文件路径后重试", this.ProviderName));
     }
 }

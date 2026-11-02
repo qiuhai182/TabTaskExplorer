@@ -110,6 +110,9 @@ public partial class FileListPanel : UserControl
     /// <summary>条目右键菜单里「粘贴」菜单项的标记（只在文件夹条目上显示，粘贴进该文件夹）。</summary>
     private const string PasteToFolderTag = "MenuPasteToFolder";
 
+    /// <summary>条目右键菜单里「比较所选两项」菜单项的标记（恰好勾选两项时显示）。</summary>
+    private const string CompareSelectionTag = "MenuCompareSelection";
+
     /// <summary>条目右键菜单打开时记录的右键条目，供系统菜单项点击时兜底使用。</summary>
     private FileRow? systemMenuContextRow;
 
@@ -839,26 +842,67 @@ public partial class FileListPanel : UserControl
                 + (hasDirectory ? "当前系统不支持系统右键菜单管理，未添加系统菜单项" : "此电脑根视图没有具体目录，未添加系统菜单项"));
             return;
         }
-        List<SystemContextMenuEntry> entries = SystemContextMenuPolicy.SelectForBackground(systemContextMenuService.Enumerate(), currentPath);
+        IReadOnlyList<SystemContextMenuEntry> entries = systemContextMenuService.EnumerateShellMenu(currentPath, true);
+        string menuSourceText = "系统外壳实时菜单";
+        if (entries.Count == 0)
+        {
+            entries = SystemContextMenuPolicy.SelectForBackground(systemContextMenuService.Enumerate(), currentPath);
+            menuSourceText = "注册表静态菜单（外壳实时菜单不可用时回退）";
+        }
         if (entries.Count == 0)
         {
             systemMenuHost.IsVisible = false;
-            UiLogger.Log("程序行为", "空白处右键菜单打开：当前目录=" + directoryText + " 适用条目数=0 结果=成功，没有适用的系统菜单项，已隐藏系统菜单项子菜单");
+            UiLogger.Log("程序行为", "空白处右键菜单打开：当前目录=" + directoryText + " 适用条目数=0 结果=成功，没有适用的系统菜单项，已隐藏系统右键菜单子菜单");
             return;
         }
+        AppendSystemMenuItems(systemMenuHost.Items, entries, this.OnBackgroundSystemMenuEntryClick);
+        systemMenuHost.IsVisible = true;
+        UiLogger.Log("程序行为", "空白处右键菜单打开：当前目录=" + directoryText + " 菜单来源=" + menuSourceText
+            + " 顶层条目数=" + entries.Count + " 全部条目数=" + CountMenuEntries(entries)
+            + " 结果=成功，已加载当前文件夹的全部已启用系统右键菜单");
+    }
+
+    /// <summary>把系统菜单项（含子菜单与分隔线）递归加入目标菜单集合。</summary>
+    private static void AppendSystemMenuItems(ItemCollection target, IReadOnlyList<SystemContextMenuEntry> entries,
+        EventHandler<RoutedEventArgs> clickHandler)
+    {
         foreach (SystemContextMenuEntry entry in entries)
         {
+            if (entry.IsSeparator)
+            {
+                target.Add(new Separator());
+                continue;
+            }
             MenuItem item = new MenuItem();
             item.Header = entry.DisplayName;
-            string tip = entry.RequiresAdministrator ? entry.RegistryPath + "(需管理员)" : entry.RegistryPath;
-            ToolTip.SetTip(item, tip);
-            item.Click += this.OnBackgroundSystemMenuEntryClick;
-            item.DataContext = entry;
-            systemMenuHost.Items.Add(item);
+            ToolTip.SetTip(item, entry.RegistryPath);
+            if (entry.Children.Count > 0)
+            {
+                AppendSystemMenuItems(item.Items, entry.Children, clickHandler);
+            }
+            else
+            {
+                item.DataContext = entry;
+                item.Click += clickHandler;
+            }
+            item.IsEnabled = entry.CanExecute;
+            target.Add(item);
         }
-        systemMenuHost.IsVisible = true;
-        UiLogger.Log("程序行为", "空白处右键菜单打开：当前目录=" + directoryText + " 系统菜单项注入数=" + entries.Count
-            + " 结果=成功，已填充系统菜单项子菜单");
+    }
+
+    /// <summary>统计菜单项总数（不含分隔线，含子菜单）。</summary>
+    private static int CountMenuEntries(IReadOnlyList<SystemContextMenuEntry> entries)
+    {
+        int count = 0;
+        foreach (SystemContextMenuEntry entry in entries)
+        {
+            if (!entry.IsSeparator)
+            {
+                count++;
+            }
+            count += CountMenuEntries(entry.Children);
+        }
+        return count;
     }
 
     /// <summary>空白处右键菜单“刷新”：重新加载当前目录。</summary>
@@ -953,9 +997,12 @@ public partial class FileListPanel : UserControl
                     + " 目标目录=未取到 结果=失败，未找到当前目录或系统右键菜单服务，本次唤起未执行");
                 return;
             }
-            bool succeeded = systemContextMenuService.Execute(entry, currentPath);
-            UiLogger.Log("程序行为", "唤起空白处系统菜单项：条目名称=" + entry.DisplayName + " 注册表完整路径=" + entry.RegistryPath
-                + " 目标目录=" + currentPath
+            bool succeeded = entry.IsShellMenuEntry
+                ? systemContextMenuService.ExecuteShellMenuEntry(entry, currentPath, true)
+                : systemContextMenuService.Execute(entry, currentPath);
+            UiLogger.Log("程序行为", "唤起空白处系统菜单项：条目名称=" + entry.DisplayName
+                + " 菜单来源=" + (entry.IsShellMenuEntry ? "系统外壳实时菜单" : "注册表静态菜单")
+                + " 注册表完整路径=" + entry.RegistryPath + " 目标目录=" + currentPath
                 + " 结果=" + (succeeded ? "成功，已唤起该系统菜单项命令" : "失败，唤起该系统菜单项命令未成功"));
             if (!succeeded)
             {
@@ -1000,6 +1047,39 @@ public partial class FileListPanel : UserControl
             UiLogger.Log("程序行为", "右键菜单在新标签打开：行路径=" + row.FullPath + " 条目类型=" + (row.IsDirectory ? "目录" : "文件")
                 + " 结果=" + (row.IsDirectory ? "成功，已新建标签打开该目录" : "已按标签页规则打开该文件"));
         }
+    }
+
+    /// <summary>右键菜单「比较所选两项」：按勾选的两个条目打开目录比对或文件比对标签。</summary>
+    private void OnMenuCompareSelectionClick(object? sender, RoutedEventArgs e)
+    {
+        MainWindowViewModel? mainViewModel = this.MainViewModel;
+        FileTabViewModel? viewModel = this.ViewModel;
+        if (mainViewModel == null || viewModel == null)
+        {
+            UiLogger.Log("程序行为", "右键菜单比较所选两项：主窗口或标签视图模型为空 结果=失败，本次操作取消");
+            return;
+        }
+        if (viewModel.ContentAccess != null || viewModel.FileSystemProvider is ArchiveFileSystemProvider)
+        {
+            viewModel.ShowMessage("远程连接或压缩包内的条目暂不支持比对");
+            UiLogger.Log("程序行为", "右键菜单比较所选两项：路径=" + viewModel.CurrentPath
+                + " 结果=失败，远程或压缩包内条目暂不支持比对");
+            return;
+        }
+        List<FileRow> rows = viewModel.GetCheckedRows();
+        if (rows.Count != 2)
+        {
+            viewModel.ShowMessage("请先勾选恰好两项（两个文件夹或两个文件）再开始比对");
+            UiLogger.Log("程序行为", "右键菜单比较所选两项：已勾选条目数=" + rows.Count
+                + " 结果=失败，需要恰好勾选两项");
+            return;
+        }
+        mainViewModel.OpenCompareTab(rows[0].FullPath, rows[1].FullPath);
+        UiLogger.Log("程序行为", "右键菜单比较所选两项：左侧路径=" + rows[0].FullPath
+            + " 右侧路径=" + rows[1].FullPath
+            + " 左侧类型=" + (rows[0].IsDirectory ? "目录" : "文件")
+            + " 右侧类型=" + (rows[1].IsDirectory ? "目录" : "文件")
+            + " 结果=成功，已打开比对标签");
     }
 
     private void OnMenuCopyClick(object? sender, RoutedEventArgs e)
@@ -1297,6 +1377,16 @@ public partial class FileListPanel : UserControl
             UiLogger.Log("程序行为", "右键菜单打开：行路径=" + row.FullPath + " 条目类型=" + (row.IsDirectory ? "目录" : "文件")
                 + " 粘贴菜单项=" + (row.IsDirectory ? "显示，点击后粘贴进该文件夹" : "隐藏，文件不能作为粘贴目标") + " 结果=成功");
         }
+        // 「比较所选两项」只在恰好勾选两项时显示：两个文件夹进入目录比对，两个文件进入文本比对
+        MenuItem? compareItem = FindMenuItemByTag(menu, FileListPanel.CompareSelectionTag);
+        if (compareItem != null)
+        {
+            FileTabViewModel? viewModel = this.ViewModel;
+            int checkedCount = viewModel == null ? 0 : viewModel.GetCheckedRows().Count;
+            compareItem.IsVisible = checkedCount == 2;
+            UiLogger.Log("程序行为", "右键菜单打开：行路径=" + row.FullPath + " 已勾选条目数=" + checkedCount
+                + " 比较菜单项=" + (checkedCount == 2 ? "显示，点击后按类型打开目录或文件比对" : "隐藏，需恰好勾选两项"));
+        }
         MenuItem? systemMenuHost = FindSystemMenuHost(menu);
         if (systemMenuHost == null)
         {
@@ -1314,28 +1404,26 @@ public partial class FileListPanel : UserControl
                 + " 适用条目数=0 结果=当前系统不支持系统右键菜单管理，未添加系统菜单项");
             return;
         }
-        List<SystemContextMenuEntry> entries = SystemContextMenuPolicy.SelectForTarget(systemContextMenuService.Enumerate(), row.FullPath, row.IsDirectory);
+        IReadOnlyList<SystemContextMenuEntry> entries = systemContextMenuService.EnumerateShellMenu(row.FullPath, false);
+        string menuSourceText = "系统外壳实时菜单";
+        if (entries.Count == 0)
+        {
+            entries = SystemContextMenuPolicy.SelectForTarget(systemContextMenuService.Enumerate(), row.FullPath, row.IsDirectory);
+            menuSourceText = "注册表静态菜单（外壳实时菜单不可用时回退）";
+        }
         systemMenuHost.Items.Clear();
         if (entries.Count == 0)
         {
             systemMenuHost.IsVisible = false;
             UiLogger.Log("程序行为", "右键菜单打开：行路径=" + row.FullPath + " 条目类型=" + (row.IsDirectory ? "目录" : "文件")
-                + " 适用条目数=0 结果=成功，没有适用的系统菜单项，已隐藏系统菜单项子菜单");
+                + " 适用条目数=0 结果=成功，没有适用的系统菜单项，已隐藏系统右键菜单子菜单");
             return;
         }
-        foreach (SystemContextMenuEntry entry in entries)
-        {
-            MenuItem item = new MenuItem();
-            item.Header = entry.DisplayName;
-            string tip = entry.RequiresAdministrator ? entry.RegistryPath + "(需管理员)" : entry.RegistryPath;
-            ToolTip.SetTip(item, tip);
-            item.Click += this.OnSystemMenuEntryClick;
-            item.DataContext = entry;
-            systemMenuHost.Items.Add(item);
-        }
+        AppendSystemMenuItems(systemMenuHost.Items, entries, this.OnSystemMenuEntryClick);
         systemMenuHost.IsVisible = true;
         UiLogger.Log("程序行为", "右键菜单打开：行路径=" + row.FullPath + " 条目类型=" + (row.IsDirectory ? "目录" : "文件")
-            + " 系统菜单项注入数=" + entries.Count + " 目标路径=" + row.FullPath + " 结果=成功，已填充系统菜单项子菜单");
+            + " 菜单来源=" + menuSourceText + " 顶层条目数=" + entries.Count + " 全部条目数=" + CountMenuEntries(entries)
+            + " 目标路径=" + row.FullPath + " 结果=成功，已加载当前文件的全部已启用系统右键菜单");
     }
 
     /// <summary>找到右键菜单里承载系统菜单项的占位子菜单。</summary>
@@ -1371,9 +1459,12 @@ public partial class FileListPanel : UserControl
                     + " 目标路径=未取到 结果=失败，未找到列表条目或系统右键菜单服务，本次唤起未执行");
                 return;
             }
-            bool succeeded = systemContextMenuService.Execute(entry, row.FullPath);
-            UiLogger.Log("程序行为", "唤起系统菜单项：条目名称=" + entry.DisplayName + " 注册表完整路径=" + entry.RegistryPath
-                + " 目标路径=" + row.FullPath
+            bool succeeded = entry.IsShellMenuEntry
+                ? systemContextMenuService.ExecuteShellMenuEntry(entry, row.FullPath, false)
+                : systemContextMenuService.Execute(entry, row.FullPath);
+            UiLogger.Log("程序行为", "唤起系统菜单项：条目名称=" + entry.DisplayName
+                + " 菜单来源=" + (entry.IsShellMenuEntry ? "系统外壳实时菜单" : "注册表静态菜单")
+                + " 注册表完整路径=" + entry.RegistryPath + " 目标路径=" + row.FullPath
                 + " 结果=" + (succeeded ? "成功，已唤起该系统菜单项命令" : "失败，唤起该系统菜单项命令未成功"));
             if (!succeeded)
             {

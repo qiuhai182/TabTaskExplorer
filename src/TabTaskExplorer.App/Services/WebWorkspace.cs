@@ -243,12 +243,78 @@ public class WebWorkspace
         this.SyncTabForeground();
     }
 
+    /// <summary>新建启动项管理标签（同一工作区只保留一个）。</summary>
+    public void AddStartupTab()
+    {
+        int existingIndex = this.IndexOfTab(typeof(StartupManagerViewModel));
+        if (existingIndex >= 0)
+        {
+            this.selectedIndex = existingIndex;
+            UiLogger.Log("网页端工作区", "工作区=" + this.Id + " 启动项管理标签已存在：直接切换到该标签 序号=" + existingIndex);
+            this.SyncTabForeground();
+            return;
+        }
+        AppSettingsStore startupSettingsStore = new AppSettingsStore();
+        CustomStartupService startupService = new CustomStartupService(this.settings, startupSettingsStore);
+        StartupManagerViewModel tab = new StartupManagerViewModel(
+            this.services.GetRequiredService<IStartupItemProvider>(),
+            this.settings, startupSettingsStore, startupService);
+        this.tabs.Add(tab);
+        this.selectedIndex = this.tabs.Count - 1;
+        UiLogger.Log("网页端工作区", "工作区=" + this.Id + " 新建启动项管理标签：标签总数=" + this.tabs.Count);
+        this.SyncTabForeground();
+    }
+
+    /// <summary>新建比对标签（目录或文件模式由路径类型自动判断）。</summary>
+    public void AddCompareTab(string leftPath, string rightPath)
+    {
+        CompareTabViewModel tab = new CompareTabViewModel(this.settings,
+            this.services.GetRequiredService<ITextFileService>(), leftPath, rightPath);
+        tab.FileCompareRequested += this.OnCompareFileRequested;
+        this.tabs.Add(tab);
+        this.selectedIndex = this.tabs.Count - 1;
+        UiLogger.Log("网页端工作区", "工作区=" + this.Id + " 新建比对标签：左侧路径=" + leftPath
+            + " 右侧路径=" + rightPath + " 标签总数=" + this.tabs.Count);
+        this.SyncTabForeground();
+    }
+
+    /// <summary>目录比对中双击文件行：新开文件比对标签。</summary>
+    private void OnCompareFileRequested(object? sender, ComparePairEventArgs args)
+    {
+        this.AddCompareTab(args.LeftPath, args.RightPath);
+    }
+
+    /// <summary>当前工作区选中的启动项管理标签；没有时返回 null。</summary>
+    private StartupManagerViewModel? CurrentStartupTab()
+    {
+        if (this.selectedIndex < 0 || this.selectedIndex >= this.tabs.Count)
+        {
+            return null;
+        }
+        return this.tabs[this.selectedIndex] as StartupManagerViewModel;
+    }
+
+    /// <summary>当前工作区选中的比对标签；没有时返回 null。</summary>
+    private CompareTabViewModel? CurrentCompareTab()
+    {
+        if (this.selectedIndex < 0 || this.selectedIndex >= this.tabs.Count)
+        {
+            return null;
+        }
+        return this.tabs[this.selectedIndex] as CompareTabViewModel;
+    }
+
     /// <summary>按标签类型打开视图：与桌面共用同一套 kind 标识。</summary>
     public void OpenView(string kind)
     {
         if (kind == TabKinds.File)
         {
             this.AddFileTab(string.Empty);
+            return;
+        }
+        if (kind == TabKinds.Compare)
+        {
+            this.AddCompareTab(string.Empty, string.Empty);
             return;
         }
         if (kind == TabKinds.Board)
@@ -274,6 +340,11 @@ public class WebWorkspace
         if (kind == TabKinds.Process)
         {
             this.AddProcessTab();
+            return;
+        }
+        if (kind == TabKinds.Startup)
+        {
+            this.AddStartupTab();
             return;
         }
         UiLogger.Log("网页端工作区", "工作区=" + this.Id + " 打开视图被忽略：无法识别的标签类型=" + kind);
@@ -321,6 +392,16 @@ public class WebWorkspace
         {
             closingProcessTab.Close();
         }
+        StartupManagerViewModel? closingStartupTab = this.tabs[index] as StartupManagerViewModel;
+        if (closingStartupTab != null)
+        {
+            closingStartupTab.Close();
+        }
+        CompareTabViewModel? closingCompareTab = this.tabs[index] as CompareTabViewModel;
+        if (closingCompareTab != null)
+        {
+            closingCompareTab.Close();
+        }
         // 文件标签关闭时停止在途的目录大小回填
         FileTabViewModel? closingFileTab = this.tabs[index] as FileTabViewModel;
         if (closingFileTab != null)
@@ -354,8 +435,12 @@ public class WebWorkspace
             {
                 fileTab.Close();
             }
+            if (tab is CompareTabViewModel compareTab)
+            {
+                compareTab.Close();
+            }
         }
-        UiLogger.Log("网页端工作区", "工作区=" + this.Id + " 已释放标签资源：磁盘视图、进程监控与文件标签的在途回填全部停止");
+        UiLogger.Log("网页端工作区", "工作区=" + this.Id + " 已释放标签资源：磁盘视图、进程监控、文件标签与比对标签的在途任务全部停止");
     }
 
     /// <summary>台前同步：磁盘视图与进程监控只有选中的标签进入台前（台前才周期刷新，其余停在台后）。</summary>
@@ -577,6 +662,14 @@ public class WebWorkspace
             {
                 viewName = "进程监控";
             }
+            else if (tableKey == "startup")
+            {
+                viewName = "系统启动项";
+            }
+            else if (tableKey == "startupcustom")
+            {
+                viewName = "自定义启动项";
+            }
             else if (tableKey == "connections")
             {
                 viewName = "连接管理";
@@ -770,6 +863,34 @@ public class WebWorkspace
         {
             return "独立工作区不与桌面共享书签，该操作不可用";
         }
+        if (action == "comparechecked")
+        {
+            if (fileTab == null) { return "当前标签不是文件列表"; }
+            if (fileTab.ContentAccess != null || fileTab.FileSystemProvider is ArchiveFileSystemProvider)
+            {
+                return "远程连接或压缩包内的条目暂不支持比对";
+            }
+            List<FileRow> compareRows = fileTab.GetCheckedRows();
+            if (compareRows.Count != 2)
+            {
+                return "请先勾选恰好两项（两个文件夹或两个文件）再开始比对";
+            }
+            this.AddCompareTab(compareRows[0].FullPath, compareRows[1].FullPath);
+            return "已打开比对：左侧=" + compareRows[0].FullPath + " 右侧=" + compareRows[1].FullPath;
+        }
+        if (action.StartsWith("compare", StringComparison.Ordinal))
+        {
+            return this.ExecuteCompareAction(action, argument);
+        }
+        if (action.StartsWith("startup", StringComparison.Ordinal))
+        {
+            StartupManagerViewModel? startupTab = this.CurrentStartupTab();
+            if (startupTab == null)
+            {
+                return "当前标签不是启动项管理";
+            }
+            return startupTab.ExecuteAction(action, argument);
+        }
         if (action.StartsWith("conn", StringComparison.Ordinal))
         {
             return this.ExecuteConnectionAction(action, argument);
@@ -836,6 +957,80 @@ public class WebWorkspace
             return string.Empty;
         }
         return "未知动作：" + action;
+    }
+
+    /// <summary>执行网页端比对动作：设置路径、切换选项、差异导航与进入子目录。</summary>
+    private string ExecuteCompareAction(string action, string argument)
+    {
+        CompareTabViewModel? tab = this.CurrentCompareTab();
+        if (tab == null)
+        {
+            return "请先打开比对标签";
+        }
+        if (action == "compareapply")
+        {
+            List<string> paths = WebWorkspace.SplitPathLines(argument);
+            string left = paths.Count > 0 ? paths[0] : string.Empty;
+            string right = paths.Count > 1 ? paths[1] : string.Empty;
+            tab.LeftPathInput = left;
+            tab.RightPathInput = right;
+            tab.Reload();
+            return "已开始比对：左侧=" + left + " 右侧=" + right;
+        }
+        if (action == "comparetoggle")
+        {
+            if (argument == "onlydiff")
+            {
+                tab.ShowOnlyDifferences = !tab.ShowOnlyDifferences;
+                return "仅显示差异=" + (tab.ShowOnlyDifferences ? "开" : "关");
+            }
+            if (argument == "subdirs")
+            {
+                tab.IncludeSubDirectories = !tab.IncludeSubDirectories;
+                return "包含子目录=" + (tab.IncludeSubDirectories ? "开" : "关");
+            }
+            if (argument == "content")
+            {
+                tab.CompareFileContent = !tab.CompareFileContent;
+                return "按内容比较=" + (tab.CompareFileContent ? "开" : "关");
+            }
+            return "无法识别的比对选项：" + argument;
+        }
+        if (action == "comparenext")
+        {
+            tab.SelectNextDifference();
+            return tab.DifferencePositionText;
+        }
+        if (action == "compareprev")
+        {
+            tab.SelectPreviousDifference();
+            return tab.DifferencePositionText;
+        }
+        if (action == "compareswap")
+        {
+            tab.SwapSides();
+            return "已交换左右两侧并重新比对";
+        }
+        if (action == "compareup")
+        {
+            tab.NavigateUp();
+            return "已返回上一层";
+        }
+        if (action == "compareopen")
+        {
+            int index;
+            if (!int.TryParse(argument, out index))
+            {
+                return "缺少要打开的行号";
+            }
+            if (index < 0 || index >= tab.DirectoryRows.Count)
+            {
+                return "行号超出范围";
+            }
+            tab.OpenRow(tab.DirectoryRows[index]);
+            return string.Empty;
+        }
+        return "未知比对动作：" + action;
     }
 
     /// <summary>执行网页端连接管理动作（选择、保存、删除、测试、一键导入、打开远程文件夹）。</summary>
@@ -1367,6 +1562,16 @@ public class WebWorkspace
         if (boardTab != null)
         {
             return boardTab.Title;
+        }
+        CompareTabViewModel? compareTab = tab as CompareTabViewModel;
+        if (compareTab != null)
+        {
+            return compareTab.Title;
+        }
+        StartupManagerViewModel? startupTab = tab as StartupManagerViewModel;
+        if (startupTab != null)
+        {
+            return startupTab.Title;
         }
         return tab.GetType().Name;
     }

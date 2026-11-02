@@ -167,6 +167,9 @@ public class DebugIdeEditor
     /// <summary>是否有未保存更改（关闭前确认用）。</summary>
     public bool IsDirty { get; set; }
 
+    /// <summary>是否为预览标签（网页端以斜体显示，可被下一次预览替换）。</summary>
+    public bool IsPreview { get; set; }
+
     /// <summary>标签图标分类键。</summary>
     public string IconCategory { get; set; } = FileIconCatalog.File;
 
@@ -303,6 +306,42 @@ public class DebugTabState
     /// <summary>文件标签：可见条目（与桌面列表同构）。</summary>
     public List<DebugFileRow> Rows { get; } = new List<DebugFileRow>();
 
+    /// <summary>比对：模式（directory / file）。</summary>
+    public string CompareMode { get; set; } = string.Empty;
+
+    /// <summary>比对：左侧路径。</summary>
+    public string LeftPath { get; set; } = string.Empty;
+
+    /// <summary>比对：右侧路径。</summary>
+    public string RightPath { get; set; } = string.Empty;
+
+    /// <summary>比对：左侧路径输入框内容。</summary>
+    public string LeftPathInput { get; set; } = string.Empty;
+
+    /// <summary>比对：右侧路径输入框内容。</summary>
+    public string RightPathInput { get; set; } = string.Empty;
+
+    /// <summary>比对：是否只显示差异。</summary>
+    public bool CompareShowOnlyDifferences { get; set; }
+
+    /// <summary>比对：目录模式是否包含子目录。</summary>
+    public bool CompareIncludeSubDirectories { get; set; } = true;
+
+    /// <summary>比对：目录模式是否按内容比较。</summary>
+    public bool CompareFileContent { get; set; }
+
+    /// <summary>比对：差异位置文字。</summary>
+    public string CompareDifferencePosition { get; set; } = string.Empty;
+
+    /// <summary>比对：左侧元信息（文件模式为编码与行数）。</summary>
+    public string LeftMetaText { get; set; } = string.Empty;
+
+    /// <summary>比对：右侧元信息（文件模式为编码与行数）。</summary>
+    public string RightMetaText { get; set; } = string.Empty;
+
+    /// <summary>比对：可见结果行。</summary>
+    public List<DebugCompareRow> CompareRows { get; } = new List<DebugCompareRow>();
+
     /// <summary>进程监控：进程列表（与桌面进程面板同构）。</summary>
     public List<DebugProcessRow> ProcessRows { get; } = new List<DebugProcessRow>();
 
@@ -323,6 +362,95 @@ public class DebugTabState
 
     /// <summary>连接管理：当前选中的连接编号（网页端保存、测试、删除与打开时回传）。</summary>
     public string SelectedConnectionId { get; set; } = string.Empty;
+
+    /// <summary>启动项管理：系统启动项列表（与桌面启动项面板同构）。</summary>
+    public List<DebugStartupRow> StartupRows { get; } = new List<DebugStartupRow>();
+
+    /// <summary>启动项管理：自定义启动项列表。</summary>
+    public List<DebugCustomStartupRow> CustomStartupRows { get; } = new List<DebugCustomStartupRow>();
+
+    /// <summary>启动项管理：平台能力、本次开机标识与自动拉起说明。</summary>
+    public string StartupEnvironmentText { get; set; } = string.Empty;
+}
+
+/// <summary>系统启动项镜像行。</summary>
+public class DebugStartupRow
+{
+    /// <summary>启动项编号（启停时回传）。</summary>
+    public string Id { get; set; } = string.Empty;
+
+    /// <summary>显示名称。</summary>
+    public string Name { get; set; } = string.Empty;
+
+    /// <summary>类型文字。</summary>
+    public string KindText { get; set; } = string.Empty;
+
+    /// <summary>来源文字。</summary>
+    public string SourceText { get; set; } = string.Empty;
+
+    /// <summary>作用范围文字。</summary>
+    public string ScopeText { get; set; } = string.Empty;
+
+    /// <summary>启动目标显示文字。</summary>
+    public string CommandText { get; set; } = string.Empty;
+
+    /// <summary>状态文字。</summary>
+    public string StateText { get; set; } = string.Empty;
+
+    /// <summary>是否启用。</summary>
+    public bool Enabled { get; set; }
+
+    /// <summary>是否允许修改启停状态。</summary>
+    public bool CanToggle { get; set; }
+
+    /// <summary>不可修改时的原因。</summary>
+    public string ToggleHint { get; set; } = string.Empty;
+
+    /// <summary>是否为本程序自身的开机自启项（网页端据此在提示中强调会影响「开机启动」设置）。</summary>
+    public bool IsSelfAutoStart { get; set; }
+}
+
+/// <summary>自定义启动项镜像行。</summary>
+public class DebugCustomStartupRow
+{
+    /// <summary>条目编号。</summary>
+    public string Id { get; set; } = string.Empty;
+
+    /// <summary>显示名称。</summary>
+    public string Name { get; set; } = string.Empty;
+
+    /// <summary>类型文字。</summary>
+    public string KindText { get; set; } = string.Empty;
+
+    /// <summary>类型标识（网页端编辑表单回填下拉框）。</summary>
+    public string ItemType { get; set; } = "Program";
+
+    /// <summary>启动目标原文（网页端编辑表单回填）。</summary>
+    public string Target { get; set; } = string.Empty;
+
+    /// <summary>启动参数原文（网页端编辑表单回填）。</summary>
+    public string Arguments { get; set; } = string.Empty;
+
+    /// <summary>延迟秒数（网页端编辑表单回填）。</summary>
+    public int DelaySeconds { get; set; }
+
+    /// <summary>启动目标显示文字。</summary>
+    public string TargetText { get; set; } = string.Empty;
+
+    /// <summary>延迟文字。</summary>
+    public string DelayText { get; set; } = string.Empty;
+
+    /// <summary>启用状态文字。</summary>
+    public string StateText { get; set; } = string.Empty;
+
+    /// <summary>是否启用。</summary>
+    public bool Enabled { get; set; }
+
+    /// <summary>本次开机执行状态文字。</summary>
+    public string BootStateText { get; set; } = string.Empty;
+
+    /// <summary>最后一次拉起结果。</summary>
+    public string ResultText { get; set; } = string.Empty;
 }
 
 /// <summary>连接管理镜像项。</summary>
@@ -409,6 +537,85 @@ public class DebugProcessRow
 
     /// <summary>是否被选中（与桌面单击选中同步）。</summary>
     public bool IsSelected { get; set; }
+}
+
+/// <summary>比对镜像行：目录模式的状态行与文件模式的对齐行共用同一结构。</summary>
+public class DebugCompareRow
+{
+    /// <summary>目录模式：相对路径；文件模式：左右行号摘要。</summary>
+    public string Name { get; set; } = string.Empty;
+
+    /// <summary>是否为目录。</summary>
+    public bool IsDirectory { get; set; }
+
+    /// <summary>状态文字（相同 / 不同 / 仅左侧 / 修改等）。</summary>
+    public string StatusText { get; set; } = string.Empty;
+
+    /// <summary>状态样式键（same / different / leftonly / rightonly / modified / leftnewer / rightnewer / type）。</summary>
+    public string StatusKey { get; set; } = "same";
+
+    /// <summary>状态强调色。</summary>
+    public string StatusColor { get; set; } = "#4CAF50";
+
+    /// <summary>目录模式：左侧信息文字。</summary>
+    public string LeftInfo { get; set; } = string.Empty;
+
+    /// <summary>目录模式：右侧信息文字。</summary>
+    public string RightInfo { get; set; } = string.Empty;
+
+    /// <summary>目录模式：左侧完整路径。</summary>
+    public string LeftPath { get; set; } = string.Empty;
+
+    /// <summary>目录模式：右侧完整路径。</summary>
+    public string RightPath { get; set; } = string.Empty;
+
+    /// <summary>目录模式：左侧是否存在。</summary>
+    public bool LeftExists { get; set; }
+
+    /// <summary>目录模式：右侧是否存在。</summary>
+    public bool RightExists { get; set; }
+
+    /// <summary>目录模式：类型图标分类键。</summary>
+    public string IconCategory { get; set; } = FileIconCatalog.File;
+
+    /// <summary>目录模式：类型图标颜色。</summary>
+    public string IconColor { get; set; } = FileIconCatalog.GetAccent(FileIconCatalog.File);
+
+    /// <summary>文件模式：左侧行号显示文字。</summary>
+    public string LeftNumber { get; set; } = string.Empty;
+
+    /// <summary>文件模式：右侧行号显示文字。</summary>
+    public string RightNumber { get; set; } = string.Empty;
+
+    /// <summary>文件模式：左侧完整文本。</summary>
+    public string LeftText { get; set; } = string.Empty;
+
+    /// <summary>文件模式：右侧完整文本。</summary>
+    public string RightText { get; set; } = string.Empty;
+
+    /// <summary>文件模式：左侧差异前前缀。</summary>
+    public string LeftPrefix { get; set; } = string.Empty;
+
+    /// <summary>文件模式：左侧差异片段。</summary>
+    public string LeftChanged { get; set; } = string.Empty;
+
+    /// <summary>文件模式：左侧差异后后缀。</summary>
+    public string LeftSuffix { get; set; } = string.Empty;
+
+    /// <summary>文件模式：右侧差异前前缀。</summary>
+    public string RightPrefix { get; set; } = string.Empty;
+
+    /// <summary>文件模式：右侧差异片段。</summary>
+    public string RightChanged { get; set; } = string.Empty;
+
+    /// <summary>文件模式：右侧差异后后缀。</summary>
+    public string RightSuffix { get; set; } = string.Empty;
+
+    /// <summary>行类型样式键（same / modified / leftonly / rightonly）。</summary>
+    public string KindKey { get; set; } = "same";
+
+    /// <summary>是否为差异行（目录模式与文件模式共用）。</summary>
+    public bool IsDifferent { get; set; }
 }
 
 /// <summary>文件列表镜像行。</summary>

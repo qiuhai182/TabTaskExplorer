@@ -13,12 +13,13 @@ public class TabContractTests
     private static readonly string[] WebRenderedKinds = new string[]
     {
         TabKinds.File, TabKinds.Disk, TabKinds.Process, TabKinds.Search, TabKinds.Board, TabKinds.Connections,
+        TabKinds.Compare, TabKinds.Startup,
     };
 
     [Fact]
     public void KnownKindsAreDistinctAndCoverWebRenderer()
     {
-        Assert.Equal(6, TabKinds.All.Count);
+        Assert.Equal(8, TabKinds.All.Count);
         HashSet<string> seen = new HashSet<string>();
         foreach (string kind in TabKinds.All)
         {
@@ -53,6 +54,8 @@ public class TabContractTests
         expectedTypes[TabKinds.Search] = typeof(SearchTabViewModel);
         expectedTypes[TabKinds.Board] = typeof(TaskBoardViewModel);
         expectedTypes[TabKinds.Connections] = typeof(ConnectionManagerViewModel);
+        expectedTypes[TabKinds.Compare] = typeof(CompareTabViewModel);
+        expectedTypes[TabKinds.Startup] = typeof(StartupManagerViewModel);
         foreach (string kind in TabKinds.All)
         {
             Assert.True(expectedTypes.ContainsKey(kind));

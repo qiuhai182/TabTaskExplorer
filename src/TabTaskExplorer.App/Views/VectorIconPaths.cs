@@ -131,6 +131,10 @@ public static class VectorIconPaths
                 return "M5.4 14.6 L12 8 L18.6 14.6";
             case "chevron":
                 return "M5.4 9.4 L12 16 L18.6 9.4";
+            case "power":
+                return "M12 3.2 L12 11.6 M7.4 5.4 A7.6 7.6 0 1 0 16.6 5.4";
+            case "compare":
+                return "M5 4.5 L5 19.5 M19 4.5 L19 19.5 M8.4 8.6 L11.8 12 L8.4 15.4 M15.6 8.6 L12.2 12 L15.6 15.4";
             default:
                 return null;
         }

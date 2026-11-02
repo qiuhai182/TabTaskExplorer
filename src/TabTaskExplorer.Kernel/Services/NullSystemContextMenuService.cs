@@ -36,4 +36,16 @@ public class NullSystemContextMenuService : ISystemContextMenuService
         // 留空：非 Windows 平台不提供系统菜单项唤起
         return false;
     }
+
+    public IReadOnlyList<SystemContextMenuEntry> EnumerateShellMenu(string targetPath, bool isBackground)
+    {
+        // 留空：非 Windows 平台没有系统外壳实时右键菜单
+        return Array.Empty<SystemContextMenuEntry>();
+    }
+
+    public bool ExecuteShellMenuEntry(SystemContextMenuEntry entry, string targetPath, bool isBackground)
+    {
+        // 留空：非 Windows 平台不提供系统外壳菜单项唤起
+        return false;
+    }
 }

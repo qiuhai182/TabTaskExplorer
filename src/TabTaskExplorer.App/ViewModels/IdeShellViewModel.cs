@@ -353,8 +353,18 @@ public class IdeShellViewModel : INotifyPropertyChanged
         return new DefaultTextFileService();
     }
 
-    /// <summary>打开一个文件到编辑器标签（已打开则直接激活）。</summary>
+    /// <summary>打开一个文件到编辑器标签（普通打开：双击、快速打开等，标签固定保留）。</summary>
     public void OpenFile(string filePath, IFileContentAccess? contentAccess, string connectionName)
+    {
+        this.OpenFile(filePath, contentAccess, connectionName, false);
+    }
+
+    /// <summary>
+    /// 打开一个文件到编辑器标签（已打开则直接激活）。
+    /// preview 为 true 时按预览方式打开：同一时间最多保留一个预览标签，新的预览会替换旧预览；
+    /// preview 为 false 时按普通方式打开：双击、编辑、保存都会把预览标签固定为普通标签。
+    /// </summary>
+    public void OpenFile(string filePath, IFileContentAccess? contentAccess, string connectionName, bool preview)
     {
         if (string.IsNullOrEmpty(filePath))
         {
@@ -364,7 +374,13 @@ public class IdeShellViewModel : INotifyPropertyChanged
         {
             if (string.Equals(existing.FilePath, filePath, StringComparison.OrdinalIgnoreCase))
             {
+                if (!preview)
+                {
+                    existing.PinPreview("双击打开");
+                }
                 this.SelectedEditor = existing;
+                UiLogger.Log("IDE 编辑器", "打开文件：文件=" + filePath + " 打开方式=" + (preview ? "预览" : "普通")
+                    + " 结果=该文件已打开，本次只激活既有标签");
                 return;
             }
         }
@@ -374,6 +390,14 @@ public class IdeShellViewModel : INotifyPropertyChanged
         string priority = FileOpenPolicy.ResolvePriority(this.settings.FileOpenRules, this.settings.FileOpenDefaultPriority, access.FileName);
         if (priority == FileOpenPriority.System)
         {
+            if (preview)
+            {
+                // 单击预览不启动外部程序：非可编辑类型只在双击时交给系统默认程序
+                this.SolutionStatusText = "该类型按设置使用系统默认程序打开，单击预览不会启动外部程序，请双击打开：" + Path.GetFileName(filePath);
+                UiLogger.Log("IDE 编辑器", "打开文件：文件=" + filePath + " 打开方式=预览"
+                    + " 结果=未打开，该类型设置为系统默认程序，需双击打开");
+                return;
+            }
             this.OpenWithSystem(filePath, access.IsRemote);
             return;
         }
@@ -381,6 +405,14 @@ public class IdeShellViewModel : INotifyPropertyChanged
         bool explicitBuiltin = FileOpenPolicy.HasExplicitBuiltinRule(this.settings.FileOpenRules, access.FileName);
         if (!explicitBuiltin && !access.IsRemote && !IsLikelyTextFile(access.FileName))
         {
+            if (preview)
+            {
+                // 单击预览不启动外部程序：非文本类型只在双击时交给系统默认程序
+                this.SolutionStatusText = "该类型不是文本文件，单击预览不会启动外部程序，请双击用系统默认程序打开：" + Path.GetFileName(filePath);
+                UiLogger.Log("IDE 编辑器", "打开文件：文件=" + filePath + " 打开方式=预览"
+                    + " 结果=未打开，该类型不是文本文件，需双击用系统默认程序打开");
+                return;
+            }
             this.OpenWithSystem(filePath, false);
             return;
         }
@@ -391,19 +423,63 @@ public class IdeShellViewModel : INotifyPropertyChanged
             // 二进制或超出大小上限：不属于可编辑文本，交给系统默认程序
             if (!content.IsEditable)
             {
+                if (preview)
+                {
+                    // 单击预览不启动外部程序：二进制或超大文件只在双击时交给系统默认程序
+                    this.SolutionStatusText = "该文件无法按文本编辑，单击预览不会启动外部程序，请双击用系统默认程序打开：" + Path.GetFileName(filePath);
+                    UiLogger.Log("IDE 编辑器", "打开文件：文件=" + filePath + " 打开方式=预览"
+                        + " 结果=未打开，该文件为二进制或超出大小上限，需双击用系统默认程序打开");
+                    return;
+                }
                 this.OpenWithSystem(filePath, access.IsRemote);
                 return;
             }
-            IdeEditorTabViewModel editor = new IdeEditorTabViewModel(access, content);
+            if (preview)
+            {
+                this.ReplacePreviewEditor();
+            }
+            IdeEditorTabViewModel editor = new IdeEditorTabViewModel(access, content, preview);
             editor.Saved += this.OnEditorSaved;
             this.Editors.Add(editor);
             this.SelectedEditor = editor;
-            this.SolutionStatusText = "已打开 " + editor.Title;
+            this.SolutionStatusText = (preview ? "已预览 " : "已打开 ") + editor.Title;
+            UiLogger.Log("IDE 编辑器", "打开文件：文件=" + filePath + " 打开方式=" + (preview ? "预览" : "普通")
+                + " 结果=成功，已新建编辑器标签");
         }
         catch (Exception error)
         {
             this.SolutionStatusText = "打开失败：" + error.Message;
+            UiLogger.LogError("IDE 编辑器", "打开文件：文件=" + filePath + " 打开方式=" + (preview ? "预览" : "普通")
+                + " 结果=失败", error);
         }
+    }
+
+    /// <summary>
+    /// 为新预览腾出位置：关闭既有的预览标签；
+    /// 既有预览标签存在未保存更改时先固定为普通标签，避免把用户的修改一起关掉。
+    /// </summary>
+    private void ReplacePreviewEditor()
+    {
+        IdeEditorTabViewModel? previousPreview = null;
+        foreach (IdeEditorTabViewModel editor in this.Editors)
+        {
+            if (editor.IsPreview)
+            {
+                previousPreview = editor;
+                break;
+            }
+        }
+        if (previousPreview == null)
+        {
+            return;
+        }
+        if (previousPreview.IsDirty)
+        {
+            previousPreview.PinPreview("预览标签存在未保存更改");
+            return;
+        }
+        UiLogger.Log("IDE 编辑器", "预览标签被新预览替换：被替换文件=" + previousPreview.FilePath);
+        this.CloseEditor(previousPreview);
     }
 
     /// <summary>按扩展名判断是否为可编辑文本文件。</summary>
@@ -775,16 +851,48 @@ public class IdeShellViewModel : INotifyPropertyChanged
         }
     }
 
-    /// <summary>打开查找结果对应文件并定位到该行。</summary>
+    /// <summary>打开查找结果对应文件并定位到该行（单击查找结果为预览方式）。</summary>
     public void OpenFindResult(FindResultItem item)
+    {
+        this.OpenFindResult(item, true);
+    }
+
+    /// <summary>打开查找结果对应文件并定位到该行；preview 为 true 时按预览方式打开。</summary>
+    public void OpenFindResult(FindResultItem item, bool preview)
     {
         if (item == null)
         {
             return;
         }
-        this.OpenFile(item.FilePath, this.workspaceContentAccess, this.workspaceConnectionName);
+        this.OpenFile(item.FilePath, this.workspaceContentAccess, this.workspaceConnectionName, preview);
         this.PendingCaretLine = item.LineNumber;
         this.FindStatusText = "已定位 " + item.FileName + " 行 " + item.LineNumber;
+    }
+
+    /// <summary>把指定文件对应的预览标签固定为普通标签（双击查找结果时调用）。</summary>
+    /// <param name="filePath">文件完整路径。</param>
+    /// <param name="reason">触发固定的原因，用于日志说明。</param>
+    /// <returns>是否确实固定了一个预览标签。</returns>
+    public bool PinEditorByPath(string filePath, string reason)
+    {
+        foreach (IdeEditorTabViewModel editor in this.Editors)
+        {
+            if (!string.Equals(editor.FilePath, filePath, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+            if (!editor.IsPreview)
+            {
+                UiLogger.Log("IDE 编辑器", "固定预览标签：文件=" + filePath + " 触发原因=" + reason
+                    + " 结果=未执行，该标签本来就是普通标签");
+                return false;
+            }
+            editor.PinPreview(reason);
+            return true;
+        }
+        UiLogger.Log("IDE 编辑器", "固定预览标签：文件=" + filePath + " 触发原因=" + reason
+            + " 结果=未执行，没有找到该文件的编辑器标签");
+        return false;
     }
 
     /// <summary>待定位行号（打开编辑器后由视图消费一次）。</summary>
@@ -937,6 +1045,7 @@ public class IdeShellViewModel : INotifyPropertyChanged
             editorMirror.DisplayTitle = editor.DisplayTitle;
             editorMirror.ToolTipText = editor.ToolTipText;
             editorMirror.IsDirty = editor.IsDirty;
+            editorMirror.IsPreview = editor.IsPreview;
             editorMirror.IconCategory = editor.IconCategory;
             editorMirror.IconColor = editor.IconColor;
             mirror.Editors.Add(editorMirror);
@@ -1028,6 +1137,21 @@ public class IdeShellViewModel : INotifyPropertyChanged
             this.OpenFile(argument, this.workspaceContentAccess, this.workspaceConnectionName);
             return string.Empty;
         }
+        if (action == "ideopenpreview")
+        {
+            this.OpenFile(argument, this.workspaceContentAccess, this.workspaceConnectionName, true);
+            return string.Empty;
+        }
+        if (action == "idepin")
+        {
+            int pinIndex;
+            if (!int.TryParse(argument, out pinIndex) || pinIndex < 0 || pinIndex >= this.Editors.Count)
+            {
+                return "要固定的编辑器不存在";
+            }
+            this.Editors[pinIndex].PinPreview("双击标签");
+            return string.Empty;
+        }
         if (action == "idetree")
         {
             FileTreeItemViewModel? treeNode = this.FindTreeNode(this.RootItems, argument);
@@ -1079,6 +1203,8 @@ public class IdeShellViewModel : INotifyPropertyChanged
             }
             if (active == null) { return "没有打开的编辑器"; }
             if (active.IsReadOnly) { return "该文件为只读，无法保存"; }
+            // 保存动作本身即视为真打开：预览标签先固定为普通标签
+            active.PinPreview("保存");
             if (!active.IsDirty) { return "没有未保存的更改"; }
             active.Save();
             return "正在保存 " + active.Title + "……";
@@ -1088,7 +1214,12 @@ public class IdeShellViewModel : INotifyPropertyChanged
             int dirtyCount = 0;
             foreach (IdeEditorTabViewModel editor in this.Editors)
             {
-                if (editor.IsDirty && !editor.IsReadOnly)
+                if (editor.IsReadOnly)
+                {
+                    continue;
+                }
+                editor.PinPreview("全部保存");
+                if (editor.IsDirty)
                 {
                     dirtyCount++;
                     editor.Save();
@@ -1173,22 +1304,23 @@ public class IdeShellViewModel : INotifyPropertyChanged
             this.ReloadWorkspace();
             return "正在重新加载工作区……";
         }
-        if (action == "idefindresult")
+        if (action == "idefindresult" || action == "idefindpreview")
         {
             int lineSplit = argument.IndexOf('\n');
             if (lineSplit <= 0) { return "缺少结果路径"; }
             string resultPath = argument.Substring(0, lineSplit);
             int resultLine;
             if (!int.TryParse(argument.Substring(lineSplit + 1), out resultLine)) { resultLine = 0; }
+            bool preview = action == "idefindpreview";
             foreach (FindResultItem item in this.FindResults)
             {
                 if (string.Equals(item.FilePath, resultPath, StringComparison.OrdinalIgnoreCase) && item.LineNumber == resultLine)
                 {
-                    this.OpenFindResult(item);
+                    this.OpenFindResult(item, preview);
                     return this.findStatusText;
                 }
             }
-            this.OpenFile(resultPath, this.workspaceContentAccess, this.workspaceConnectionName);
+            this.OpenFile(resultPath, this.workspaceContentAccess, this.workspaceConnectionName, preview);
             this.PendingCaretLine = resultLine;
             return "已打开 " + resultPath;
         }

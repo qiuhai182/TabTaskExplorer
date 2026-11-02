@@ -44,7 +44,10 @@ public static class CaptureToolRunner
             process.Start();
             Task<string> errorTask = process.StandardError.ReadToEndAsync();
             Task<string> outputTask = process.StandardOutput.ReadToEndAsync();
-            exited = await Task.Run(() => process.WaitForExit(15000));
+            exited = await Task.Run(delegate
+            {
+                return process.WaitForExit(15000);
+            });
             if (!exited)
             {
                 try

@@ -63,7 +63,7 @@ public class NullGlobalHotkeyService : IGlobalHotkeyService
     }
 
     /// <inheritdoc />
-    public bool Register(string actionName, string keyText, bool ctrl, bool alt, bool shift, Action callback)
+    public bool Register(string actionName, string keyText, bool ctrl, bool alt, bool shift, bool win, Action callback)
     {
         return false;
     }

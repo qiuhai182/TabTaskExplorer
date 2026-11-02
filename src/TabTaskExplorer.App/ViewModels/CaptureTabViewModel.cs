@@ -135,8 +135,13 @@ public class CaptureTabViewModel : INotifyPropertyChanged, ITabView
         get { return this.delayIndex; }
         set
         {
+            if (value < 0)
+            {
+                // 控件初始化阶段可能回传 -1，此时保持已有设置不变
+                return;
+            }
             int normalized = value;
-            if (normalized < 0 || normalized >= DelaySecondsOptions.Length)
+            if (normalized >= DelaySecondsOptions.Length)
             {
                 normalized = 0;
             }
@@ -159,8 +164,13 @@ public class CaptureTabViewModel : INotifyPropertyChanged, ITabView
         get { return this.recordingTargetIndex; }
         set
         {
+            if (value < 0)
+            {
+                // 控件初始化阶段可能回传 -1，此时保持已有设置不变
+                return;
+            }
             int normalized = value;
-            if (normalized < 0 || normalized > 2)
+            if (normalized > 2)
             {
                 normalized = 0;
             }
@@ -177,6 +187,12 @@ public class CaptureTabViewModel : INotifyPropertyChanged, ITabView
     }
 
     private int recordingTargetIndex;
+
+    /// <summary>是否具备主屏截图能力。</summary>
+    public bool CanCapturePrimaryScreen
+    {
+        get { return this.coordinator.CaptureCapabilities.PrimaryScreen; }
+    }
 
     /// <summary>是否具备全部屏幕截图能力。</summary>
     public bool CanCaptureFullScreen
@@ -244,6 +260,14 @@ public class CaptureTabViewModel : INotifyPropertyChanged, ITabView
         get { return this.isRecording ? this.coordinator.DescribeRecordingDuration() : "00:00:00"; }
     }
 
+    /// <summary>执行主屏截图（含延迟）。</summary>
+    public async Task CapturePrimaryScreenAsync()
+    {
+        this.StatusText = "正在截图（主屏）……";
+        CaptureOutcome outcome = await this.coordinator.CaptureAsync(CaptureTarget.PrimaryScreen, this.ResolveDelaySeconds());
+        this.ApplyOutcome(outcome);
+    }
+
     /// <summary>执行全部屏幕截图（含延迟）。</summary>
     public async Task CaptureFullScreenAsync()
     {
@@ -255,7 +279,7 @@ public class CaptureTabViewModel : INotifyPropertyChanged, ITabView
     /// <summary>执行区域截图（含延迟与框选）。</summary>
     public async Task CaptureRegionAsync()
     {
-        this.StatusText = "请拖动鼠标框选截图区域……";
+        this.StatusText = "请移动鼠标预选窗口或子视图后单击截图（也可拖动自由框选）……";
         CaptureOutcome outcome = await this.coordinator.CaptureRegionAsync(this.ResolveDelaySeconds());
         this.ApplyOutcome(outcome);
     }
@@ -361,7 +385,9 @@ public class CaptureTabViewModel : INotifyPropertyChanged, ITabView
     /// <summary>刷新平台能力与全局快捷键状态文字。</summary>
     public void RefreshEnvironment()
     {
+        this.SyncFromSettings();
         this.EnvironmentText = this.coordinator.DescribeEnvironment();
+        this.RaisePropertyChanged(nameof(this.CanCapturePrimaryScreen));
         this.RaisePropertyChanged(nameof(this.CanCaptureFullScreen));
         this.RaisePropertyChanged(nameof(this.CanCaptureRegion));
         this.RaisePropertyChanged(nameof(this.CanCaptureWindow));
@@ -372,7 +398,6 @@ public class CaptureTabViewModel : INotifyPropertyChanged, ITabView
     /// <summary>标签被选中时刷新历史与录制状态。</summary>
     public void OnActivated()
     {
-        this.SyncFromSettings();
         this.RefreshHistory();
         this.RefreshEnvironment();
         this.UpdateRecordingState();

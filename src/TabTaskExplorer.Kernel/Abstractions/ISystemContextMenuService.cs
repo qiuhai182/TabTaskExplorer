@@ -35,4 +35,21 @@ public interface ISystemContextMenuService
     /// <param name="targetPath">右键目标的完整路径。</param>
     /// <returns>唤起成功返回 true。</returns>
     bool Execute(SystemContextMenuEntry entry, string targetPath);
+
+    /// <summary>
+    /// 取当前文件或文件夹适用的系统外壳实时菜单项：包含注册表静态动词与全部已启用的外壳扩展，
+    /// 菜单项带子菜单结构，可直接用于构建本程序右键菜单。平台不支持时返回空列表。
+    /// </summary>
+    /// <param name="targetPath">当前文件或文件夹的完整路径。</param>
+    /// <param name="isBackground">true 表示文件夹空白处菜单，false 表示文件或文件夹条目菜单。</param>
+    IReadOnlyList<SystemContextMenuEntry> EnumerateShellMenu(string targetPath, bool isBackground);
+
+    /// <summary>
+    /// 唤起一条系统外壳实时菜单项（由 <see cref="EnumerateShellMenu"/> 返回）。
+    /// </summary>
+    /// <param name="entry">要唤起的菜单项。</param>
+    /// <param name="targetPath">当前文件或文件夹的完整路径。</param>
+    /// <param name="isBackground">是否为文件夹空白处菜单。</param>
+    /// <returns>唤起成功返回 true。</returns>
+    bool ExecuteShellMenuEntry(SystemContextMenuEntry entry, string targetPath, bool isBackground);
 }

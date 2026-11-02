@@ -205,6 +205,27 @@
     <Style Selector="Button.nav:pressed /template/ ContentPresenter#PART_ContentPresenter">
       <Setter Property="Background" Value="{DynamicResource RowSelectedBrush}"/>
     </Style>
+    <!-- 侧边栏等导航按钮失去鼠标时不再保留底色：焦点态只保留系统焦点框，不额外绘制高亮底色 -->
+    <Style Selector="Button.nav:focus:not(:pointerover) /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="Transparent"/>
+    </Style>
+
+    <!-- ======== 导航列表与设置分页：只允许鼠标当前位置项高亮 ========
+         选中项不再常驻底色（否则鼠标移到新项时会出现旧项与新项同时高亮），改用文字强调色标示当前位置 -->
+    <Style Selector="ListBox.navlist ListBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="Transparent"/>
+    </Style>
+    <Style Selector="ListBox.navlist ListBoxItem:selected TextBlock">
+      <Setter Property="Foreground" Value="{DynamicResource AccentGlyphBrush}"/>
+    </Style>
+    <Style Selector="ListBox.navlist ListBoxItem:selected:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource RowHoverBrush}"/>
+    </Style>
+
+    <!-- 菜单项：指针已离开的旧项不再保留选中底色；键盘焦点项仍保留高亮，保证键盘导航可见 -->
+    <Style Selector="MenuItem:selected:not(:pointerover):not(:focus) /template/ Border#PART_LayoutRoot">
+      <Setter Property="Background" Value="Transparent"/>
+    </Style>
 
     <!-- 托盘图标在 App.axaml.cs 中以代码注册（关闭主窗口后常驻守护） -->
   </Application.Styles>

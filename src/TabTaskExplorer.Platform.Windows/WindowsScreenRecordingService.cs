@@ -41,13 +41,19 @@ public class WindowsScreenRecordingService : IScreenRecordingService, IDisposabl
             return Task.FromResult(ScreenRecordingResult.CreateFailure(options.OutputPath,
                 "录制区域无效：目标窗口可能已最小化，或指定的宽高小于等于零"));
         }
+        CaptureArea evenArea;
+        if (!CaptureGeometry.TryMakeEven(area, out evenArea))
+        {
+            return Task.FromResult(ScreenRecordingResult.CreateFailure(options.OutputPath,
+                "录制区域过小：H.264 编码至少需要两个像素的宽度与高度"));
+        }
         string ffmpegPath = FfmpegLocator.Find(options.FfmpegPath) ?? string.Empty;
         if (ffmpegPath.Length == 0)
         {
             return Task.FromResult(ScreenRecordingResult.CreateFailure(options.OutputPath,
                 "没有找到 FFmpeg。请安装后加入系统 PATH，或在设置中心的「截图与录屏」分页填写 FFmpeg 完整路径"));
         }
-        List<string> arguments = this.BuildArguments(options, area);
+        List<string> arguments = this.BuildArguments(options, evenArea);
         return this.session.StartAsync(ffmpegPath, arguments, options.OutputPath);
     }
 

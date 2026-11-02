@@ -1,0 +1,178 @@
+﻿<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:svc="using:TabTaskExplorer.App.Services"
+             x:Class="TabTaskExplorer.App.Views.StartupPanel">
+
+  <Grid RowDefinitions="Auto,Auto,3*,Auto,2*,Auto" Margin="8,4,8,4">
+
+    <!-- 操作行：系统启动项启停 + 自定义启动项维护 -->
+    <StackPanel Orientation="Horizontal" Spacing="8">
+      <Button Content="刷新" Click="OnRefreshClick" ToolTip.Tip="重新读取注册表、启动文件夹、服务等系统启动项" />
+      <Button Content="启用 / 禁用选中项" Click="OnToggleSystemClick" />
+      <Border Width="1" Background="{DynamicResource SeparatorBrush}" Margin="4,2" />
+      <Button Content="新建自定义项" Click="OnNewCustomClick" />
+      <Button Content="保存" Click="OnSaveCustomClick" ToolTip.Tip="保存右侧表单中的自定义启动项" />
+      <Button Content="删除" Click="OnDeleteCustomClick" />
+      <Button Content="立即运行" Click="OnRunCustomClick" ToolTip.Tip="忽略开机判断，立即拉起选中的自定义启动项" />
+      <Button Content="启用 / 禁用自定义项" Click="OnToggleCustomClick" />
+    </StackPanel>
+
+    <!-- 数量摘要与平台说明 -->
+    <StackPanel Grid.Row="1" Spacing="2" Margin="0,6,0,0">
+      <TextBlock Text="{Binding SummaryText}" FontWeight="Medium" />
+      <TextBlock Text="{Binding EnvironmentText}" TextWrapping="Wrap" FontSize="11"
+                 Foreground="{DynamicResource TextMutedBrush}" />
+      <TextBlock Text="说明：自定义启动项在本程序每次开机后首次启动时检查，本次开机已拉起过的条目不会重复拉起；如需开机即拉起，请在设置中开启「开机启动」。"
+                 TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource TextMutedBrush}" />
+    </StackPanel>
+
+    <!-- 系统启动项：表头与列表列宽一致，列边界可拖动 -->
+    <Grid Grid.Row="2" RowDefinitions="Auto,Auto,*,Auto" Margin="0,8,0,0">
+      <TextBlock Text="系统启动项（程序与服务）" FontWeight="Medium" />
+      <Grid Grid.Row="1" Margin="0,6,0,3"
+            svc:ColumnResize.Enabled="True"
+            svc:ColumnResize.Widths="{Binding ColumnWidths}">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="200" />
+          <ColumnDefinition Width="80" />
+          <ColumnDefinition Width="90" />
+          <ColumnDefinition Width="80" />
+          <ColumnDefinition Width="2*" MaxWidth="460" />
+          <ColumnDefinition Width="60" />
+          <ColumnDefinition Width="80" />
+        </Grid.ColumnDefinitions>
+        <TextBlock Grid.Column="0" Text="名称" FontWeight="Medium" Foreground="{DynamicResource TextMutedBrush}" />
+        <TextBlock Grid.Column="1" Text="类型" FontWeight="Medium" Foreground="{DynamicResource TextMutedBrush}" />
+        <TextBlock Grid.Column="2" Text="来源" FontWeight="Medium" Foreground="{DynamicResource TextMutedBrush}" />
+        <TextBlock Grid.Column="3" Text="范围" FontWeight="Medium" Foreground="{DynamicResource TextMutedBrush}" />
+        <TextBlock Grid.Column="4" Text="启动目标" FontWeight="Medium" Foreground="{DynamicResource TextMutedBrush}" />
+        <TextBlock Grid.Column="5" Text="状态" FontWeight="Medium" Foreground="{DynamicResource TextMutedBrush}" />
+        <TextBlock Grid.Column="6" Text="操作" FontWeight="Medium" Foreground="{DynamicResource TextMutedBrush}" />
+      </Grid>
+      <ListBox Grid.Row="2" x:Name="SystemList" ItemsSource="{Binding SystemItems}"
+               SelectedItem="{Binding SelectedSystemItem, Mode=TwoWay}"
+               SelectionMode="Single" Background="Transparent" Padding="0" BorderThickness="0">
+        <ListBox.ItemContainerTheme>
+          <ControlTheme TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="MinHeight" Value="26" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+          </ControlTheme>
+        </ListBox.ItemContainerTheme>
+        <ListBox.ItemTemplate>
+          <DataTemplate>
+            <Grid Margin="0,1"
+                  svc:ColumnResize.Widths="{Binding DataContext.ColumnWidths, RelativeSource={RelativeSource AncestorType=ListBox}}">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="200" />
+                <ColumnDefinition Width="80" />
+                <ColumnDefinition Width="90" />
+                <ColumnDefinition Width="80" />
+                <ColumnDefinition Width="2*" MaxWidth="460" />
+                <ColumnDefinition Width="60" />
+                <ColumnDefinition Width="80" />
+              </Grid.ColumnDefinitions>
+              <TextBlock Grid.Column="0" Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis"
+                         ToolTip.Tip="{Binding Item.Description}" />
+              <TextBlock Grid.Column="1" Text="{Binding KindText}" TextTrimming="CharacterEllipsis" />
+              <TextBlock Grid.Column="2" Text="{Binding SourceText}" TextTrimming="CharacterEllipsis" />
+              <TextBlock Grid.Column="3" Text="{Binding ScopeText}" TextTrimming="CharacterEllipsis" />
+              <TextBlock Grid.Column="4" Text="{Binding CommandText}" TextTrimming="CharacterEllipsis"
+                         ToolTip.Tip="{Binding CommandText}" />
+              <TextBlock Grid.Column="5" Text="{Binding StateText}" />
+              <Button Grid.Column="6" Content="{Binding ToggleActionText}" IsEnabled="{Binding CanToggle}"
+                      Click="OnRowToggleClick" Padding="6,1" FontSize="12"
+                      ToolTip.Tip="{Binding ToggleHint}" />
+            </Grid>
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+      <TextBlock Grid.Row="3" Margin="0,4,0,0" FontSize="11" TextWrapping="Wrap"
+                 Foreground="{DynamicResource TextMutedBrush}"
+                 Text="提示：注册表、启动文件夹与计划任务条目由本程序备份后禁用，可随时恢复；系统服务与系统级计划任务的启停需要以管理员身份运行本程序。" />
+    </Grid>
+
+    <!-- 自定义启动项标题 -->
+    <TextBlock Grid.Row="3" Text="自定义启动项（程序 / 快捷方式 / 脚本 / 网页链接）"
+               FontWeight="Medium" Margin="0,10,0,0" />
+
+    <!-- 自定义启动项：左侧列表 + 右侧编辑表单 -->
+    <Grid Grid.Row="4" ColumnDefinitions="*,8,380" Margin="0,6,0,0">
+      <Border Grid.Column="0" BorderBrush="{DynamicResource SubtleBorderBrush}" BorderThickness="1" CornerRadius="6" Padding="4">
+        <Panel>
+          <ListBox x:Name="CustomList" ItemsSource="{Binding CustomItems}"
+                   SelectedItem="{Binding SelectedCustomItem, Mode=TwoWay}"
+                   SelectionMode="Single" Background="Transparent" Padding="0" BorderThickness="0">
+            <ListBox.ItemContainerTheme>
+              <ControlTheme TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+                <Setter Property="Padding" Value="4,3" />
+                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+              </ControlTheme>
+            </ListBox.ItemContainerTheme>
+            <ListBox.ItemTemplate>
+              <DataTemplate>
+                <StackPanel Spacing="1">
+                  <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBlock Text="{Binding Name}" FontWeight="Medium" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Text="{Binding KindText}" FontSize="11" Foreground="{DynamicResource TextMutedBrush}" />
+                    <TextBlock Text="{Binding StateText}" FontSize="11" Foreground="{DynamicResource TextMutedBrush}" />
+                    <TextBlock Text="{Binding DelayText}" FontSize="11" Foreground="{DynamicResource TextMutedBrush}" />
+                  </StackPanel>
+                  <TextBlock Text="{Binding TargetText}" FontSize="11" TextTrimming="CharacterEllipsis"
+                             ToolTip.Tip="{Binding TargetText}" />
+                  <TextBlock Text="{Binding BootStateText}" FontSize="11" Foreground="{DynamicResource AccentGlyphBrush}" />
+                  <TextBlock Text="{Binding ResultText}" FontSize="11" TextTrimming="CharacterEllipsis"
+                             Foreground="{DynamicResource TextMutedBrush}" />
+                </StackPanel>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+          <TextBlock IsVisible="{Binding HasNoCustomItems}" Margin="8" TextWrapping="Wrap"
+                     Foreground="{DynamicResource TextMutedBrush}"
+                     Text="暂无自定义启动项。在右侧填写名称、类型与启动目标后点「保存」，即可加入本次开机自动拉起清单。" />
+        </Panel>
+      </Border>
+
+      <Border Grid.Column="2" BorderBrush="{DynamicResource SubtleBorderBrush}" BorderThickness="1" CornerRadius="6" Padding="10">
+        <ScrollViewer>
+          <StackPanel Spacing="4">
+            <TextBlock Text="自定义启动项编辑" FontWeight="Medium" Margin="0,0,0,4" />
+
+            <TextBlock Text="名称" FontSize="12" />
+            <TextBox Text="{Binding EditName, Mode=TwoWay}" Watermark="例如 开局启动浏览器" />
+
+            <TextBlock Text="类型" FontSize="12" Margin="0,4,0,0" />
+            <ComboBox SelectedIndex="{Binding EditKindIndex, Mode=TwoWay}" HorizontalAlignment="Stretch">
+              <ComboBoxItem Content="程序" />
+              <ComboBoxItem Content="快捷方式" />
+              <ComboBoxItem Content="脚本" />
+              <ComboBoxItem Content="网页链接" />
+            </ComboBox>
+
+            <TextBlock Text="启动目标" FontSize="12" Margin="0,4,0,0" />
+            <Grid ColumnDefinitions="*,6,Auto">
+              <TextBox Grid.Column="0" Text="{Binding EditTarget, Mode=TwoWay}"
+                       Watermark="程序路径 / 快捷方式 / 脚本 / https://..." />
+              <Button Grid.Column="2" Content="浏览" Click="OnBrowseTargetClick" />
+            </Grid>
+
+            <TextBlock Text="启动参数（可选）" FontSize="12" Margin="0,4,0,0" />
+            <TextBox Text="{Binding EditArguments, Mode=TwoWay}" Watermark="例如 --minimized" />
+
+            <TextBlock Text="延迟秒数（0-600，0 表示立即）" FontSize="12" Margin="0,4,0,0" />
+            <TextBox Text="{Binding EditDelaySeconds, Mode=TwoWay}" Watermark="0" />
+
+            <CheckBox Content="启用该自定义启动项" IsChecked="{Binding EditEnabled, Mode=TwoWay}" Margin="0,6,0,0" />
+
+            <TextBlock Text="脚本写法提示：Windows 可直接选 .bat / .cmd / .ps1；Linux / macOS 可选 .sh；脚本解释器缺失时会在状态栏给出失败原因。"
+                       TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource TextMutedBrush}" Margin="0,6,0,0" />
+          </StackPanel>
+        </ScrollViewer>
+      </Border>
+    </Grid>
+
+    <!-- 最近一次操作结果 -->
+    <TextBlock Grid.Row="5" Margin="0,8,0,0" Text="{Binding StatusText}" TextWrapping="Wrap"
+               Foreground="{DynamicResource TextMutedBrush}" />
+  </Grid>
+</UserControl>

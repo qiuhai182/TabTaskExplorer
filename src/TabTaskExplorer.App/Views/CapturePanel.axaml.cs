@@ -31,6 +31,20 @@ public partial class CapturePanel : UserControl
         get { return TopLevel.GetTopLevel(this)?.DataContext as MainWindowViewModel; }
     }
 
+    private async void OnCapturePrimaryClick(object? sender, RoutedEventArgs e)
+    {
+        CaptureTabViewModel? viewModel = this.ViewModel;
+        if (viewModel == null)
+        {
+            UiLogger.Log("截图录屏", "按钮=主屏截图 被点击：视图模型未就绪，结果=失败，未执行截图");
+            return;
+        }
+        UiLogger.Log("截图录屏", "按钮=主屏截图 被点击：结果=已请求主屏截图"
+            + " 延迟索引=" + viewModel.DelayIndex
+            + " 保存目录=" + viewModel.OutputDirectory);
+        await viewModel.CapturePrimaryScreenAsync();
+    }
+
     private async void OnCaptureFullClick(object? sender, RoutedEventArgs e)
     {
         CaptureTabViewModel? viewModel = this.ViewModel;

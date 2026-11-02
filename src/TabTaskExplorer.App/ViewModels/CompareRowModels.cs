@@ -26,7 +26,7 @@ public class DirectoryCompareRow
     /// <summary>左侧完整路径；不存在时为空字符串。</summary>
     public string LeftPath { get; set; } = string.Empty;
 
-    /// <summary>右侧完整路径；不存在时为空字符串。</</summary>
+    /// <summary>右侧完整路径；不存在时为空字符串。</summary>
     public string RightPath { get; set; } = string.Empty;
 
     /// <summary>左侧是否存在。</summary>
@@ -51,6 +51,64 @@ public class DirectoryCompareRow
     public bool IsDifferent
     {
         get { return this.Status != CompareEntryStatus.Same; }
+    }
+
+    /// <summary>是否为“仅左侧”状态。</summary>
+    public bool IsLeftOnlyStatus
+    {
+        get { return this.Status == CompareEntryStatus.LeftOnly; }
+    }
+
+    /// <summary>是否为“仅右侧”状态。</summary>
+    public bool IsRightOnlyStatus
+    {
+        get { return this.Status == CompareEntryStatus.RightOnly; }
+    }
+
+    /// <summary>是否为“某一侧较新”状态。</summary>
+    public bool IsNewerStatus
+    {
+        get
+        {
+            return this.Status == CompareEntryStatus.LeftNewer
+                || this.Status == CompareEntryStatus.RightNewer;
+        }
+    }
+
+    /// <summary>是否为“类型不同”状态。</summary>
+    public bool IsTypeMismatchStatus
+    {
+        get { return this.Status == CompareEntryStatus.TypeMismatch; }
+    }
+
+    /// <summary>是否为“不同”状态。</summary>
+    public bool IsDifferentStatus
+    {
+        get { return this.Status == CompareEntryStatus.Different; }
+    }
+
+    /// <summary>行背景色（带透明度），按状态着色。</summary>
+    public string RowBackground
+    {
+        get
+        {
+            switch (this.Status)
+            {
+                case CompareEntryStatus.LeftOnly:
+                    return "#22F2B23E";
+                case CompareEntryStatus.RightOnly:
+                    return "#222F6FD0";
+                case CompareEntryStatus.LeftNewer:
+                case CompareEntryStatus.RightNewer:
+                    return "#228E7CC3";
+                case CompareEntryStatus.TypeMismatch:
+                    return "#22E05252";
+                case CompareEntryStatus.Different:
+                    return "#22E8A317";
+                default:
+                    return "#00000000";
+            }
+        }
     }
 
     /// <summary>状态样式键，供界面与网页端套用颜色样式。</summary>
@@ -200,13 +258,13 @@ public class FileDiffRow
     /// <summary>右侧行内差异之后的剩余文本。</summary>
     public string RightSuffix { get; private set; } = string.Empty;
 
-    /// <summary>左侧是否存在行内差异片段。</</summary>
+    /// <summary>左侧是否存在行内差异片段。</summary>
     public bool HasLeftChange
     {
         get { return this.LeftChanged.Length > 0; }
     }
 
-    /// <summary>右侧是否存在行内差异片段。</</summary>
+    /// <summary>右侧是否存在行内差异片段。</summary>
     public bool HasRightChange
     {
         get { return this.RightChanged.Length > 0; }
@@ -227,13 +285,13 @@ public class FileDiffRow
         get { return this.Kind == DiffRowKind.Modified; }
     }
 
-    /// <summary>是否为仅左侧行。</</summary>
+    /// <summary>是否为仅左侧行。</summary>
     public bool IsLeftOnly
     {
         get { return this.Kind == DiffRowKind.LeftOnly; }
     }
 
-    /// <summary>是否为仅右侧行。</</summary>
+    /// <summary>是否为仅右侧行。</summary>
     public bool IsRightOnly
     {
         get { return this.Kind == DiffRowKind.RightOnly; }
@@ -243,6 +301,51 @@ public class FileDiffRow
     public bool IsDifferent
     {
         get { return this.Kind != DiffRowKind.Same; }
+    }
+
+    /// <summary>行背景色（带透明度），按行类型着色。</summary>
+    public string RowBackground
+    {
+        get
+        {
+            switch (this.Kind)
+            {
+                case DiffRowKind.Modified:
+                    return "#1FE8A317";
+                case DiffRowKind.LeftOnly:
+                    return "#1FF2B23E";
+                case DiffRowKind.RightOnly:
+                    return "#1F2F6FD0";
+                default:
+                    return "#00000000";
+            }
+        }
+    }
+
+    /// <summary>左侧行内差异片段背景色。</summary>
+    public string LeftChangedBackground
+    {
+        get
+        {
+            if (this.Kind == DiffRowKind.LeftOnly)
+            {
+                return "#55E05252";
+            }
+            return "#55E8A317";
+        }
+    }
+
+    /// <summary>右侧行内差异片段背景色。</summary>
+    public string RightChangedBackground
+    {
+        get
+        {
+            if (this.Kind == DiffRowKind.RightOnly)
+            {
+                return "#5533A852";
+            }
+            return "#55E8A317";
+        }
     }
 
     /// <summary>行类型样式键，供界面与网页端套用颜色样式。</summary>

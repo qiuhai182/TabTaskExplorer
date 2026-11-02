@@ -102,6 +102,8 @@ public partial class MainWindow : Window
             new EventHandler<PointerEventArgs>(this.OnTabStripPointerMoved), RoutingStrategies.Bubble, true);
         this.TabStrip.AddHandler(InputElement.PointerReleasedEvent,
             new EventHandler<PointerReleasedEventArgs>(this.OnTabStripPointerReleased), RoutingStrategies.Bubble, true);
+        // 新建标签按钮紧跟最后一个标签：标签条宽度变化时重新计算可用宽度，保证按钮不被挤出
+        this.TabStripHost.SizeChanged += this.OnTabStripHostSizeChanged;
         // 窗口级拖放：接收系统资源管理器等拖入的文件，按落点判定导航或移动 / 复制
         this.AddHandler(DragDrop.DragEnterEvent,
             new EventHandler<DragEventArgs>(this.OnWindowDragEnter), RoutingStrategies.Bubble, true);
@@ -246,8 +248,30 @@ public partial class MainWindow : Window
     private void OnTabsCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
         this.UpdateTabStripHighlights();
+        this.UpdateTabStripMaxWidth();
+        UiLogger.Log("程序行为", "标签数量变化：标签总数=" + (this.ViewModel?.Tabs.Count ?? 0)
+            + " 标签条最大宽度=" + (int)this.TabStrip.MaxWidth + " 像素，新建标签按钮紧跟最后一个标签");
         this.RefreshBreadcrumbAndStatus();
         this.UpdateNavSelection();
+    }
+
+    /// <summary>标签条宿主宽度变化时，限制标签条最大宽度，为紧跟其后的新建标签按钮预留位置。</summary>
+    private void OnTabStripHostSizeChanged(object? sender, SizeChangedEventArgs e)
+    {
+        this.UpdateTabStripMaxWidth();
+    }
+
+    /// <summary>按标签条宿主的实际宽度设置标签条最大宽度，预留新建标签按钮及其右边距。</summary>
+    private void UpdateTabStripMaxWidth()
+    {
+        const double newTabButtonReservedWidth = 36;
+        double availableWidth = this.TabStripHost.Bounds.Width;
+        double maxWidth = Math.Max(0, availableWidth - newTabButtonReservedWidth);
+        if (Math.Abs(this.TabStrip.MaxWidth - maxWidth) < 1)
+        {
+            return;
+        }
+        this.TabStrip.MaxWidth = maxWidth;
     }
 
     /// <summary>刷新标签条激活高亮，并为已实现容器挂接悬停事件。</summary>
@@ -351,189 +375,412 @@ public partial class MainWindow : Window
         this.Close();
     }
 
-    /// <summary>全局快捷键：IDE 模式下走 IDE 快捷键，否则走资源管理器快捷键。</summary>
+    /// <summary>窗口级快捷键：按统一快捷键配置匹配当前按键并执行对应功能。</summary>
     private void OnWindowKeyDown(object? sender, KeyEventArgs e)
     {
         MainWindowViewModel? viewModel = this.ViewModel;
         if (viewModel == null)
         {
-            UiLogger.Log("程序行为", "处理全局快捷键：当前没有可用的主窗口视图模型，未处理任何快捷键");
+            UiLogger.Log("快捷键", "处理窗口快捷键：当前没有可用的主窗口视图模型，未处理任何快捷键");
             return;
         }
-
-        if (viewModel.IsIdeMode)
+        HotkeySetting? matched = this.FindLocalShortcut(viewModel, e);
+        if (matched == null)
         {
-            this.HandleIdeKeyDown(viewModel, e);
             return;
         }
-
-        if (e.Key == Key.T && e.KeyModifiers == KeyModifiers.Control)
+        if (e.Source is TextBox && IsTextEditingSensitiveShortcut(matched.ActionName))
         {
-            UiLogger.Log("程序行为", "快捷键：控制键与字母键T同按 新建标签 结果=已请求新建标签");
-            viewModel.AddTab(string.Empty);
-            e.Handled = true;
+            UiLogger.Log("快捷键", "快捷键在输入框内被忽略：功能=" + matched.DisplayName
+                + " 主键=" + matched.KeyText + " 结果=保留给输入框处理");
+            return;
         }
-        else if (e.Key == Key.W && e.KeyModifiers == KeyModifiers.Control)
-        {
-            UiLogger.Log("程序行为", "快捷键：控制键与字母键W同按 关闭当前选中标签");
-            this.CloseCurrentTab();
-            e.Handled = true;
-        }
-        else if (e.Key == Key.Tab && (e.KeyModifiers & KeyModifiers.Control) == KeyModifiers.Control)
-        {
-            if (viewModel.Tabs.Count == 0 || viewModel.SelectedTab == null)
-            {
-                UiLogger.Log("程序行为", "快捷键：控制键与制表键同按 切换标签 当前没有可切换的标签，未执行");
-            }
-            else if ((e.KeyModifiers & KeyModifiers.Shift) == KeyModifiers.Shift)
-            {
-                UiLogger.Log("程序行为", "快捷键：控制键与制表键与上档键同按 向前切换标签 结果=已切换");
-                viewModel.CycleTab(-1);
-            }
-            else
-            {
-                UiLogger.Log("程序行为", "快捷键：控制键与制表键同按 向后切换标签 结果=已切换");
-                viewModel.CycleTab(1);
-            }
-            e.Handled = true;
-        }
-        else if (e.Key == Key.F5)
-        {
-            FileTabViewModel? refreshTab = viewModel.SelectedFileTab;
-            if (refreshTab == null)
-            {
-                UiLogger.Log("程序行为", "快捷键：功能键F5 刷新 当前没有文件标签，未刷新");
-            }
-            else
-            {
-                UiLogger.Log("程序行为", "快捷键：功能键F5 刷新 当前目录="
-                    + (string.IsNullOrEmpty(refreshTab.CurrentPath) ? "此电脑" : refreshTab.CurrentPath)
-                    + " 结果=已重新加载当前目录");
-                refreshTab.Refresh();
-            }
-            e.Handled = true;
-        }
-        else if (e.Key == Key.F2)
-        {
-            _ = this.RenameCheckedAsync();
-            e.Handled = true;
-        }
-        else if (e.Key == Key.Delete)
-        {
-            FileTabViewModel? deleteTab = viewModel.SelectedFileTab;
-            if (deleteTab == null)
-            {
-                UiLogger.Log("程序行为", "快捷键：删除键 删除勾选条目 当前没有文件标签，未删除");
-            }
-            else
-            {
-                int deleteCheckedCount = deleteTab.GetCheckedRows().Count;
-                UiLogger.Log("程序行为", "快捷键：删除键 删除勾选条目 当前目录="
-                    + (string.IsNullOrEmpty(deleteTab.CurrentPath) ? "此电脑" : deleteTab.CurrentPath)
-                    + " 勾选条目数=" + deleteCheckedCount
-                    + " 结果=" + (deleteCheckedCount == 0 ? "没有勾选任何条目，未删除" : "已执行删除并刷新列表"));
-                deleteTab.DeleteChecked();
-            }
-            e.Handled = true;
-        }
-        // 输入框获得焦点时的复制 / 剪切 / 粘贴交给输入框自己处理，不触发文件条目的复制粘贴
-        else if (e.Source is not TextBox && this.MatchesHotkey(viewModel, "Copy", e))
-        {
-            UiLogger.Log("程序行为", "快捷键：复制勾选条目 结果=已请求把勾选条目放入剪贴板（内部剪贴板与系统剪贴板同时写入）");
-            viewModel.CopyCheckedToClipboard();
-            e.Handled = true;
-        }
-        else if (e.Source is not TextBox && this.MatchesHotkey(viewModel, "Cut", e))
-        {
-            UiLogger.Log("程序行为", "快捷键：剪切勾选条目 结果=已请求把勾选条目放入剪贴板，粘贴时将移动（内部剪贴板与系统剪贴板同时写入）");
-            viewModel.CutCheckedToClipboard();
-            e.Handled = true;
-        }
-        else if (e.Source is not TextBox && this.MatchesHotkey(viewModel, "Paste", e))
-        {
-            FileTabViewModel? pasteTab = viewModel.SelectedFileTab;
-            UiLogger.Log("程序行为", "快捷键：粘贴 目标目录="
-                + (pasteTab == null || string.IsNullOrEmpty(pasteTab.CurrentPath) ? "此电脑" : pasteTab.CurrentPath)
-                + " 结果=已请求把剪贴板条目粘贴到目标目录（剪贴板为空或目录不可写时由界面提示）");
-            _ = viewModel.PasteFromClipboardAsync(null);
-            e.Handled = true;
-        }
+        UiLogger.Log("快捷键", "命中应用内快捷键：功能=" + matched.DisplayName
+            + " 动作标识=" + matched.ActionName
+            + " 主键=" + matched.KeyText
+            + " 修饰键=" + DescribeModifiers(matched)
+            + " 作用域=" + matched.Scope
+            + " 结果=开始执行");
+        this.ExecuteShortcutAction(matched.ActionName);
+        e.Handled = true;
     }
 
-    /// <summary>IDE 模式快捷键：保存 / 全部保存 / 关闭编辑器 / 快速打开 / 查找，按键组合取自自定义快捷键配置。</summary>
-    private void HandleIdeKeyDown(MainWindowViewModel viewModel, KeyEventArgs e)
+    /// <summary>
+    /// 在统一快捷键配置中查找与当前按键完全匹配的应用内快捷键。
+    /// 当前平台不支持系统全局热键时，全局作用域配置也会在本程序前台生效，保证跨平台行为一致。
+    /// </summary>
+    private HotkeySetting? FindLocalShortcut(MainWindowViewModel viewModel, KeyEventArgs e)
     {
-        IdeShellViewModel shell = viewModel.IdeShell;
-        if (this.MatchesHotkey(viewModel, "Save", e))
+        if (viewModel.Settings.Shortcuts == null)
         {
-            UiLogger.Log("程序行为", "快捷键触发保存当前编辑器 结果=已请求保存");
-            shell.SaveActive();
-            e.Handled = true;
+            return null;
         }
-        else if (this.MatchesHotkey(viewModel, "SaveAll", e))
+        bool includeGlobalFallback = !viewModel.IsGlobalHotkeySupported;
+        foreach (HotkeySetting setting in viewModel.Settings.Shortcuts)
         {
-            UiLogger.Log("程序行为", "快捷键触发全部保存 结果=已请求保存全部编辑器");
-            shell.SaveAll();
-            e.Handled = true;
-        }
-        else if (this.MatchesHotkey(viewModel, "CloseEditor", e))
-        {
-            IdeEditorTabViewModel? editor = shell.SelectedEditor;
-            if (editor != null)
-            {
-                UiLogger.Log("程序行为", "快捷键触发关闭当前编辑器：编辑器标题=" + editor.Title);
-                _ = this.CloseIdeEditorAsync(shell, editor);
-            }
-            else
-            {
-                UiLogger.Log("程序行为", "快捷键触发关闭当前编辑器：当前没有打开的编辑器，未执行");
-            }
-            e.Handled = true;
-        }
-        else if (this.MatchesHotkey(viewModel, "QuickOpen", e))
-        {
-            UiLogger.Log("程序行为", "快捷键触发快速打开面板 结果=已显示快速打开面板");
-            shell.OpenQuickOpen();
-            e.Handled = true;
-        }
-        else if (this.MatchesHotkey(viewModel, "Find", e))
-        {
-            UiLogger.Log("程序行为", "快捷键触发显示查找面板 结果=已显示查找面板");
-            shell.ShowFindPanel = true;
-            e.Handled = true;
-        }
-    }
-
-    /// <summary>判断按键事件是否命中指定动作的自定义快捷键（修饰键需完全一致）。</summary>
-    private bool MatchesHotkey(MainWindowViewModel viewModel, string actionName, KeyEventArgs e)
-    {
-        foreach (HotkeySetting setting in viewModel.Settings.Hotkeys)
-        {
-            if (setting.ActionName != actionName)
+            if (setting == null)
             {
                 continue;
             }
-            Key key;
-            if (!Enum.TryParse(setting.KeyText, out key))
+            if (setting.IsGlobal && !includeGlobalFallback)
             {
-                return false;
+                continue;
             }
-            KeyModifiers required = KeyModifiers.None;
-            if (setting.Ctrl)
+            if (this.MatchesHotkey(setting, e))
             {
-                required |= KeyModifiers.Control;
+                return setting;
             }
-            if (setting.Alt)
-            {
-                required |= KeyModifiers.Alt;
-            }
-            if (setting.Shift)
-            {
-                required |= KeyModifiers.Shift;
-            }
-            return e.Key == key && e.KeyModifiers == required;
         }
-        return false;
+        return null;
+    }
+
+    /// <summary>判断按键事件是否命中一条快捷键配置（修饰键需完全一致）。</summary>
+    private bool MatchesHotkey(HotkeySetting setting, KeyEventArgs e)
+    {
+        if (string.IsNullOrEmpty(setting.KeyText))
+        {
+            return false;
+        }
+        Key key;
+        if (!Enum.TryParse(setting.KeyText, out key))
+        {
+            return false;
+        }
+        KeyModifiers required = KeyModifiers.None;
+        if (setting.Ctrl)
+        {
+            required |= KeyModifiers.Control;
+        }
+        if (setting.Alt)
+        {
+            required |= KeyModifiers.Alt;
+        }
+        if (setting.Shift)
+        {
+            required |= KeyModifiers.Shift;
+        }
+        if (setting.Win)
+        {
+            required |= KeyModifiers.Meta;
+        }
+        return e.Key == key && e.KeyModifiers == required;
+    }
+
+    /// <summary>这些文件操作快捷键在输入框内不触发，避免误删误改名。</summary>
+    private static bool IsTextEditingSensitiveShortcut(string actionName)
+    {
+        return string.Equals(actionName, "Copy", StringComparison.Ordinal)
+            || string.Equals(actionName, "Cut", StringComparison.Ordinal)
+            || string.Equals(actionName, "Paste", StringComparison.Ordinal)
+            || string.Equals(actionName, "Rename", StringComparison.Ordinal)
+            || string.Equals(actionName, "Delete", StringComparison.Ordinal)
+            || string.Equals(actionName, "Refresh", StringComparison.Ordinal)
+            || string.Equals(actionName, "Back", StringComparison.Ordinal)
+            || string.Equals(actionName, "Forward", StringComparison.Ordinal)
+            || string.Equals(actionName, "Up", StringComparison.Ordinal);
+    }
+
+    /// <summary>把修饰键组合转成日志文字。</summary>
+    private static string DescribeModifiers(HotkeySetting setting)
+    {
+        string text = string.Empty;
+        if (setting.Ctrl)
+        {
+            text = text.Length == 0 ? "Ctrl" : text + "+Ctrl";
+        }
+        if (setting.Alt)
+        {
+            text = text.Length == 0 ? "Alt" : text + "+Alt";
+        }
+        if (setting.Shift)
+        {
+            text = text.Length == 0 ? "Shift" : text + "+Shift";
+        }
+        if (setting.Win)
+        {
+            text = text.Length == 0 ? "Win" : text + "+Win";
+        }
+        return text.Length == 0 ? "无" : text;
+    }
+
+    /// <summary>
+    /// 执行一条快捷键动作：应用内快捷键与系统全局快捷键共用同一套分派逻辑，
+    /// 全局触发时会先把主窗口带到前台再调用本方法。
+    /// </summary>
+    public void ExecuteShortcutAction(string actionName)
+    {
+        MainWindowViewModel? viewModel = this.ViewModel;
+        if (viewModel == null)
+        {
+            UiLogger.Log("快捷键", "执行快捷键动作失败：主窗口视图模型未就绪 动作标识=" + actionName);
+            return;
+        }
+        if (ShortcutActionCatalog.IsCaptureAction(actionName))
+        {
+            UiLogger.Log("快捷键", "执行截图录屏快捷键动作：功能=" + ShortcutActionCatalog.GetDisplayName(actionName));
+            viewModel.ExecuteCaptureShortcut(actionName);
+            return;
+        }
+        bool ideMode = viewModel.IsIdeMode;
+        UiLogger.Log("快捷键", "执行快捷键动作：功能=" + ShortcutActionCatalog.GetDisplayName(actionName)
+            + " 动作标识=" + actionName
+            + " 当前模式=" + (ideMode ? "IDE 模式" : "资源管理器模式"));
+
+        if (ShortcutActionCatalog.IsIdeAction(actionName))
+        {
+            this.ExecuteIdeShortcutAction(viewModel, actionName);
+            return;
+        }
+        if (string.Equals(actionName, "ToggleIdeMode", StringComparison.Ordinal))
+        {
+            viewModel.ToggleIdeMode();
+            return;
+        }
+        if (string.Equals(actionName, "ToggleTheme", StringComparison.Ordinal))
+        {
+            viewModel.ToggleTheme();
+            UiLogger.Log("快捷键", "快捷键切换主题：当前主题=" + viewModel.Settings.Theme);
+            return;
+        }
+        if (string.Equals(actionName, "TaskBoard", StringComparison.Ordinal))
+        {
+            this.EnsureExplorerModeForView(viewModel);
+            viewModel.OpenTaskBoardTab();
+            return;
+        }
+        if (string.Equals(actionName, "GlobalSearch", StringComparison.Ordinal))
+        {
+            this.EnsureExplorerModeForView(viewModel);
+            viewModel.OpenSearchTab();
+            return;
+        }
+        if (string.Equals(actionName, "Connections", StringComparison.Ordinal))
+        {
+            this.EnsureExplorerModeForView(viewModel);
+            viewModel.OpenConnectionsTab();
+            return;
+        }
+        if (string.Equals(actionName, "DiskView", StringComparison.Ordinal))
+        {
+            this.EnsureExplorerModeForView(viewModel);
+            viewModel.OpenDiskViewTab();
+            return;
+        }
+        if (string.Equals(actionName, "ProcessMonitor", StringComparison.Ordinal))
+        {
+            this.EnsureExplorerModeForView(viewModel);
+            viewModel.OpenProcessMonitorTab();
+            return;
+        }
+        if (string.Equals(actionName, "CaptureTab", StringComparison.Ordinal))
+        {
+            viewModel.OpenCaptureTab();
+            return;
+        }
+        if (ideMode)
+        {
+            UiLogger.Log("快捷键", "快捷键动作在 IDE 模式下被忽略：功能=" + ShortcutActionCatalog.GetDisplayName(actionName)
+                + " 原因=该动作属于资源管理器模式");
+            return;
+        }
+        if (string.Equals(actionName, "NewTab", StringComparison.Ordinal))
+        {
+            viewModel.AddTab(string.Empty);
+            return;
+        }
+        if (string.Equals(actionName, "CloseTab", StringComparison.Ordinal))
+        {
+            this.CloseCurrentTab();
+            return;
+        }
+        if (string.Equals(actionName, "NextTab", StringComparison.Ordinal))
+        {
+            viewModel.CycleTab(1);
+            return;
+        }
+        if (string.Equals(actionName, "PreviousTab", StringComparison.Ordinal))
+        {
+            viewModel.CycleTab(-1);
+            return;
+        }
+        if (string.Equals(actionName, "ThisPc", StringComparison.Ordinal))
+        {
+            viewModel.AddTab(string.Empty);
+            return;
+        }
+        FileTabViewModel? fileTab = viewModel.SelectedFileTab;
+        if (string.Equals(actionName, "Refresh", StringComparison.Ordinal))
+        {
+            if (fileTab == null)
+            {
+                UiLogger.Log("快捷键", "快捷键刷新被忽略：当前没有文件标签");
+                return;
+            }
+            fileTab.Refresh();
+            return;
+        }
+        if (string.Equals(actionName, "Back", StringComparison.Ordinal))
+        {
+            if (fileTab == null)
+            {
+                UiLogger.Log("快捷键", "快捷键后退被忽略：当前没有文件标签");
+                return;
+            }
+            fileTab.GoBack();
+            return;
+        }
+        if (string.Equals(actionName, "Forward", StringComparison.Ordinal))
+        {
+            if (fileTab == null)
+            {
+                UiLogger.Log("快捷键", "快捷键前进被忽略：当前没有文件标签");
+                return;
+            }
+            fileTab.GoForward();
+            return;
+        }
+        if (string.Equals(actionName, "Up", StringComparison.Ordinal))
+        {
+            if (fileTab == null)
+            {
+                UiLogger.Log("快捷键", "快捷键上一级被忽略：当前没有文件标签");
+                return;
+            }
+            fileTab.NavigateUp();
+            return;
+        }
+        if (string.Equals(actionName, "ToggleHiddenFiles", StringComparison.Ordinal))
+        {
+            viewModel.Settings.ShowHiddenFiles = !viewModel.Settings.ShowHiddenFiles;
+            viewModel.SaveSettingsAndApply();
+            UiLogger.Log("快捷键", "快捷键切换隐藏文件显示：当前值=" + viewModel.Settings.ShowHiddenFiles);
+            return;
+        }
+        if (string.Equals(actionName, "ToggleInfoPane", StringComparison.Ordinal))
+        {
+            if (fileTab == null)
+            {
+                UiLogger.Log("快捷键", "快捷键切换详细信息窗格被忽略：当前没有文件标签");
+                return;
+            }
+            fileTab.ShowInfoPane = !fileTab.ShowInfoPane;
+            UiLogger.Log("快捷键", "快捷键切换详细信息窗格：当前值=" + fileTab.ShowInfoPane);
+            return;
+        }
+        if (string.Equals(actionName, "NewFolder", StringComparison.Ordinal))
+        {
+            this.OnToolbarNewFolderClick(null, new RoutedEventArgs());
+            return;
+        }
+        if (string.Equals(actionName, "BatchRename", StringComparison.Ordinal))
+        {
+            this.OnToolbarBatchRenameClick(null, new RoutedEventArgs());
+            return;
+        }
+        if (string.Equals(actionName, "EncodeConvert", StringComparison.Ordinal))
+        {
+            this.OnToolbarEncodeConvertClick(null, new RoutedEventArgs());
+            return;
+        }
+        if (string.Equals(actionName, "AddBookmark", StringComparison.Ordinal))
+        {
+            this.OnPinClick(null, new RoutedEventArgs());
+            return;
+        }
+        if (string.Equals(actionName, "ToggleDefaultFileManager", StringComparison.Ordinal))
+        {
+            this.OnDefaultExplorerClick(null, new RoutedEventArgs());
+            return;
+        }
+        if (string.Equals(actionName, "CloseAllTabs", StringComparison.Ordinal))
+        {
+            viewModel.CloseAllTabs();
+            return;
+        }
+        if (string.Equals(actionName, "Copy", StringComparison.Ordinal))
+        {
+            viewModel.CopyCheckedToClipboard();
+            return;
+        }
+        if (string.Equals(actionName, "Cut", StringComparison.Ordinal))
+        {
+            viewModel.CutCheckedToClipboard();
+            return;
+        }
+        if (string.Equals(actionName, "Paste", StringComparison.Ordinal))
+        {
+            _ = viewModel.PasteFromClipboardAsync(null);
+            return;
+        }
+        if (string.Equals(actionName, "Rename", StringComparison.Ordinal))
+        {
+            _ = this.RenameCheckedAsync();
+            return;
+        }
+        if (string.Equals(actionName, "Delete", StringComparison.Ordinal))
+        {
+            if (fileTab == null)
+            {
+                UiLogger.Log("快捷键", "快捷键删除被忽略：当前没有文件标签");
+                return;
+            }
+            fileTab.DeleteChecked();
+            return;
+        }
+        UiLogger.Log("快捷键", "快捷键动作无法执行：功能=" + ShortcutActionCatalog.GetDisplayName(actionName)
+            + " 动作标识=" + actionName + " 结果=未找到执行分支");
+    }
+
+    /// <summary>执行 IDE 模式专属动作。</summary>
+    private void ExecuteIdeShortcutAction(MainWindowViewModel viewModel, string actionName)
+    {
+        if (!viewModel.IsIdeMode)
+        {
+            UiLogger.Log("快捷键", "IDE 快捷键动作被忽略：功能=" + ShortcutActionCatalog.GetDisplayName(actionName)
+                + " 原因=当前不是 IDE 模式");
+            return;
+        }
+        IdeShellViewModel shell = viewModel.IdeShell;
+        if (string.Equals(actionName, "Save", StringComparison.Ordinal))
+        {
+            shell.SaveActive();
+            return;
+        }
+        if (string.Equals(actionName, "SaveAll", StringComparison.Ordinal))
+        {
+            shell.SaveAll();
+            return;
+        }
+        if (string.Equals(actionName, "CloseEditor", StringComparison.Ordinal))
+        {
+            IdeEditorTabViewModel? editor = shell.SelectedEditor;
+            if (editor == null)
+            {
+                UiLogger.Log("快捷键", "关闭编辑器被忽略：当前没有打开的编辑器");
+                return;
+            }
+            _ = this.CloseIdeEditorAsync(shell, editor);
+            return;
+        }
+        if (string.Equals(actionName, "QuickOpen", StringComparison.Ordinal))
+        {
+            shell.OpenQuickOpen();
+            return;
+        }
+        if (string.Equals(actionName, "Find", StringComparison.Ordinal))
+        {
+            shell.ShowFindPanel = true;
+            return;
+        }
+    }
+
+    /// <summary>打开资源管理器视图前退出 IDE 模式，保证标签页可见。</summary>
+    private void EnsureExplorerModeForView(MainWindowViewModel viewModel)
+    {
+        if (viewModel.IsIdeMode)
+        {
+            viewModel.ExitIdeMode();
+        }
     }
 
     /// <summary>关闭 IDE 编辑器标签：脏内容先弹「保存 / 不保存 / 取消」确认框。</summary>
@@ -1936,6 +2183,53 @@ public partial class MainWindow : Window
         UiLogger.Log("程序行为", "点击磁盘视图按钮：结果=已打开磁盘视图标签 标签总数=" + viewModel.Tabs.Count);
     }
 
+    /// <summary>打开比对标签：优先使用当前文件标签中恰好勾选的两项，否则询问右侧路径。</summary>
+    private async void OnCompareClick(object? sender, RoutedEventArgs e)
+    {
+        MainWindowViewModel? viewModel = this.ViewModel;
+        if (viewModel == null)
+        {
+            UiLogger.Log("程序行为", "点击文件比对按钮：当前没有可用的主窗口视图模型，未打开");
+            return;
+        }
+        FileTabViewModel? fileTab = viewModel.SelectedFileTab;
+        if (fileTab != null && fileTab.ContentAccess == null
+            && fileTab.FileSystemProvider is not ArchiveFileSystemProvider)
+        {
+            List<FileRow> checkedRows = fileTab.GetCheckedRows();
+            if (checkedRows.Count == 2)
+            {
+                viewModel.OpenCompareTab(checkedRows[0].FullPath, checkedRows[1].FullPath);
+                UiLogger.Log("程序行为", "点击文件比对按钮：使用当前勾选的两项 左侧路径=" + checkedRows[0].FullPath
+                    + " 右侧路径=" + checkedRows[1].FullPath + " 结果=已打开比对标签");
+                return;
+            }
+        }
+
+        string leftPath = fileTab == null ? string.Empty : fileTab.CurrentPath;
+        if (string.IsNullOrEmpty(leftPath))
+        {
+            string? inputLeft = await InputDialog.Show(this, "目录 / 文件比对",
+                "请输入左侧目录或文件路径：", string.Empty);
+            if (string.IsNullOrWhiteSpace(inputLeft))
+            {
+                UiLogger.Log("程序行为", "点击文件比对按钮：左侧路径未输入 结果=本次比对取消");
+                return;
+            }
+            leftPath = inputLeft.Trim();
+        }
+        string? inputRight = await InputDialog.Show(this, "目录 / 文件比对",
+            "左侧路径：" + leftPath + "\n请输入右侧目录或文件路径：", string.Empty);
+        if (string.IsNullOrWhiteSpace(inputRight))
+        {
+            UiLogger.Log("程序行为", "点击文件比对按钮：右侧路径未输入 左侧路径=" + leftPath + " 结果=本次比对取消");
+            return;
+        }
+        viewModel.OpenCompareTab(leftPath, inputRight.Trim());
+        UiLogger.Log("程序行为", "点击文件比对按钮：左侧路径=" + leftPath
+            + " 右侧路径=" + inputRight.Trim() + " 结果=已打开比对标签");
+    }
+
     private void OnCaptureClick(object? sender, RoutedEventArgs e)
     {
         MainWindowViewModel? viewModel = this.ViewModel;
@@ -1950,14 +2244,29 @@ public partial class MainWindow : Window
 
     private async void OnSettingsClick(object? sender, RoutedEventArgs e)
     {
+        await this.ShowSettingsWindowAsync(SettingsWindow.BasicSectionIndex);
+    }
+
+    /// <summary>侧边栏“右键管理”按钮：打开设置窗口并直接定位到「右键菜单」分页，与设置内入口共用同一管理界面。</summary>
+    private async void OnRightMenuManagerClick(object? sender, RoutedEventArgs e)
+    {
+        UiLogger.Log("程序行为", "点击右键管理按钮：准备打开设置窗口并定位到右键菜单分页");
+        await this.ShowSettingsWindowAsync(SettingsWindow.RightMenuSectionIndex);
+    }
+
+    /// <summary>显示设置窗口；关闭后统一应用开机自启、默认文件管理器、全局快捷键与其余设置。</summary>
+    private async Task ShowSettingsWindowAsync(int initialSectionIndex)
+    {
         MainWindowViewModel? viewModel = this.ViewModel;
         if (viewModel == null)
         {
+            UiLogger.Log("程序行为", "打开设置窗口失败：当前没有可用的主窗口视图模型 初始分页序号="
+                + initialSectionIndex + " 结果=失败");
             return;
         }
-        UiLogger.Log("程序行为", "打开设置窗口");
+        UiLogger.Log("程序行为", "打开设置窗口：初始分页序号=" + initialSectionIndex);
         SettingsWindow window = new SettingsWindow(viewModel.Settings, viewModel.SystemContextMenus,
-            viewModel.CaptureEnvironmentText);
+            viewModel.CaptureEnvironmentText, initialSectionIndex, viewModel.OpenStartupManagerTab);
         await window.ShowDialog(this);
         UiLogger.Log("程序行为", "设置窗口已关闭，开始应用设置");
         App current = (App)App.Current!;
@@ -1969,9 +2278,9 @@ public partial class MainWindow : Window
         }
         current.SyncTrayAutoStartState();
         DefaultFileManagerManager.Apply(viewModel.Settings.DefaultFileManager);
-        viewModel.SaveSettingsAndApply();
-        // 截图录屏全局快捷键按最新按键重新注册，失败项由协调器写入日志与状态文字
+        // 先按最新按键重新注册全局快捷键，再保存并刷新界面，使截图录屏标签页显示最新的注册状态
         viewModel.ReloadGlobalHotkeys();
+        viewModel.SaveSettingsAndApply();
     }
 
     /// <summary>按设置切换窗口装饰：显示白条时保留 Avalonia 绘制的窗口边框，隐藏时不绘制任何装饰。</summary>
@@ -1986,6 +2295,19 @@ public partial class MainWindow : Window
             this.WindowDecorations = Avalonia.Controls.WindowDecorations.None;
         }
         UiLogger.Log("程序行为", "应用顶部白色条设置：是否显示=" + show + " 当前窗口装饰=" + this.WindowDecorations);
+    }
+
+    /// <summary>侧边栏“启动项管理”按钮：打开启动项管理标签页。</summary>
+    private void OnStartupManagerClick(object? sender, RoutedEventArgs e)
+    {
+        MainWindowViewModel? viewModel = this.ViewModel;
+        if (viewModel == null)
+        {
+            UiLogger.Log("启动项", "点击启动项管理按钮：当前没有可用的主窗口视图模型，未打开");
+            return;
+        }
+        viewModel.OpenStartupManagerTab();
+        UiLogger.Log("启动项", "点击启动项管理按钮：结果=已打开启动项管理标签 标签总数=" + viewModel.Tabs.Count);
     }
 
     /// <summary>工具栏“进程监控”按钮：打开进程监控标签页。</summary>

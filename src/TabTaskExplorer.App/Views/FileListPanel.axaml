@@ -21,7 +21,7 @@
             <MenuItem Header="粘贴" Tag="MenuPaste" Click="OnBackgroundPasteClick" />
             <MenuItem Header="新建文件夹…" Tag="MenuNewFolder" Click="OnBackgroundNewFolderClick" />
             <Separator />
-            <MenuItem Header="系统菜单项" IsVisible="False" Tag="SystemMenuItemsHost" />
+            <MenuItem Header="系统右键菜单（全部）" IsVisible="False" Tag="SystemMenuItemsHost" />
           </ContextMenu>
         </Grid.ContextMenu>
         <!-- 表头：星号名称列设上限，窗口过宽时右侧留白；启用列宽拖动，拖动结果经 ColumnWidths 同步到所有行。
@@ -86,6 +86,7 @@
                       <ContextMenu Opening="OnSystemMenuOpening">
                         <MenuItem Header="打开" Click="OnMenuOpenClick" />
                         <MenuItem Header="在新标签打开" Click="OnMenuOpenInNewTabClick" />
+                        <MenuItem Header="比较所选两项" Tag="MenuCompareSelection" IsVisible="False" Click="OnMenuCompareSelectionClick" />
                         <MenuItem Header="复制" Click="OnMenuCopyClick" />
                         <MenuItem Header="剪切" Click="OnMenuCutClick" />
                         <MenuItem Header="粘贴" Tag="MenuPasteToFolder" Click="OnMenuPasteToFolderClick" />
@@ -95,7 +96,7 @@
                         <MenuItem Header="修改权限" Click="OnMenuChangePermissionsClick" />
                         <MenuItem Header="删除" Click="OnMenuDeleteClick" />
                         <Separator />
-                        <MenuItem Header="系统菜单项" IsVisible="False" Tag="SystemMenuItemsHost" />
+                        <MenuItem Header="系统右键菜单（全部）" IsVisible="False" Tag="SystemMenuItemsHost" />
                       </ContextMenu>
                     </Border.ContextMenu>
                     <!-- 列定义与表头一致：星号名称列设上限避免窗口过宽时被拉满，列宽拖动结果经附加属性同步 -->
@@ -149,7 +150,7 @@
                           <MenuItem Header="修改权限" Click="OnMenuChangePermissionsClick" />
                           <MenuItem Header="删除" Click="OnMenuDeleteClick" />
                           <Separator />
-                          <MenuItem Header="系统菜单项" IsVisible="False" Tag="SystemMenuItemsHost" />
+                          <MenuItem Header="系统右键菜单（全部）" IsVisible="False" Tag="SystemMenuItemsHost" />
                         </ContextMenu>
                       </Border.ContextMenu>
                       <StackPanel Spacing="4">

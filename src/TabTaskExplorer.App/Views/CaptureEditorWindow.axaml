@@ -1,0 +1,99 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:capture="using:TabTaskExplorer.App.Services.Capture"
+        x:Class="TabTaskExplorer.App.Views.CaptureEditorWindow"
+        Title="标注截图" Width="1100" Height="760" MinWidth="720" MinHeight="480"
+        WindowStartupLocation="CenterScreen" Background="#F21B1B1F">
+  <Grid RowDefinitions="Auto,*,Auto">
+
+    <!-- 顶部工具栏：形状工具、颜色、粗细与填充 -->
+    <Border Grid.Row="0" Background="#FF26262B" Padding="10,8">
+      <StackPanel Spacing="8">
+        <WrapPanel Orientation="Horizontal" ItemWidth="NaN">
+          <StackPanel Orientation="Horizontal" Spacing="4">
+            <RadioButton x:Name="ToolRect" Content="矩形" GroupName="annotationTool" Tag="Rectangle" Click="OnToolClick" />
+            <RadioButton x:Name="ToolEllipse" Content="椭圆" GroupName="annotationTool" Tag="Ellipse" Click="OnToolClick" />
+            <RadioButton x:Name="ToolArrow" Content="箭头" GroupName="annotationTool" Tag="Arrow" Click="OnToolClick" />
+            <RadioButton x:Name="ToolPen" Content="画笔" GroupName="annotationTool" Tag="Pen" Click="OnToolClick" IsChecked="True" />
+            <RadioButton x:Name="ToolHighlight" Content="荧光笔" GroupName="annotationTool" Tag="Highlight" Click="OnToolClick" />
+            <RadioButton x:Name="ToolMosaic" Content="马赛克" GroupName="annotationTool" Tag="Mosaic" Click="OnToolClick" />
+            <RadioButton x:Name="ToolBlur" Content="模糊" GroupName="annotationTool" Tag="Blur" Click="OnToolClick" />
+            <RadioButton x:Name="ToolText" Content="文字" GroupName="annotationTool" Tag="Text" Click="OnToolClick" />
+            <RadioButton x:Name="ToolNumber" Content="序号" GroupName="annotationTool" Tag="Number" Click="OnToolClick" />
+            <RadioButton x:Name="ToolMagnify" Content="放大镜" GroupName="annotationTool" Tag="Magnify" Click="OnToolClick" />
+            <RadioButton x:Name="ToolEraser" Content="橡皮擦" GroupName="annotationTool" Tag="Eraser" Click="OnToolClick" />
+          </StackPanel>
+          <Border Width="1" Height="24" Background="#FF3C3C42" Margin="8,0" />
+          <StackPanel Orientation="Horizontal" Spacing="4">
+            <Button Tag="#E53935" Background="#E53935" Width="22" Height="22" Padding="0" Click="OnColorClick" ToolTip.Tip="红色" />
+            <Button Tag="#FB8C00" Background="#FB8C00" Width="22" Height="22" Padding="0" Click="OnColorClick" ToolTip.Tip="橙色" />
+            <Button Tag="#FDD835" Background="#FDD835" Width="22" Height="22" Padding="0" Click="OnColorClick" ToolTip.Tip="黄色" />
+            <Button Tag="#43A047" Background="#43A047" Width="22" Height="22" Padding="0" Click="OnColorClick" ToolTip.Tip="绿色" />
+            <Button Tag="#1E88E5" Background="#1E88E5" Width="22" Height="22" Padding="0" Click="OnColorClick" ToolTip.Tip="蓝色" />
+            <Button Tag="#8E24AA" Background="#8E24AA" Width="22" Height="22" Padding="0" Click="OnColorClick" ToolTip.Tip="紫色" />
+            <Button Tag="#111111" Background="#111111" Width="22" Height="22" Padding="0" Click="OnColorClick" ToolTip.Tip="黑色" />
+            <Button Tag="#FFFFFF" Background="#FFFFFF" Width="22" Height="22" Padding="0" Click="OnColorClick" ToolTip.Tip="白色" />
+            <Button Tag="#00BCD4" Background="#00BCD4" Width="22" Height="22" Padding="0" Click="OnColorClick" ToolTip.Tip="青色" />
+            <Button Content="更多颜色" Click="OnCustomColorClick" FontSize="11" />
+          </StackPanel>
+          <Border Width="1" Height="24" Background="#FF3C3C42" Margin="8,0" />
+          <ComboBox x:Name="SizeCombo" Width="96" SelectedIndex="1" SelectionChanged="OnSizeChanged"
+                    ToolTip.Tip="画笔 / 马赛克 / 模糊的笔刷粗细">
+            <ComboBoxItem Content="细" />
+            <ComboBoxItem Content="中" />
+            <ComboBoxItem Content="粗" />
+            <ComboBoxItem Content="特粗" />
+          </ComboBox>
+          <CheckBox x:Name="FillCheck" Content="填充图形" Click="OnFillChanged" Margin="8,0,0,0" />
+        </WrapPanel>
+      </StackPanel>
+    </Border>
+
+    <!-- 画布与右侧取色面板 -->
+    <Grid Grid.Row="1">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="*" />
+        <ColumnDefinition Width="220" />
+      </Grid.ColumnDefinitions>
+      <Border Grid.Column="0" Margin="10" Background="#FF111114" CornerRadius="4">
+        <capture:AnnotationCanvas x:Name="Canvas" />
+      </Border>
+      <Border Grid.Column="1" Margin="0,10,10,10" Background="#FF26262B" CornerRadius="4" Padding="12">
+        <StackPanel Spacing="10">
+          <TextBlock Text="取色器" FontWeight="Medium" FontSize="15" />
+          <Border Width="180" Height="180" Background="#FF111114" CornerRadius="4">
+            <capture:ColorMagnifierControl x:Name="Magnifier" />
+          </Border>
+          <Border x:Name="ColorSwatch" Width="180" Height="34" CornerRadius="4" Background="#E53935" />
+          <TextBlock x:Name="ColorHexText" Text="#E53935" FontFamily="Consolas" FontSize="18" />
+          <TextBlock x:Name="ColorRgbText" Text="RGB 229, 57, 53" FontSize="12" Opacity="0.8" />
+          <TextBlock x:Name="PositionText" Text="坐标：0, 0" FontSize="12" Opacity="0.7" />
+          <Button x:Name="PickColorButton" Content="取色模式：关闭（点击开启）" Click="OnTogglePickColorClick" />
+          <TextBlock Text="开启后点击画布任意位置即可取色并复制十六进制颜色。" FontSize="11" Opacity="0.65" TextWrapping="Wrap" />
+          <Border Height="1" Background="#FF3C3C42" />
+          <TextBlock Text="提示" FontWeight="Medium" FontSize="13" />
+          <TextBlock Text="拖动绘制形状；文字与序号点击落点；橡皮擦点击删除对应标注。" FontSize="11" Opacity="0.68" TextWrapping="Wrap" />
+        </StackPanel>
+      </Border>
+    </Grid>
+
+    <!-- 底部状态与输出按钮 -->
+    <Border Grid.Row="2" Background="#FF26262B" Padding="12,10">
+      <Grid ColumnDefinitions="*,Auto">
+        <TextBlock x:Name="StatusText" Grid.Column="0" VerticalAlignment="Center"
+                   Text="就绪：Ctrl+C 复制，Ctrl+S 保存，Ctrl+T 贴图，Ctrl+Z 撤销，Esc 关闭" TextWrapping="Wrap" />
+        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+          <Button Content="撤销" Click="OnUndoClick" />
+          <Button Content="重做" Click="OnRedoClick" />
+          <Button Content="清空" Click="OnClearClick" />
+          <Button Content="识别文字" Click="OnOcrClick" />
+          <Button Content="贴图" Click="OnPinClick" />
+          <Button Content="复制" Click="OnCopyClick" />
+          <Button Content="保存" Click="OnSaveClick" />
+          <Button Content="另存为" Click="OnSaveAsClick" />
+          <Button Content="关闭" Click="OnCloseClick" />
+        </StackPanel>
+      </Grid>
+    </Border>
+  </Grid>
+</Window>
