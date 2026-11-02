@@ -23,9 +23,9 @@ public class DirectoryCompareEngine
     public DirectoryCompareResult Compare(string leftRoot, string rightRoot,
         DirectoryCompareOptions options, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(leftRoot) || string.IsNullOrWhiteSpace(rightRoot))
+        if (string.IsNullOrWhiteSpace(leftRoot) && string.IsNullOrWhiteSpace(rightRoot))
         {
-            throw new ArgumentException("目录比对需要左右两个目录路径");
+            throw new ArgumentException("目录比对至少需要一侧目录路径");
         }
 
         DirectoryCompareResult result = new DirectoryCompareResult();
