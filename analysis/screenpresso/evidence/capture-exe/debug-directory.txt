@@ -1,0 +1,2 @@
+﻿调试项 0 类型=2 数据大小=110 文件偏移=0x6BCF3C
+    代码视图签名=RSDS PDB 路径=C:\git\screenpresso\ScreenpressoCapture\src\obj\Release\net47\ScreenpressoCapture.pdb

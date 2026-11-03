@@ -1,8 +1,10 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using Avalonia;
 using Avalonia.Media.Imaging;
 using TabTaskExplorer.App.Services;
+using TabTaskExplorer.App.Views;
+using TabTaskExplorer.Kernel.Ocr;
 
 namespace TabTaskExplorer.App.Services.Capture;
 
@@ -23,7 +25,8 @@ public static class PinWindowManager
     }
 
     /// <summary>把合成图贴到屏幕最上层；超过数量上限时先关闭最早的一张。</summary>
-    public static void ShowPinnedImage(Bitmap image, PixelPoint position, AppSettings settings)
+    public static void ShowPinnedImage(Bitmap image, PixelPoint position, AppSettings settings,
+        ITextRecognitionService? ocrService = null, bool cascade = true)
     {
         if (image == null)
         {
@@ -35,7 +38,15 @@ public static class PinWindowManager
             Windows.RemoveAt(0);
             oldest.Close();
         }
-        PinnedImageWindow window = new PinnedImageWindow(image, position, settings);
+        // 多张贴图依次错开，避免连续贴图完全重叠而看起来只有一张；
+        // 「贴图截图」要求贴图出现在原始选区位置，可关闭错位
+        PixelPoint cascadePosition = position;
+        if (cascade && Windows.Count > 0)
+        {
+            int offset = (Windows.Count % 8 + 1) * 24;
+            cascadePosition = new PixelPoint(position.X + offset, position.Y + offset);
+        }
+        PinnedImageWindow window = new PinnedImageWindow(image, cascadePosition, settings, ocrService);
         window.Closed += delegate
         {
             Windows.Remove(window);
@@ -45,8 +56,8 @@ public static class PinWindowManager
         window.Show();
         UiLogger.Log("贴图", "贴图窗口已创建：像素宽度=" + image.PixelSize.Width
             + " 像素高度=" + image.PixelSize.Height
-            + " 初始横坐标=" + position.X
-            + " 初始纵坐标=" + position.Y
+            + " 初始横坐标=" + cascadePosition.X
+            + " 初始纵坐标=" + cascadePosition.Y
             + " 当前贴图数量=" + Windows.Count);
     }
 

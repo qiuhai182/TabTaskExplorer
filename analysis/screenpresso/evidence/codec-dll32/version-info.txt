@@ -1,0 +1,9 @@
+﻿FileVersion=1.4.0.0
+ProductVersion=1.0.0.0
+FileDescription=Screenpresso codec
+CompanyName=LearnPulse
+InternalName=
+OriginalFilename=
+LegalCopyright=Copyright © 2017 LearnPulse
+ProductName=Screenpresso
+Comments=Screenpresso codec

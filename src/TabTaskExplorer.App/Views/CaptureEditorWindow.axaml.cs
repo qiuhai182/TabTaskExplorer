@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Threading.Tasks;
 using Avalonia;
@@ -11,6 +11,7 @@ using Avalonia.Media.Imaging;
 using Avalonia.Platform.Storage;
 using TabTaskExplorer.App.Services;
 using TabTaskExplorer.App.Services.Capture;
+using TabTaskExplorer.App.ViewModels;
 using TabTaskExplorer.Kernel.Capture;
 using TabTaskExplorer.Kernel.Ocr;
 
@@ -44,6 +45,8 @@ public partial class CaptureEditorWindow : Window
         ITextRecognitionService textRecognitionService)
     {
         this.InitializeComponent();
+        // 标注编辑器是主窗口的附属工具窗口：Show(owner) 已设置 Owner，这里只去掉任务栏按钮
+        WindowHostStyler.MakeAuxiliary(this);
         this.sourcePath = imagePath;
         this.captureArea = area;
         this.settings = appSettings;
@@ -76,6 +79,8 @@ public partial class CaptureEditorWindow : Window
         {
             window.Show();
         }
+        // 截图完成后立即出现在最前，与 Snipaste 的编辑流程一致；Show(owner) 只建立所属关系，不保证激活
+        window.Activate();
     }
 
     /// <summary>读取图片并装载到画布与放大镜。</summary>
@@ -175,6 +180,12 @@ public partial class CaptureEditorWindow : Window
     /// <summary>粗细选择：同时影响画笔、马赛克、模糊笔刷与文字 / 序号大小。</summary>
     private void OnSizeChanged(object? sender, SelectionChangedEventArgs e)
     {
+        // XAML 初始化阶段 SelectedIndex 会提前触发本事件，此时命名控件尚未赋值，
+        // 直接返回并使用构造函数与画布的默认粗细，避免空引用异常。
+        if (this.SizeCombo == null || this.Canvas == null)
+        {
+            return;
+        }
         int index = this.SizeCombo.SelectedIndex;
         double[] brushSizes = new double[] { 6.0, 14.0, 24.0, 40.0 };
         double[] lineSizes = new double[] { 2.0, 3.0, 5.0, 8.0 };
@@ -318,6 +329,28 @@ public partial class CaptureEditorWindow : Window
             return;
         }
         await this.SaveToFileAsync(file.Path.LocalPath, true);
+    }
+
+    /// <summary>识别当前合成图中的二维码 / 条码（吸收 Snipaste BarcodeDecoder 能力）。</summary>
+    private void OnBarcodeClick(object? sender, RoutedEventArgs e)
+    {
+        RenderTargetBitmap image = this.Canvas.Flatten();
+        BarcodeScanResult result = BarcodeDetectionService.Decode(image);
+        if (!result.Success)
+        {
+            this.SetStatus("扫码失败：" + result.ErrorMessage);
+            MessageDialog.Show(this, "二维码 / 条码识别", result.ErrorMessage);
+            UiLogger.Log("扫码", "编辑器扫码失败：原因=" + result.ErrorMessage
+                + " 像素宽度=" + image.PixelSize.Width + " 像素高度=" + image.PixelSize.Height);
+            return;
+        }
+        this.SetStatus("扫码成功：" + result.Format + " " + result.Text);
+        UiLogger.Log("扫码", "编辑器扫码成功：码制=" + result.Format
+            + " 内容长度=" + result.Text.Length
+            + " 内容=" + result.Text
+            + " 像素宽度=" + image.PixelSize.Width + " 像素高度=" + image.PixelSize.Height);
+        BarcodeResultWindow window = new BarcodeResultWindow(result);
+        window.Show(this);
     }
 
     /// <summary>贴图：把合成图贴到屏幕最上层。</summary>
@@ -480,7 +513,7 @@ public partial class CaptureEditorWindow : Window
     {
         RenderTargetBitmap image = this.Canvas.Flatten();
         PixelPoint position = new PixelPoint(this.captureArea.X, this.captureArea.Y);
-        PinWindowManager.ShowPinnedImage(image, position, this.settings);
+        PinWindowManager.ShowPinnedImage(image, position, this.settings, this.ocrService);
         this.SetStatus("已贴图到屏幕：" + image.PixelSize.Width + " × " + image.PixelSize.Height + " 像素");
         UiLogger.Log("截图标注", "贴图已完成：像素宽度=" + image.PixelSize.Width
             + " 像素高度=" + image.PixelSize.Height

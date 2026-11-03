@@ -1,0 +1,18 @@
+﻿开始启动静态取证 09:58:42
+启动返回 {"任务名称":"static-probe","工作任务":"D:\\TabTaskExplorer\\analysis\\screenpresso\\scripts\\Invoke-StaticProbe.ps1","工作参数":"-TargetPath C:\\Users\\QiuHai\\.cache\\rea-screenpresso-target\\screenpresso.exe -OutDir D:\\TabTaskExplorer\\analysis\\screenpresso\\evidence","日志目录":"D:\\TabTaskExplorer\\analysis\\screenpresso\\evidence","进程号":53756,"返回码":0,"启动时间":"2026-11-03 09:58:42","实际命令行":"powershell.exe -NoProfile -Command \"Start-Process -FilePath \u0027powershell.exe\u0027 -ArgumentList @(\u0027-NoProfile\u0027,\u0027-ExecutionPolicy\u0027,\u0027Bypass\u0027,\u0027-File\u0027,\u0027D:\\TabTaskExplorer\\analysis\\screenpresso\\scripts\\Invoke-StaticProbe.ps1\u0027,\u0027-TargetPath\u0027,\u0027C:\\Users\\QiuHai\\.cache\\rea-screenpresso-target\\screenpresso.exe\u0027,\u0027-OutDir\u0027,\u0027D:\\TabTaskExplorer\\analysis\\screenpresso\\evidence\u0027) -WindowStyle Hidden\""}
+
+
+Name                   Length
+----                   ------
+launch-status.txt         996
+static-probe.exitcode       6
+static-probe.log          632
+static-probe.task.json   1012
+
+
+
+重新启动静态取证 10:00:30
+子进程号 55496
+顺序启动取证任务 10:02:05
+主程序取证进程号 33052
+捕获组件取证进程号 32420

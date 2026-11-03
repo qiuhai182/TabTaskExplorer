@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using Avalonia;
 using Avalonia.Controls;
@@ -26,9 +26,13 @@ public partial class ScreenColorPickerWindow : Window
 
     private readonly PixelSampler sampler;
 
+    private string lastLoggedHex = string.Empty;
+
     public ScreenColorPickerWindow(Bitmap previewImage, CaptureArea area, double screenScaling)
     {
         this.InitializeComponent();
+        // 取色浮层：工具窗口 + 归属主窗口，不进入任务栏与 Alt+Tab
+        WindowHostStyler.MakeAuxiliary(this);
         this.preview = previewImage;
         this.screenArea = area;
         this.scaling = screenScaling <= 0 ? 1.0 : screenScaling;
@@ -51,7 +55,16 @@ public partial class ScreenColorPickerWindow : Window
     /// <summary>显示取色窗口并等待用户操作。</summary>
     public void ShowPicker()
     {
-        this.Show();
+        // 有主窗口时以 Owner 方式显示，工具窗口不进 Alt+Tab；主窗口隐藏到托盘时退化为无 Owner 显示
+        MainWindow? owner = WindowRegistry.Primary;
+        if (owner != null && owner.IsVisible)
+        {
+            this.Show(owner);
+        }
+        else
+        {
+            this.Show();
+        }
         this.Activate();
         this.Focus();
         UiLogger.Log("屏幕取色", "取色窗口已显示：等待用户移动鼠标或选择颜色");
@@ -117,10 +130,14 @@ public partial class ScreenColorPickerWindow : Window
         this.InfoPanel.IsVisible = true;
         this.UpdatePanelPosition(viewPoint);
         this.HintPanel.IsVisible = true;
-        UiLogger.Log("屏幕取色", "鼠标移动取色：图像横坐标=" + (int)imagePoint.X
-            + " 图像纵坐标=" + (int)imagePoint.Y
-            + " 颜色值=" + hex
-            + " 红色=" + color.R + " 绿色=" + color.G + " 蓝色=" + color.B);
+        if (!string.Equals(this.lastLoggedHex, hex, StringComparison.Ordinal))
+        {
+            this.lastLoggedHex = hex;
+            UiLogger.Log("屏幕取色", "鼠标移动取色：图像横坐标=" + (int)imagePoint.X
+                + " 图像纵坐标=" + (int)imagePoint.Y
+                + " 颜色值=" + hex
+                + " 红色=" + color.R + " 绿色=" + color.G + " 蓝色=" + color.B);
+        }
     }
 
     /// <summary>把界面坐标换算为屏幕物理像素坐标。</summary>

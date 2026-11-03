@@ -81,6 +81,8 @@ public partial class SettingsWindow : Window
     public SettingsWindow()
     {
         this.InitializeComponent();
+        // 设置窗口是主窗口的模态附属窗口，不单独占用任务栏按钮
+        WindowHostStyler.MakeAuxiliary(this);
         UiLogger.AttachWindow(this);
         this.OpenRuleList.ItemsSource = this.openRules;
         this.ShortcutList.ItemsSource = this.shortcutRows;
@@ -453,6 +455,8 @@ public partial class SettingsWindow : Window
         this.CaptureSaveDirectoryBox.Text = settings.CaptureSaveDirectory;
         this.FfmpegPathBox.Text = settings.FfmpegPath;
         this.CaptureMicrophoneBox.Text = settings.CaptureMicrophoneDevice;
+        this.OcrTesseractPathBox.Text = settings.OcrTesseractPath;
+        this.OcrLanguageBox.Text = settings.OcrLanguage;
         int[] delays = new int[] { 0, 3, 5, 10 };
         this.CaptureDelayBox.SelectedIndex = FindIntegerIndex(delays, settings.CaptureDelaySeconds, 0);
         int[] frames = new int[] { 24, 30, 60 };
@@ -489,6 +493,10 @@ public partial class SettingsWindow : Window
             ? string.Empty : this.FfmpegPathBox.Text.Trim();
         settings.CaptureMicrophoneDevice = this.CaptureMicrophoneBox.Text == null
             ? string.Empty : this.CaptureMicrophoneBox.Text.Trim();
+        settings.OcrTesseractPath = this.OcrTesseractPathBox.Text == null
+            ? string.Empty : this.OcrTesseractPathBox.Text.Trim();
+        settings.OcrLanguage = this.OcrLanguageBox.Text == null
+            ? string.Empty : this.OcrLanguageBox.Text.Trim();
         int[] delays = new int[] { 0, 3, 5, 10 };
         int delayIndex = this.CaptureDelayBox.SelectedIndex;
         if (delayIndex < 0 || delayIndex >= delays.Length)
@@ -604,6 +612,46 @@ public partial class SettingsWindow : Window
     {
         this.FfmpegPathBox.Text = string.Empty;
         UiLogger.Log("设置窗口", "FFmpeg 路径已清空：将按 PATH 与程序目录自动查找");
+    }
+
+    /// <summary>浏览选择 Tesseract 可执行文件（Linux 与 macOS 必需，Windows 可选）。</summary>
+    private async void OnBrowseTesseractClick(object? sender, RoutedEventArgs e)
+    {
+        TopLevel? owner = TopLevel.GetTopLevel(this);
+        if (owner == null)
+        {
+            UiLogger.Log("设置窗口", "浏览 Tesseract：顶层窗口未就绪，结果=未打开选择框");
+            return;
+        }
+        FilePickerOpenOptions options = new FilePickerOpenOptions();
+        options.Title = "选择 Tesseract 可执行文件";
+        options.AllowMultiple = false;
+        List<FilePickerFileType> fileTypes = new List<FilePickerFileType>();
+        FilePickerFileType executableType = new FilePickerFileType("Tesseract 可执行文件");
+        executableType.Patterns = new List<string> { "tesseract.exe", "tesseract" };
+        fileTypes.Add(executableType);
+        options.FileTypeFilter = fileTypes;
+        IReadOnlyList<IStorageFile> files = await owner.StorageProvider.OpenFilePickerAsync(options);
+        if (files.Count == 0)
+        {
+            UiLogger.Log("设置窗口", "浏览 Tesseract：用户取消选择");
+            return;
+        }
+        string? localPath = files[0].TryGetLocalPath();
+        if (string.IsNullOrEmpty(localPath))
+        {
+            UiLogger.Log("设置窗口", "浏览 Tesseract：选择结果无法转换为本机路径");
+            return;
+        }
+        this.OcrTesseractPathBox.Text = localPath;
+        UiLogger.Log("设置窗口", "浏览 Tesseract：已选择文件=" + localPath);
+    }
+
+    /// <summary>清空 Tesseract 路径，恢复自动查找。</summary>
+    private void OnClearTesseractPathClick(object? sender, RoutedEventArgs e)
+    {
+        this.OcrTesseractPathBox.Text = string.Empty;
+        UiLogger.Log("设置窗口", "Tesseract 路径已清空：将按常见安装目录与系统路径自动查找");
     }
 
     /// <summary>提交打开方式设置：扩展名统一规整为小写带点形式，重复类型只保留一条规则。</summary>

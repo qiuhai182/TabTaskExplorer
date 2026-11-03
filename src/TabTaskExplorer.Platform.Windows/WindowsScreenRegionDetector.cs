@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -13,9 +13,11 @@ namespace TabTaskExplorer.Platform.Windows;
 public class WindowsScreenRegionDetector : IScreenRegionDetector
 {
     private const int MinimumCandidateSize = 32;
+    private const int MinimumChildCandidateSize = 8;
     private const int MaximumCandidates = 1500;
     private const int MaximumChildrenPerWindow = 200;
     private const int MaximumWindowTitleLength = 260;
+    private const int MaximumHitDepth = 12;
     private const int DwmExtendedFrameBounds = 9;
     private const int DwmCloaked = 14;
     private const int WindowExtendedStyleIndex = -20;
@@ -88,6 +90,9 @@ public class WindowsScreenRegionDetector : IScreenRegionDetector
     [DllImport("user32.dll")]
     private static extern bool GetCursorPos(out NativePoint point);
 
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(IntPtr windowHandle, out int processId);
+
     /// <inheritdoc />
     public bool IsSupported
     {
@@ -114,6 +119,11 @@ public class WindowsScreenRegionDetector : IScreenRegionDetector
         int zOrder = 0;
         EnumWindows(delegate(IntPtr windowHandle, IntPtr parameter)
         {
+            // 排除本程序自身的窗口（主窗口、标注编辑器、贴图窗口等），避免截图时把自身界面算进预选
+            if (IsOwnProcessWindow(windowHandle))
+            {
+                return true;
+            }
             if (!IsWindowVisible(windowHandle) || IsIconic(windowHandle))
             {
                 return true;
@@ -175,6 +185,173 @@ public class WindowsScreenRegionDetector : IScreenRegionDetector
         return false;
     }
 
+    /// <inheritdoc />
+    public IReadOnlyList<ScreenRegionCandidate> HitTest(int x, int y)
+    {
+        List<ScreenRegionCandidate> chain = new List<ScreenRegionCandidate>();
+        IntPtr topHandle = IntPtr.Zero;
+        CaptureArea topArea = CaptureArea.Empty;
+        int topZOrder = 0;
+        int zOrder = 0;
+        EnumWindows(delegate(IntPtr windowHandle, IntPtr parameter)
+        {
+            int currentZOrder = zOrder;
+            zOrder++;
+            if (!IsPickableTopLevelWindow(windowHandle))
+            {
+                return true;
+            }
+            CaptureArea area;
+            if (!TryReadWindowArea(windowHandle, true, out area))
+            {
+                return true;
+            }
+            if (!ContainsPoint(area, x, y)
+                || area.Width < MinimumCandidateSize || area.Height < MinimumCandidateSize)
+            {
+                return true;
+            }
+            topHandle = windowHandle;
+            topArea = area;
+            topZOrder = currentZOrder;
+            return false;
+        }, IntPtr.Zero);
+        if (topHandle == IntPtr.Zero || !topArea.IsValid)
+        {
+            return chain;
+        }
+        string className = ReadClassName(topHandle);
+        ScreenRegionCandidate window = new ScreenRegionCandidate();
+        window.Area = topArea;
+        window.Kind = ScreenRegionKind.Window;
+        window.Name = ReadWindowName(topHandle, className);
+        window.NativeHandle = topHandle.ToInt64();
+        window.Depth = 1;
+        window.ZOrder = topZOrder;
+        chain.Add(window);
+        AppendHitChildChain(chain, topHandle, topArea, topZOrder, x, y);
+        return chain;
+    }
+
+    /// <summary>
+    /// 收集鼠标下方同一条父子链上的子窗口：从最深的命中子窗口向上回溯到顶层窗口，
+    /// 只保留边界与上一层不同的层级，供框选窗口逐级切换。
+    /// </summary>
+    private static void AppendHitChildChain(List<ScreenRegionCandidate> chain, IntPtr rootHandle,
+        CaptureArea rootArea, int zOrder, int x, int y)
+    {
+        Dictionary<IntPtr, CaptureArea> hits = new Dictionary<IntPtr, CaptureArea>();
+        EnumChildWindows(rootHandle, delegate(IntPtr childHandle, IntPtr parameter)
+        {
+            if (!IsWindowVisible(childHandle) || IsOwnProcessWindow(childHandle))
+            {
+                return true;
+            }
+            CaptureArea area;
+            if (!TryReadWindowArea(childHandle, false, out area))
+            {
+                return true;
+            }
+            if (!ContainsPoint(area, x, y)
+                || area.Width < MinimumChildCandidateSize || area.Height < MinimumChildCandidateSize)
+            {
+                return true;
+            }
+            hits[childHandle] = area;
+            return true;
+        }, IntPtr.Zero);
+        if (hits.Count == 0)
+        {
+            return;
+        }
+        IntPtr deepestHandle = IntPtr.Zero;
+        int deepestDepth = -1;
+        long deepestArea = long.MaxValue;
+        foreach (KeyValuePair<IntPtr, CaptureArea> hit in hits)
+        {
+            int depth = ResolveDepth(hit.Key, rootHandle);
+            long areaValue = (long)hit.Value.Width * hit.Value.Height;
+            if (depth > deepestDepth || (depth == deepestDepth && areaValue < deepestArea))
+            {
+                deepestHandle = hit.Key;
+                deepestDepth = depth;
+                deepestArea = areaValue;
+            }
+        }
+        List<IntPtr> handleChain = new List<IntPtr>();
+        IntPtr current = deepestHandle;
+        int guard = 0;
+        while (current != IntPtr.Zero && current != rootHandle && guard < MaximumHitDepth)
+        {
+            if (hits.ContainsKey(current))
+            {
+                handleChain.Add(current);
+            }
+            IntPtr parent = GetParent(current);
+            if (parent == current)
+            {
+                break;
+            }
+            current = parent;
+            guard++;
+        }
+        handleChain.Reverse();
+        CaptureArea previousArea = rootArea;
+        IntPtr previousHandle = rootHandle;
+        foreach (IntPtr handle in handleChain)
+        {
+            CaptureArea area = hits[handle];
+            if (area.X == previousArea.X && area.Y == previousArea.Y
+                && area.Width == previousArea.Width && area.Height == previousArea.Height)
+            {
+                continue;
+            }
+            string className = ReadClassName(handle);
+            ScreenRegionCandidate child = new ScreenRegionCandidate();
+            child.Area = area;
+            child.Kind = ScreenRegionKind.ChildView;
+            child.Name = "子视图：" + ReadWindowName(handle, className);
+            child.NativeHandle = handle.ToInt64();
+            child.ParentHandle = previousHandle.ToInt64();
+            child.Depth = 1 + chain.Count;
+            child.ZOrder = zOrder;
+            chain.Add(child);
+            previousArea = area;
+            previousHandle = handle;
+        }
+    }
+
+    /// <summary>判断窗口是否可作为鼠标命中的顶层候选：可见、非最小化、非外壳、非穿透、非其他虚拟桌面。</summary>
+    private static bool IsPickableTopLevelWindow(IntPtr windowHandle)
+    {
+        if (IsOwnProcessWindow(windowHandle))
+        {
+            return false;
+        }
+        if (!IsWindowVisible(windowHandle) || IsIconic(windowHandle))
+        {
+            return false;
+        }
+        string className = ReadClassName(windowHandle);
+        if (IsShellWindowClass(className))
+        {
+            return false;
+        }
+        if (IsClickThroughWindow(windowHandle) || IsCloakedWindow(windowHandle))
+        {
+            return false;
+        }
+        return true;
+    }
+
+    /// <summary>判断窗口是否属于本进程，用于排除主窗口、标注编辑器、贴图窗口与框选遮罩自身。</summary>
+    private static bool IsOwnProcessWindow(IntPtr windowHandle)
+    {
+        int processId = 0;
+        GetWindowThreadProcessId(windowHandle, out processId);
+        return processId == Environment.ProcessId;
+    }
+
     /// <summary>枚举一个顶层窗口内的可见子窗口，作为鼠标可预选的子视图。</summary>
     private static void AppendChildViews(List<ScreenRegionCandidate> candidates, ScreenRegionCandidate parent,
         CaptureArea screenArea)
@@ -233,7 +410,7 @@ public class WindowsScreenRegionDetector : IScreenRegionDetector
     private static bool TryReadWindowArea(IntPtr windowHandle, bool preferExtendedFrame, out CaptureArea area)
     {
         area = CaptureArea.Empty;
-        NativeRect rectangle;
+        NativeRect rectangle = new NativeRect();
         bool readSuccess = false;
         if (preferExtendedFrame)
         {
@@ -335,6 +512,12 @@ public class WindowsScreenRegionDetector : IScreenRegionDetector
             }
         }
         return false;
+    }
+
+    /// <summary>判断物理像素点是否落在区域内部。</summary>
+    private static bool ContainsPoint(CaptureArea area, int x, int y)
+    {
+        return x >= area.X && x < area.X + area.Width && y >= area.Y && y < area.Y + area.Height;
     }
 
     /// <summary>判断区域是否与指定屏幕区域相交。</summary>

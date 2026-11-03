@@ -8,7 +8,12 @@
 /// </summary>
 public static class WebPageHtml
 {
-    /// <summary>页面内容；__PORT__ 由服务在响应时替换为实际端口。</summary>
+    /// <summary>
+    /// 内联页面回退副本：正式页面由 Assets/web 下的 index.html、app.css 与 core/views/panels/actions/ide/boot
+    /// 六个脚本模块提供（WebStaticAssets 读取并嵌入）。此常量仅在静态资源缺失时由 WebServiceHost 回退使用；
+    /// 修改前端行为时必须同步修改 Assets/web，待构建与浏览器验证通过后可整体删除本常量。
+    /// 端口占位符 __PORT__ 由服务在响应时替换为实际端口。
+    /// </summary>
     public const string Content = """
 <!DOCTYPE html>
 <html lang="zh-CN">
@@ -88,6 +93,15 @@ public static class WebPageHtml
   .connForm label.startupCheck { display:flex; align-items:center; gap:5px; }
   .connForm label.startupCheck input { width:auto; min-width:0; }
   body.dark .connForm input, body.dark .connForm select { background:#202020; border-color:#3C3C3C; }
+  .hostKeyMask { position:fixed; inset:0; background:rgba(0,0,0,.35); display:flex; align-items:center; justify-content:center; z-index:50; }
+  .hostKeyBox { width:560px; max-width:92vw; background:#fff; color:#1C1C1C; border-radius:8px; padding:16px; box-shadow:0 12px 40px rgba(0,0,0,.3); }
+  body.dark .hostKeyBox { background:#262626; color:#E8E8E8; }
+  .hostKeyTitle { font-size:15px; font-weight:600; margin-bottom:10px; }
+  .hostKeyLine { font-size:13px; margin:4px 0; }
+  .hostKeyPrint { font-family:Consolas,monospace; word-break:break-all; }
+  .hostKeyWarn { margin-top:8px; color:#B42318; font-size:12px; line-height:1.6; }
+  .hostKeyHint { margin-top:8px; opacity:.8; font-size:12px; }
+  .hostKeyBtns { margin-top:14px; display:flex; gap:8px; justify-content:flex-end; }
   .pop { position:absolute; top:100%; right:0; margin-top:3px; background:#fff; border:1px solid #DCDCDC; border-radius:6px; box-shadow:0 6px 18px rgba(0,0,0,.14); padding:4px; z-index:30; min-width:360px; max-height:320px; overflow:auto; }
   .pop .item { padding:5px 8px; border-radius:4px; cursor:pointer; font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .pop .item:hover { background:#F0F6FF; }
@@ -177,6 +191,12 @@ public static class WebPageHtml
 
   /* ===== 状态栏 ===== */
   .statusbar { border-top:1px solid #E9E9E9; padding:5px 12px; color:#808080; font-size:12px; flex:none; display:flex; gap:8px; }
+  /* 事件推送连接状态：绿=已连接，黄=重连中，红=离线 */
+  .connState { display:inline-flex; align-items:center; gap:5px; }
+  .connDot { width:8px; height:8px; border-radius:50%; background:#9AA0A6; flex:none; }
+  .connState.online .connDot { background:#3FA45B; }
+  .connState.reconnecting .connDot { background:#E8A317; }
+  .connState.offline .connDot { background:#D9534F; }
   .flash { color:#2F6FD0; }
 
   /* ===== 弹窗：只读编辑器 / 批量改名 / 右键菜单 / 诊断 ===== */
@@ -196,9 +216,28 @@ public static class WebPageHtml
   .encodeCtrl { display:flex; align-items:center; gap:8px; padding:8px 12px; border-bottom:1px solid #E9E9E9; flex-wrap:wrap; font-size:13px; }
   .encodeCtrl select { border:1px solid #D5D5D5; border-radius:3px; padding:4px 6px; font:13px 'Segoe UI','Microsoft YaHei'; outline:none; color:inherit; background:#fff; }
   .encodeCtrl label { display:flex; align-items:center; gap:4px; cursor:pointer; }
-  .ctx { position:fixed; background:#fff; border:1px solid #DCDCDC; border-radius:6px; box-shadow:0 6px 18px rgba(0,0,0,.16); padding:4px; z-index:40; min-width:170px; }
+  .ctx { position:fixed; background:#fff; border:1px solid #DCDCDC; border-radius:6px; box-shadow:0 6px 18px rgba(0,0,0,.16); padding:4px; z-index:40; min-width:190px; max-height:calc(100vh - 16px); overflow-y:auto; overflow-x:visible; }
   .ctx .item { padding:5px 12px; border-radius:4px; cursor:pointer; font-size:12px; white-space:nowrap; }
   .ctx .item:hover { background:#F0F6FF; }
+  /* 树形右键菜单：本程序命令固定分组 + 系统项 + 第三方扩展（多级子菜单、勾选、盾牌、快捷键） */
+  .ctxItem { display:flex; align-items:center; gap:6px; padding:5px 10px; border-radius:4px; cursor:default; font-size:12px; white-space:nowrap; position:relative; user-select:none; }
+  .ctxItem:hover, .ctxItem.focused { background:#F0F6FF; }
+  .ctxItem.disabled { color:#ADADAD; cursor:default; }
+  .ctxItem.disabled:hover { background:transparent; }
+  .ctxItem .ctxIco { width:16px; height:16px; flex:none; display:flex; align-items:center; justify-content:center; }
+  .ctxItem .ctxIco img { width:16px; height:16px; }
+  .ctxItem .ctxLabel { flex:1; overflow:hidden; text-overflow:ellipsis; }
+  .ctxItem .ctxLabel u { text-decoration:underline; }
+  .ctxItem .ctxAcc { color:#909090; font-size:11px; margin-left:16px; flex:none; }
+  .ctxItem .ctxArrow { width:12px; text-align:center; color:#808080; flex:none; }
+  .ctxItem .ctxCheck { width:14px; color:#2F6FD0; flex:none; }
+  .ctxItem .ctxShield { width:14px; color:#E8A317; flex:none; text-align:center; }
+  .ctxItem .ctxSub { position:fixed; min-width:190px; max-height:70vh; overflow-y:auto; background:#fff; border:1px solid #DCDCDC; border-radius:6px; box-shadow:0 6px 18px rgba(0,0,0,.16); padding:4px; display:none; z-index:41; }
+  .ctxSub { position:fixed; min-width:190px; max-height:70vh; overflow-y:auto; background:#fff; border:1px solid #DCDCDC; border-radius:6px; box-shadow:0 6px 18px rgba(0,0,0,.16); padding:4px; display:none; z-index:41; }
+  .ctxSub.openSub { display:block; }
+  .ctxSep { height:1px; background:#E9E9E9; margin:4px 6px; }
+  .ctxHead { padding:4px 10px 2px; font-size:11px; color:#909090; white-space:nowrap; }
+  .ctxHint { padding:5px 10px; font-size:11px; color:#B07800; white-space:normal; max-width:260px; }
   .diagBox { flex:none; padding:4px 12px; border-top:1px solid #E9E9E9; font-size:12px; }
   .diagBox summary { cursor:pointer; color:#808080; }
   pre.diag { background:#11151B; color:#9CDCFE; font:11px Consolas,monospace; padding:8px; border-radius:6px; max-height:240px; overflow:auto; white-space:pre-wrap; margin-top:6px; }
@@ -260,6 +299,11 @@ public static class WebPageHtml
   body.dark .bmItem:hover, body.dark .btn:hover, body.dark .tbtn:hover, body.dark .seg:hover, body.dark .navitem:hover, body.dark .tile:hover, body.dark .navsec.clickable:hover { background:#2E2E2E; }
   body.dark .menu, body.dark .pop, body.dark .ctx { background:#242424; border-color:#3C3C3C; }
   body.dark .menu .item:hover, body.dark .pop .item:hover, body.dark .ctx .item:hover { background:#2E2E2E; }
+  body.dark .ctxItem:hover, body.dark .ctxItem.focused { background:#2E2E2E; }
+  body.dark .ctxSub { background:#242424; border-color:#3C3C3C; box-shadow:0 6px 18px rgba(0,0,0,.5); }
+  body.dark .ctxItem.disabled { color:#5A5A5A; }
+  body.dark .ctxSep { background:#3C3C3C; }
+  tr.row.dragTarget { outline:2px solid #4A8FD0; outline-offset:-1px; }
   body.dark .menu .sep { background:#3C3C3C; }
   body.dark .sidebar, body.dark .infoPane { border-color:#323232; }
   body.dark .navitem.selected, body.dark tr.row.checked, body.dark .tile.checked { background:#1F3B57; }
@@ -397,6 +441,7 @@ public static class WebPageHtml
   <div class="statusbar" id="statusbar">
     <span id="statusLeft">准备就绪</span>
     <span class="spacer"></span>
+    <span class="connState" id="connState" title="事件推送连接状态"><span class="connDot"></span><span id="connStateText">连接中</span></span>
     <span id="statusRight"></span>
   </div>
 
@@ -671,6 +716,7 @@ function fileIcon(category, accent, size) {
 
 let workspaceId = '';
 let permissions = { canModify: false, canCreateDelete: false, profile: '' };
+let lastNotice = '';
 let state = null;
 let currentRows = [];
 let currentTab = null;
@@ -686,10 +732,19 @@ let searchTimer = null;
 let lastContentSignature = '';
 let lastMessage = '';
 let lastMessageTime = 0;
-// 表头列宽拖动：拖出的列宽按表格键保存，1.5 秒轮询重绘后按此恢复（仅本次页面打开期间有效，不持久化）
+// 表头列宽拖动：拖出的列宽按表格键保存，事件推送触发的重绘后按此恢复（仅本次页面打开期间有效，不持久化）
 let tableColWidths = {};
 let colDrag = null;
 let suppressClickUntil = 0;
+
+// 会话与安全令牌：Basic 仅用于首次认证，之后所有请求携带 Bearer 会话令牌；写操作再携带 CSRF 令牌
+const rawFetch = window.fetch.bind(window);
+let sessionToken = '';
+let csrfToken = '';
+// 事件推送：SSE 连接、当前作用域与重连计数
+let eventSource = null;
+let eventScope = '';
+let eventRetryCount = 0;
 
 function esc(value) {
   const div = document.createElement('div');
@@ -708,6 +763,49 @@ function url(path, params) {
   return suffix ? path + '?' + suffix : path;
 }
 
+// ======== 会话与安全令牌 ========
+
+// 首次认证沿用浏览器已缓存的 Basic 凭据；之后由服务端签发会话令牌与 CSRF 令牌。
+// 令牌只保存在页面内存中，不写入 localStorage，页面刷新后重新向服务端申请。
+async function loadSession(force) {
+  if (!force && sessionToken && csrfToken) { return true; }
+  try {
+    const response = await rawFetch('/api/session', { cache: 'no-store' });
+    if (!response.ok) { return false; }
+    const data = await response.json();
+    sessionToken = data.sessionToken || '';
+    csrfToken = data.csrfToken || '';
+    return sessionToken !== '' && csrfToken !== '';
+  } catch (error) {
+    return false;
+  }
+}
+
+function sendApi(path, options) {
+  const headers = new Headers((options && options.headers) || {});
+  if (sessionToken) { headers.set('Authorization', 'Bearer ' + sessionToken); }
+  if (options && options.method && options.method !== 'GET' && csrfToken) {
+    headers.set('X-CSRF-Token', csrfToken);
+  }
+  const init = Object.assign({}, options || {});
+  init.headers = headers;
+  if (!init.cache) { init.cache = 'no-store'; }
+  return rawFetch(path, init);
+}
+
+// 统一请求入口：自动补会话令牌与 CSRF 令牌；会话过期时重新申请一次再重试。
+async function apiFetch(path, options) {
+  await loadSession(false);
+  const response = await sendApi(path, options);
+  if (response.status === 401) {
+    sessionToken = '';
+    csrfToken = '';
+    const renewed = await loadSession(true);
+    if (renewed) { return sendApi(path, options); }
+  }
+  return response;
+}
+
 function flash(text) {
   lastMessage = text;
   lastMessageTime = Date.now();
@@ -716,7 +814,7 @@ function flash(text) {
 
 async function loadPermissions() {
   try {
-    const response = await fetch('/api/permissions');
+    const response = await apiFetch('/api/permissions');
     permissions = await response.json();
     applyPermissions();
   } catch (error) { /* 权限信息不可用时按最小权限处理 */ }
@@ -765,7 +863,7 @@ function toggleRecent() {
 
 function toggleTheme() {
   const next = (state && state.theme === 'Light') ? 'Dark' : 'Light';
-  fetch(url('/api/theme', { t: next }), { method: 'POST' }).then(refresh).catch(refresh);
+  apiFetch(url('/api/theme', { t: next }), { method: 'POST' }).then(refresh).catch(refresh);
 }
 
 // 按当前模式刷新标题栏按钮文字与提示：跟随桌面=镜像主界面，独立=独立新页面
@@ -779,14 +877,16 @@ async function toggleMode() {
   if (workspaceId) {
     workspaceId = '';
     updateModeButton(true);
+    connectEvents();
     await refresh();
     return;
   }
   try {
-    const response = await fetch('/api/mode?m=independent', { method: 'POST' });
+    const response = await apiFetch('/api/mode?m=independent', { method: 'POST' });
     const data = await response.json();
     workspaceId = data.workspaceId || '';
     updateModeButton(false);
+    connectEvents();
   } catch (error) { /* 创建失败保持镜像主界面 */ }
   await refresh();
 }
@@ -794,7 +894,7 @@ async function toggleMode() {
 // 首次加载默认进入独立新页面；失败时回落镜像主界面（仅首载执行一次，手动切回后不再自动切回）
 async function initMode() {
   try {
-    const response = await fetch('/api/mode?m=independent', { method: 'POST' });
+    const response = await apiFetch('/api/mode?m=independent', { method: 'POST' });
     const data = await response.json();
     if (data.workspaceId) {
       workspaceId = data.workspaceId;
@@ -807,18 +907,20 @@ async function initMode() {
 
 async function refresh() {
   try {
-    const response = await fetch(url('/api/state'));
+    const response = await apiFetch(url('/api/state'));
     if (response.status === 410) {
       workspaceId = '';
       updateModeButton(true);
+      connectEvents();
       return;
     }
     if (response.status === 403 && !workspaceId) {
       // 权限方案限定了可访问目录，镜像主界面不可用：自动切到独立新页面，由路径白名单限定浏览范围
-      const modeResponse = await fetch('/api/mode?m=independent', { method: 'POST' });
+      const modeResponse = await apiFetch('/api/mode?m=independent', { method: 'POST' });
       const modeData = await modeResponse.json();
       workspaceId = modeData.workspaceId || '';
       updateModeButton(false);
+      connectEvents();
       flash('当前权限方案限定了可访问目录，已自动切换到独立新页面');
       return;
     }
@@ -828,14 +930,72 @@ async function refresh() {
     flash('网页端服务连接中断，正在重试……');
   }
   try {
-    const diagResponse = await fetch('/api/diagnostics');
+    const diagResponse = await apiFetch('/api/diagnostics');
     const items = await diagResponse.json();
     document.getElementById('diag').textContent = items.length ? items.join('\n\n────────\n\n') : '（暂无）';
   } catch (error) { /* 诊断拉取失败忽略 */ }
 }
 
+// ======== 事件推送（SSE） ========
+
+function setConnState(kind, text) {
+  const element = document.getElementById('connState');
+  if (!element) { return; }
+  element.className = 'connState ' + kind;
+  const label = document.getElementById('connStateText');
+  if (label) { label.textContent = text; }
+}
+
+// 事件推送地址：EventSource 不能设置请求头，令牌通过查询串传递；服务端仅在 /api/events 接受该方式。
+function connectEvents() {
+  if (eventSource) { eventSource.close(); eventSource = null; }
+  if (!sessionToken) { setConnState('offline', '未认证'); return; }
+  eventScope = workspaceId;
+  const query = new URLSearchParams();
+  if (workspaceId) { query.set('w', workspaceId); }
+  query.set('token', sessionToken);
+  const source = new EventSource('/api/events?' + query.toString());
+  eventSource = source;
+  setConnState('reconnecting', '连接中');
+  source.addEventListener('open', function () {
+    eventRetryCount = 0;
+    setConnState('online', '已连接');
+  });
+  source.addEventListener('snapshot', function (event) {
+    applyEventState(event.data, true);
+  });
+  source.addEventListener('state', function (event) {
+    applyEventState(event.data, false);
+  });
+  source.addEventListener('error', function () {
+    if (!eventSource || eventSource !== source) { return; }
+    setConnState('reconnecting', '重连中');
+    eventRetryCount++;
+    // 连续失败后重新申请会话令牌再重建连接；EventSource 自身仍会按浏览器策略自动重试
+    if (eventRetryCount >= 5) {
+      eventRetryCount = 0;
+      loadSession(true).then(function (renewed) {
+        if (renewed) { setTimeout(connectEvents, 1500); }
+      });
+    }
+  });
+}
+
+// 应用事件推送的状态快照；只接收当前页面作用域的数据，避免旧工作区的事件覆盖新页面。
+function applyEventState(text, isSnapshot) {
+  let payload = null;
+  try { payload = JSON.parse(text); } catch (error) { return; }
+  if (!payload || !payload.state) { return; }
+  if (payload.scope === 'desktop' && workspaceId) { return; }
+  if (payload.scope !== 'desktop' && payload.scope !== workspaceId) { return; }
+  state = payload.state;
+  state.followDesktop = payload.scope === 'desktop';
+  render();
+  if (isSnapshot) { setConnState('online', '已连接'); }
+}
+
 async function post(path, params) {
-  try { await fetch(url(path, params), { method: 'POST' }); } catch (error) { /* 网络失败由下一次轮询反映 */ }
+  try { await apiFetch(url(path, params), { method: 'POST' }); } catch (error) { /* 网络失败由下一次轮询反映 */ }
   await refresh();
 }
 
@@ -847,7 +1007,7 @@ async function doAction(action, argument) {
     if (argument.length > 600) { body = argument; } else { params.arg = argument; }
   }
   try {
-    const response = await fetch(url('/api/action', params), { method: 'POST', body: body });
+    const response = await apiFetch(url('/api/action', params), { method: 'POST', body: body });
     const text = await response.text();
     if (!response.ok) {
       flash(text || ('操作失败，状态码=' + response.status));
@@ -888,6 +1048,8 @@ function diskNav(target) { return post('/api/disk/nav', { p: target || '' }); }
 
 function render() {
   if (!state) { return; }
+  if (state.notice && state.notice !== lastNotice) { flash(state.notice); lastNotice = state.notice; }
+  if (!state.notice) { lastNotice = ''; }
   document.body.className = (state.theme === 'Light') ? '' : 'dark';
   updateModeButton(state.followDesktop);
   renderTabs();
@@ -922,6 +1084,45 @@ function render() {
   renderToolbarState();
   renderInfoPane();
   renderStatus();
+  renderHostKeyDialog(state.pendingHostKey);
+}
+
+function renderHostKeyDialog(pending) {
+  const existing = document.getElementById('hostKeyDialog');
+  if (!pending) {
+    if (existing) { existing.remove(); }
+    return;
+  }
+  if (existing) { return; }
+  const mismatch = pending.errorCode === 'HOST_KEY_MISMATCH';
+  let body = '<div class="hostKeyBox">'
+    + '<div class="hostKeyTitle">' + (mismatch ? '主机密钥不匹配（连接已阻断）' : '确认主机指纹') + '</div>'
+    + '<div class="hostKeyLine">主机：' + esc(pending.host) + ':' + pending.port + '</div>'
+    + '<div class="hostKeyLine">算法：' + esc(pending.keyType) + '</div>'
+    + '<div class="hostKeyLine">SHA256：<span class="hostKeyPrint">' + esc(pending.fingerprintSha256) + '</span></div>';
+  if (mismatch) {
+    body += '<div class="hostKeyWarn">已信任指纹：' + esc(pending.expectedFingerprintSha256) + '</div>'
+      + '<div class="hostKeyWarn">当前指纹与记录不一致，可能是服务器更换密钥，也可能是中间人攻击。删除旧记录后重新连接仍需再次确认新指纹。</div>';
+  } else {
+    body += '<div class="hostKeyHint">请与服务器管理员核对指纹。信任后会写入 known_hosts，下次连接自动校验。</div>';
+  }
+  body += '<div class="hostKeyBtns">';
+  if (mismatch) {
+    body += '<span class="btn" onclick="hostKeyAction(\'connhostkeyforget\')">删除旧记录并重新连接</span>';
+  } else {
+    body += '<span class="btn" onclick="hostKeyAction(\'connhostkeytrust\')">信任并保存</span>';
+  }
+  body += '<span class="btn" onclick="hostKeyAction(\'connhostkeycancel\')">取消</span>'
+    + '</div></div>';
+  const dialog = document.createElement('div');
+  dialog.id = 'hostKeyDialog';
+  dialog.className = 'hostKeyMask';
+  dialog.innerHTML = body;
+  document.body.appendChild(dialog);
+}
+
+function hostKeyAction(action) {
+  doAction(action);
 }
 
 function renderTabs() {
@@ -1220,7 +1421,9 @@ function renderDiskTable(tab) {
     // 磁盘视图：文件夹单击原地展开或收起（不进入下一级），文件不响应（与桌面端单击行为一致）
     const target = JSON.stringify(row.fullPath).replace(/"/g, '&quot;');
     const indent = (row.level || 0) * 16;
-    html += '<tr class="row" data-i="' + rowIndex + '"><td class="name" style="padding-left:' + indent + 'px">';
+    html += '<tr class="row" data-i="' + rowIndex + '" draggable="true"'
+      + ' ondragstart="onDiskDragStart(event)" ondragover="onDiskDragOver(event)"'
+      + ' ondrop="onDiskDrop(event)" ondragend="onDiskDragEnd(event)"><td class="name" style="padding-left:' + indent + 'px">';
     if (row.isDirectory) {
       // 小三角与文件名点击效果完全一致：同一 diskNav 处理，点击即展开或折叠
       html += '<span class="diskArrow" onclick="diskNav(' + target + ')">'
@@ -1239,6 +1442,58 @@ function renderDiskTable(tab) {
   }
   html += '</table>';
   return html;
+}
+
+// ===== 磁盘视图拖拽（浏览器内移动或复制，绝不删除源文件） =====
+
+let diskDragPaths = [];
+
+function onDiskDragStart(event) {
+  if (!currentTab || currentTab.tabType !== 'disk') { event.preventDefault(); return; }
+  const element = event.target.closest('tr[data-i]');
+  const row = element ? currentRows[Number(element.getAttribute('data-i'))] : null;
+  if (!row || row.type === '驱动器') { event.preventDefault(); return; }
+  diskDragPaths = [row.fullPath];
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = 'copyMove';
+    event.dataTransfer.setData('text/plain', row.fullPath);
+    event.dataTransfer.setData('application/x-tabtask-paths', JSON.stringify(diskDragPaths));
+  }
+  flash('拖拽中：' + row.name + '（按住 Ctrl 为复制，直接拖为移动）');
+}
+
+function onDiskDragOver(event) {
+  if (!diskDragPaths.length) { return; }
+  const element = event.target.closest('tr[data-i]');
+  const row = element ? currentRows[Number(element.getAttribute('data-i'))] : null;
+  if (!row || !row.isDirectory) {
+    if (event.dataTransfer) { event.dataTransfer.dropEffect = 'none'; }
+    return;
+  }
+  event.preventDefault();
+  if (event.dataTransfer) {
+    event.dataTransfer.dropEffect = (event.ctrlKey || event.altKey) ? 'copy' : 'move';
+  }
+  if (element) { element.classList.add('dragTarget'); }
+}
+
+function onDiskDragEnd(event) {
+  diskDragPaths = [];
+  const rows = document.querySelectorAll('#content tr.row.dragTarget');
+  for (const row of rows) { row.classList.remove('dragTarget'); }
+}
+
+function onDiskDrop(event) {
+  if (!diskDragPaths.length) { return; }
+  const element = event.target.closest('tr[data-i]');
+  const row = element ? currentRows[Number(element.getAttribute('data-i'))] : null;
+  if (!row || !row.isDirectory) { return; }
+  event.preventDefault();
+  const isCopy = event.ctrlKey || event.altKey;
+  const payload = [row.fullPath].concat(diskDragPaths).join('\n');
+  diskDragPaths = [];
+  if (element) { element.classList.remove('dragTarget'); }
+  doAction(isCopy ? 'diskcopyto' : 'diskmoveto', payload);
 }
 
 // ===== 目录 / 文件比对（与桌面 ComparePanel 同构：路径栏 + 选项 + 对齐结果表） =====
@@ -2189,61 +2444,560 @@ function suppressResizeClick(event) {
 }
 
 function onContentContextMenu(event) {
+  if (!currentTab) { return; }
+  if (currentTab.tabType !== 'file' && currentTab.tabType !== 'search' && currentTab.tabType !== 'disk') { return; }
   const rowElement = event.target.closest('[data-i]');
-  if (!rowElement || !currentRows.length) { return; }
-  event.preventDefault();
-  const index = Number(rowElement.getAttribute('data-i'));
-  const row = currentRows[index];
-  if (!row) { return; }
-  if ((currentTab.tabType === 'file' || currentTab.tabType === 'search') && !checked.has(row.fullPath)) {
+  const row = (rowElement && currentRows.length) ? (currentRows[Number(rowElement.getAttribute('data-i'))] || null) : null;
+  const isFileTab = currentTab.tabType === 'file' || currentTab.tabType === 'search';
+  if (isFileTab && row && !checked.has(row.fullPath)) {
     checked = new Set([row.fullPath]);
-    focusIndex = index;
-    anchorIndex = index;
+    focusIndex = Number(rowElement.getAttribute('data-i'));
+    anchorIndex = focusIndex;
     refreshSelectionDom();
     sendCheck();
   }
-  showContextMenu(event, row);
+  event.preventDefault();
+  showContextMenu(event, row, event.shiftKey);
 }
 
-function showContextMenu(event, row) {
-  const ctx = document.getElementById('ctx');
-  const canEdit = permissions.canCreateDelete;
-  const canCompare = currentTab && currentTab.tabType === 'file' && checked.size === 2;
-  ctx.innerHTML = '<div class="item" data-ctx="open">打开</div>'
-    + '<div class="item" data-ctx="newtab">在新标签打开</div>'
-    + (canCompare ? '<div class="item" data-ctx="compare">比较所选两项</div>' : '')
-    + '<div class="item" data-ctx="copy">复制</div>'
-    + (canEdit ? '<div class="item" data-ctx="cut">剪切</div>' : '')
-    + (canEdit && row.isDirectory ? '<div class="item" data-ctx="pasteto">粘贴到该文件夹</div>' : '')
-    + (canEdit ? '<div class="item" data-ctx="rename">重命名</div>' : '')
-    + (permissions.canModify ? '<div class="item" data-ctx="chmod">修改权限</div>' : '')
-    + (canEdit ? '<div class="item" data-ctx="delete">删除</div>' : '');
+function showContextMenu(event, row, shiftKey) {
+  const tab = currentTab;
+  const isDisk = tab.tabType === 'disk';
+  const background = !row;
+  const hasDirectory = !!(tab.currentPath || '').length;
+  let targetPaths = [];
+  if (background) {
+    if (hasDirectory) { targetPaths = [tab.currentPath]; }
+  } else if (isDisk) {
+    targetPaths = [row.fullPath];
+  } else {
+    targetPaths = Array.from(checked).filter(Boolean);
+    if (targetPaths.indexOf(row.fullPath) < 0) { targetPaths = [row.fullPath]; }
+  }
+  ctxMenuToken++;
+  const token = ctxMenuToken;
+  ctxMenuState = {
+    row: row,
+    background: background,
+    tabType: tab.tabType,
+    targetPaths: targetPaths,
+    folder: hasDirectory ? tab.currentPath : '',
+    shift: !!shiftKey,
+    token: token,
+    focus: null
+  };
+  ctx.innerHTML = '';
   ctx.classList.remove('hidden');
-  const left = Math.min(event.clientX, window.innerWidth - 190);
-  const top = Math.min(event.clientY, window.innerHeight - 200);
+  const oldSubmenus = document.querySelectorAll('.ctxSub');
+  for (const submenu of oldSubmenus) {
+    if (submenu.parentElement === document.body) { submenu.remove(); }
+  }
+  const ownHead = document.createElement('div');
+  ownHead.className = 'ctxHead';
+  ownHead.textContent = '本程序命令';
+  ctx.appendChild(ownHead);
+  appendContextItems(ctx, buildOwnContextItems(tab, row, background, targetPaths, !!shiftKey));
+  if (targetPaths.length === 0) {
+    const hint = document.createElement('div');
+    hint.className = 'ctxHint';
+    hint.textContent = '当前视图没有具体目录，系统项不可用；请打开某个磁盘或文件夹后再使用系统菜单';
+    ctx.appendChild(hint);
+    positionRootContextMenu(ctx, event.clientX, event.clientY, false);
+    focusFirstContextItem();
+    return;
+  }
+  const divider = document.createElement('div');
+  divider.className = 'ctxSep';
+  ctx.appendChild(divider);
+  const systemHead = document.createElement('div');
+  systemHead.className = 'ctxHead';
+  systemHead.textContent = '系统与扩展菜单';
+  ctx.appendChild(systemHead);
+  const host = document.createElement('div');
+  host.id = 'ctxSystemHost';
+  host.innerHTML = '<div class="ctxHint">正在加载系统菜单与第三方扩展……</div>';
+  ctx.appendChild(host);
+  positionRootContextMenu(ctx, event.clientX, event.clientY, false);
+  focusFirstContextItem();
+  loadSystemContextMenu(host, token, targetPaths, background);
+}
+
+let ctxMenuState = null;
+let ctxMenuToken = 0;
+
+function loadSystemContextMenu(host, token, targetPaths, background) {
+  apiFetch(url('/api/ctxmenu'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ paths: targetPaths, background: background })
+  }).then(async function (response) {
+    const text = await response.text();
+    if (!ctxMenuState || ctxMenuState.token !== token) { return; }
+    if (!response.ok) {
+      host.innerHTML = '<div class="ctxHint">系统项不可用：' + esc(text || ('状态码 ' + response.status)) + '</div>';
+      return;
+    }
+    let result = null;
+    try { result = JSON.parse(text); } catch (error) { result = null; }
+    if (!result) {
+      host.innerHTML = '<div class="ctxHint">系统项不可用：返回内容无法解析</div>';
+      return;
+    }
+    host.innerHTML = '';
+    if (!result.systemMenuAvailable) {
+      host.innerHTML = '<div class="ctxHint">' + esc(result.systemMenuNote || '系统项不可用') + '</div>';
+      return;
+    }
+    const items = result.items || [];
+    if (items.length === 0) {
+      host.innerHTML = '<div class="ctxHint">系统外壳没有返回任何菜单项</div>';
+      return;
+    }
+    appendContextItems(host, items);
+    const ctx = document.getElementById('ctx');
+    if (ctx) { positionRootContextMenu(ctx, ctx.__ctxX || 0, ctx.__ctxY || 0, true); }
+  }).catch(function (error) {
+    if (!ctxMenuState || ctxMenuState.token !== token) { return; }
+    host.innerHTML = '<div class="ctxHint">系统项不可用：' + esc('请求失败 ' + error) + '</div>';
+  });
+}
+
+function buildOwnContextItems(tab, row, background, targetPaths, shiftKey) {
+  const items = [];
+  const canEdit = permissions.canCreateDelete;
+  const isDisk = tab.tabType === 'disk';
+  const suffix = targetPaths.length > 1 ? '（' + targetPaths.length + ' 项）' : '';
+  if (background) {
+    items.push({ title: '刷新', action: 'refresh', enabled: true });
+    items.push({ title: '返回上一级', action: 'up', enabled: !!tab.currentPath });
+    items.push({ sep: true });
+    items.push({ title: '粘贴', action: 'pastebg', enabled: canEdit && !!tab.currentPath });
+    items.push({ title: '新建文件夹…', action: 'newfolder', enabled: canEdit && !!tab.currentPath });
+    if (isDisk) {
+      items.push({ title: '新建文件…', action: 'newfile', enabled: canEdit && !!tab.currentPath });
+    }
+    items.push({ sep: true });
+    items.push({
+      title: '排序', enabled: true, children: [
+        { title: '按名称排序', action: 'sort', arg: 'Name', enabled: true },
+        { title: '按修改日期排序', action: 'sort', arg: 'Modified', enabled: !isDisk },
+        { title: '按类型排序', action: 'sort', arg: 'Type', enabled: true },
+        { title: '按大小排序', action: 'sort', arg: 'Size', enabled: true }
+      ]
+    });
+    return items;
+  }
+  items.push({ title: '打开', action: 'open', enabled: true });
+  items.push({ title: '在新标签打开', action: 'newtab', enabled: targetPaths.length === 1 });
+  items.push({ sep: true });
+  items.push({ title: '复制' + suffix, action: 'copy', enabled: targetPaths.length > 0 && !(isDisk && row && row.type === '驱动器') });
+  items.push({ title: '剪切' + suffix, action: 'cut', enabled: canEdit && targetPaths.length > 0 && !(isDisk && row && row.type === '驱动器') });
+  items.push({ title: '复制完整路径', action: 'copypath', enabled: targetPaths.length > 0 });
+  if (targetPaths.length === 1 && !(isDisk && row && row.type === '驱动器')) {
+    items.push({ title: '重命名…', action: 'rename', enabled: canEdit });
+  }
+  items.push({ sep: true });
+  items.push({ title: shiftKey ? '永久删除' + suffix : '删除' + suffix, action: 'delete', enabled: canEdit && targetPaths.length > 0 && !(isDisk && row && row.type === '驱动器') });
+  items.push({ title: '在资源管理器打开', action: 'openinmanager', enabled: targetPaths.length === 1 });
+  if (targetPaths.length === 1 && row && row.isDirectory && !(isDisk && row.type === '驱动器')) {
+    items.push({ title: '粘贴到该文件夹', action: 'pasteto', enabled: canEdit });
+    if (isDisk) {
+      items.push({ title: '新建文件夹…', action: 'newfolder', enabled: canEdit });
+    }
+  }
+  if (!isDisk && targetPaths.length === 2) {
+    items.push({ title: '比较所选两项', action: 'compare', enabled: true });
+  }
+  return items;
+}
+
+function appendContextItems(container, items) {
+  for (const item of items) {
+    container.appendChild(buildContextItemElement(item));
+  }
+}
+
+function buildContextItemElement(item) {
+  if (item.sep) {
+    const separator = document.createElement('div');
+    separator.className = 'ctxSep';
+    return separator;
+  }
+  const element = document.createElement('div');
+  element.className = 'ctxItem';
+  if (item.enabled === false) { element.classList.add('disabled'); }
+  if (item.children && item.children.length) { element.classList.add('hasSub'); }
+  element.setAttribute('tabindex', '-1');
+  const check = document.createElement('span');
+  check.className = 'ctxCheck';
+  check.textContent = item.checked ? (item.radio ? '●' : '✓') : '';
+  element.appendChild(check);
+  const icon = document.createElement('span');
+  icon.className = 'ctxIco';
+  if (item.icon) {
+    const image = document.createElement('img');
+    image.src = item.icon;
+    image.alt = '';
+    icon.appendChild(image);
+  } else if (!item.source || item.source === 'own') {
+    icon.textContent = '·';
+    icon.style.color = '#B0B0B0';
+  }
+  element.appendChild(icon);
+  const label = document.createElement('span');
+  label.className = 'ctxLabel';
+  appendAccessKeyLabel(label, item.title || '', item.accessKey || '');
+  element.appendChild(label);
+  if (item.shortcut) {
+    const shortcut = document.createElement('span');
+    shortcut.className = 'ctxAcc';
+    shortcut.textContent = item.shortcut;
+    element.appendChild(shortcut);
+  }
+  if (item.shield) {
+    const shield = document.createElement('span');
+    shield.className = 'ctxShield';
+    shield.textContent = '盾';
+    shield.title = '需要管理员权限';
+    element.appendChild(shield);
+  }
+  if (item.isDefault) { element.style.fontWeight = 'bold'; }
+  if (item.children && item.children.length) {
+    const arrow = document.createElement('span');
+    arrow.className = 'ctxArrow';
+    arrow.textContent = '›';
+    element.appendChild(arrow);
+    const submenu = document.createElement('div');
+    submenu.className = 'ctxSub';
+    submenu.__parentItem = element;
+    appendContextItems(submenu, item.children);
+    element.__submenu = submenu;
+    element.addEventListener('mouseenter', function () {
+      element.__hoverTimer = setTimeout(function () { openContextSubmenu(element); }, 150);
+    });
+    element.addEventListener('mouseleave', function () {
+      if (element.__hoverTimer) { clearTimeout(element.__hoverTimer); element.__hoverTimer = null; }
+      element.__leaveTimer = setTimeout(function () {
+        element.classList.remove('open');
+        if (element.__submenu) { element.__submenu.classList.remove('openSub'); }
+      }, 200);
+    });
+    submenu.addEventListener('mouseenter', function () {
+      if (element.__leaveTimer) { clearTimeout(element.__leaveTimer); element.__leaveTimer = null; }
+    });
+    element.addEventListener('click', function (event) {
+      if (element.classList.contains('disabled')) { return; }
+      event.stopPropagation();
+      if (element.classList.contains('open')) {
+        element.classList.remove('open');
+        submenu.classList.remove('openSub');
+      } else {
+        openContextSubmenu(element);
+      }
+    });
+  } else {
+    element.addEventListener('click', function (event) {
+      event.stopPropagation();
+      if (element.classList.contains('disabled')) { return; }
+      activateContextItem(item);
+    });
+  }
+  element.__item = item;
+  return element;
+}
+
+function appendAccessKeyLabel(label, title, accessKey) {
+  if (!accessKey) { label.textContent = title; return; }
+  const index = title.indexOf(accessKey);
+  if (index < 0) { label.textContent = title; return; }
+  label.textContent = title.substring(0, index);
+  const underlined = document.createElement('u');
+  underlined.textContent = title.substring(index, index + 1);
+  label.appendChild(underlined);
+  label.appendChild(document.createTextNode(title.substring(index + 1)));
+}
+
+function openContextSubmenu(element) {
+  const siblings = element.parentElement ? element.parentElement.children : [];
+  for (const sibling of siblings) {
+    if (sibling !== element && sibling.classList && sibling.classList.contains('ctxItem')) {
+      sibling.classList.remove('open');
+      if (sibling.__submenu) { sibling.__submenu.classList.remove('openSub'); }
+    }
+  }
+  element.classList.add('open');
+  const submenu = element.__submenu;
+  if (!submenu) { return; }
+  if (submenu.parentElement !== document.body) { document.body.appendChild(submenu); }
+  submenu.classList.add('openSub');
+  const itemRect = element.getBoundingClientRect();
+  submenu.style.left = '0px';
+  submenu.style.top = '0px';
+  const rect = submenu.getBoundingClientRect();
+  let left = itemRect.right - 2;
+  let top = itemRect.top - 5;
+  if (left + rect.width > window.innerWidth - 4) { left = itemRect.left - rect.width + 2; }
+  if (left < 4) { left = 4; }
+  if (top + rect.height > window.innerHeight - 4) { top = Math.max(4, window.innerHeight - rect.height - 4); }
+  submenu.style.left = left + 'px';
+  submenu.style.top = top + 'px';
+}
+
+function positionRootContextMenu(ctx, x, y, keepPosition) {
+  ctx.__ctxX = x;
+  ctx.__ctxY = y;
+  const width = ctx.offsetWidth || 220;
+  const height = ctx.offsetHeight || 220;
+  let left = x;
+  let top = y;
+  if (left + width > window.innerWidth - 6) { left = Math.max(4, window.innerWidth - width - 6); }
+  if (top + height > window.innerHeight - 6) { top = Math.max(4, window.innerHeight - height - 6); }
+  if (keepPosition === true) {
+    const currentLeft = parseFloat(ctx.style.left);
+    const currentTop = parseFloat(ctx.style.top);
+    left = Math.min(isNaN(currentLeft) ? left : currentLeft, Math.max(4, window.innerWidth - width - 6));
+    top = Math.min(isNaN(currentTop) ? top : currentTop, Math.max(4, window.innerHeight - height - 6));
+  }
   ctx.style.left = left + 'px';
   ctx.style.top = top + 'px';
-  ctx.onclick = function (menuEvent) {
-    const item = menuEvent.target.closest('[data-ctx]');
-    if (!item) { return; }
-    const kind = item.getAttribute('data-ctx');
-    ctx.classList.add('hidden');
-    if (kind === 'open') { openTarget(row); }
-    else if (kind === 'newtab') {
-      if (row.isDirectory) { post('/api/tabs/new', { p: row.fullPath }); } else { openFile(row.fullPath); }
+}
+
+function activateContextItem(item) {
+  if (!ctxMenuState) { return; }
+  if (item.source === 'shell' || item.commandId >= 0) {
+    runShellContextItem(item);
+    return;
+  }
+  const state = ctxMenuState;
+  hideContextMenu();
+  runOwnContextAction(item.action, item.arg, state);
+}
+
+function runShellContextItem(item) {
+  const state = ctxMenuState;
+  if (!state || item.commandId < 0) { return; }
+  const payload = { paths: state.targetPaths, background: state.background, commandId: item.commandId };
+  hideContextMenu();
+  apiFetch(url('/api/ctxmenu/run'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  }).then(async function (response) {
+    const text = await response.text();
+    if (!response.ok) { flash(text || '系统菜单命令执行失败'); }
+    else { flash('已执行系统菜单命令：' + (item.title || '')); }
+    await refresh();
+  }).catch(function (error) {
+    flash('系统菜单命令请求失败：' + error);
+  });
+}
+
+function runOwnContextAction(action, arg, state) {
+  if (!state) { return; }
+  const paths = state.targetPaths || [];
+  const isDisk = state.tabType === 'disk';
+  const row = state.row;
+  if (action === 'open') {
+    if (row) { openTarget(row); }
+    return;
+  }
+  if (action === 'newtab') {
+    if (row && row.isDirectory) { post('/api/tabs/new', { p: row.fullPath }); }
+    else if (row) { openFile(row.fullPath); }
+    return;
+  }
+  if (action === 'copy') {
+    if (isDisk) { doAction('diskcopysource', paths.join('\n')); }
+    else { doAction('copy'); }
+    return;
+  }
+  if (action === 'cut') {
+    if (isDisk) { doAction('diskcutsource', paths.join('\n')); }
+    else { doAction('cut'); }
+    return;
+  }
+  if (action === 'copypath') {
+    copyContextText(paths.join('\n'));
+    return;
+  }
+  if (action === 'rename') {
+    const current = row ? row.name : (paths.length ? paths[0] : '');
+    const name = window.prompt('新名称', current);
+    if (!name || name === current) { return; }
+    if (isDisk) { doAction('diskrename', (paths[0] || '') + '\n' + name); }
+    else { renameEntry(paths[0] || (row ? row.fullPath : '')); }
+    return;
+  }
+  if (action === 'delete') {
+    const permanent = isDisk && !!state.shift;
+    const confirmText = permanent
+      ? '确认永久删除选中的 ' + paths.length + ' 项？永久删除不进回收站，无法恢复。'
+      : '确认把选中的 ' + paths.length + ' 项移入回收站？';
+    if (!window.confirm(confirmText)) { return; }
+    if (isDisk) { doAction('diskdelete', (permanent ? '1\n' : '0\n') + paths.join('\n')); }
+    else if (checked.size > 0) { doAction('deletechecked'); }
+    else if (paths.length === 1) { deleteEntry(paths[0]); }
+    return;
+  }
+  if (action === 'pasteto') {
+    if (row && row.isDirectory) {
+      if (isDisk) { doAction('diskpasteinto', row.fullPath); }
+      else { doAction('pasteto', row.fullPath); }
     }
-    else if (kind === 'compare') { doAction('comparechecked'); }
-    else if (kind === 'copy') { doAction('copy'); }
-    else if (kind === 'cut') { clickBtn('btnCut', 'cut'); }
-    else if (kind === 'pasteto') { doAction('pasteto', row.fullPath); }
-    else if (kind === 'rename') { renameEntry(row.fullPath); }
-    else if (kind === 'chmod') { changePermissions(row.fullPath); }
-    else if (kind === 'delete') { deleteEntry(row.fullPath); }
+    return;
+  }
+  if (action === 'pastebg') {
+    if (isDisk) { doAction('diskpasteinto', state.folder || ''); }
+    else { doAction('paste'); }
+    return;
+  }
+  if (action === 'newfolder') {
+    const directory = isDisk ? (state.background ? state.folder : (row && row.isDirectory ? row.fullPath : '')) : state.folder;
+    if (!directory) { flash('请先进入目标文件夹'); return; }
+    const name = window.prompt('新建文件夹名称');
+    if (!name) { return; }
+    if (isDisk) { doAction('disknewfolder', directory + '\n' + name); }
+    else if (state.background) { post('/api/folder', { p: directory, n: name }); }
+    return;
+  }
+  if (action === 'newfile') {
+    const directory = state.folder;
+    if (!directory) { flash('请先进入目标文件夹'); return; }
+    const name = window.prompt('新建文件名称', '新建文件.txt');
+    if (!name) { return; }
+    doAction('disknewfile', directory + '\n' + name);
+    return;
+  }
+  if (action === 'refresh') { doAction('refresh'); return; }
+  if (action === 'up') { post('/api/up', {}); return; }
+  if (action === 'sort') { doAction('sort', arg); return; }
+  if (action === 'openinmanager') { doAction('openinmanager', paths.join('\n')); return; }
+  if (action === 'compare') { doAction('comparechecked'); return; }
+}
+
+function copyContextText(text) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(function () { flash('已复制完整路径'); }, function () { fallbackCopyContextText(text); });
+  } else {
+    fallbackCopyContextText(text);
+  }
+}
+
+function fallbackCopyContextText(text) {
+  const helper = document.createElement('textarea');
+  helper.value = text;
+  document.body.appendChild(helper);
+  helper.select();
+  document.execCommand('copy');
+  document.body.removeChild(helper);
+  flash('已复制完整路径');
+}
+
+function focusFirstContextItem() {
+  const items = visibleContextItems();
+  if (items.length > 0) { setContextFocus(items[0]); }
+}
+
+function visibleContextItems() {
+  const result = [];
+  const walk = function (container) {
+    for (const child of container.children) {
+      if (!child.classList || !child.classList.contains('ctxItem')) { continue; }
+      if (child.classList.contains('disabled')) { continue; }
+      result.push(child);
+      const submenu = child.__submenu;
+      if (submenu && child.classList.contains('open')) { walk(submenu); }
+    }
   };
+  const ctx = document.getElementById('ctx');
+  if (ctx) { walk(ctx); }
+  return result;
+}
+
+function setContextFocus(element) {
+  const items = visibleContextItems();
+  for (const item of items) { item.classList.remove('focused'); }
+  if (!element) { return; }
+  element.classList.add('focused');
+  if (ctxMenuState) { ctxMenuState.focus = element; }
+}
+
+function handleContextMenuKeydown(event) {
+  if (!ctxMenuState) { return; }
+  const ctx = document.getElementById('ctx');
+  if (!ctx || ctx.classList.contains('hidden')) { return; }
+  const items = visibleContextItems();
+  if (items.length === 0) { return; }
+  let currentIndex = items.indexOf(ctxMenuState.focus);
+  if (event.key === 'ArrowDown') {
+    event.preventDefault();
+    event.stopPropagation();
+    setContextFocus(items[(currentIndex + 1) % items.length]);
+    return;
+  }
+  if (event.key === 'ArrowUp') {
+    event.preventDefault();
+    event.stopPropagation();
+    setContextFocus(items[(currentIndex <= 0) ? items.length - 1 : currentIndex - 1]);
+    return;
+  }
+  if (event.key === 'ArrowRight') {
+    event.preventDefault();
+    event.stopPropagation();
+    const focused = ctxMenuState.focus;
+    if (focused && focused.classList.contains('hasSub')) {
+      openContextSubmenu(focused);
+      const subItems = focused.__submenu ? focused.__submenu.querySelectorAll('.ctxItem:not(.disabled)') : [];
+      if (subItems.length > 0) { setContextFocus(subItems[0]); }
+    }
+    return;
+  }
+  if (event.key === 'ArrowLeft') {
+    event.preventDefault();
+    event.stopPropagation();
+    const focused = ctxMenuState.focus;
+    if (focused && focused.parentElement && focused.parentElement.classList.contains('ctxSub')) {
+      const parentItem = focused.parentElement.__parentItem;
+      focused.parentElement.classList.remove('openSub');
+      if (parentItem) {
+        parentItem.classList.remove('open');
+        setContextFocus(parentItem);
+      }
+    }
+    return;
+  }
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    event.stopPropagation();
+    const focused = ctxMenuState.focus;
+    if (focused && !focused.classList.contains('disabled')) {
+      const item = focused.__item;
+      if (item && item.children && item.children.length) { openContextSubmenu(focused); }
+      else if (item) { activateContextItem(item); }
+    }
+    return;
+  }
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    event.stopPropagation();
+    hideContextMenu();
+  }
 }
 
 function hideContextMenu() {
-  document.getElementById('ctx').classList.add('hidden');
+  const ctx = document.getElementById('ctx');
+  if (ctx) {
+    ctx.classList.add('hidden');
+    ctx.innerHTML = '';
+    ctx.__ctxX = 0;
+    ctx.__ctxY = 0;
+  }
+  const orphanMenus = document.querySelectorAll('.ctxSub');
+  for (const submenu of orphanMenus) {
+    submenu.classList.remove('openSub');
+    if (submenu.parentElement === document.body) { submenu.remove(); }
+  }
+  ctxMenuState = null;
 }
 
 // ======== 地址栏编辑、工具栏动作 ========
@@ -2391,7 +3145,7 @@ async function applyBatch() {
   closeBatch();
   if (changed === 0) { flash('没有需要改名的条目'); return; }
   try {
-    const response = await fetch(url('/api/action', { a: 'batchrename' }), { method: 'POST', body: plan });
+    const response = await apiFetch(url('/api/action', { a: 'batchrename' }), { method: 'POST', body: plan });
     const text = await response.text();
     flash(response.ok ? (text || '批量改名已提交') : (text || '批量改名失败'));
   } catch (error) {
@@ -2445,7 +3199,7 @@ async function previewEncode() {
   let body = fromPage + '\t' + toPage + '\t' + recursive + '\n';
   for (const path of encodePaths) { body += path + '\n'; }
   try {
-    const response = await fetch(url('/api/action', { a: 'encodepreview' }), { method: 'POST', body: body });
+    const response = await apiFetch(url('/api/action', { a: 'encodepreview' }), { method: 'POST', body: body });
     const text = await response.text();
     if (!response.ok) { flash(text || '编码转换预览失败'); return; }
     const rows = [];
@@ -2499,7 +3253,7 @@ async function applyEncode() {
   closeEncode();
   if (changed === 0) { flash('没有可执行的转换项'); return; }
   try {
-    const response = await fetch(url('/api/action', { a: 'encodeapply' }), { method: 'POST', body: plan });
+    const response = await apiFetch(url('/api/action', { a: 'encodeapply' }), { method: 'POST', body: plan });
     const text = await response.text();
     flash(response.ok ? (text || '编码转换已提交') : (text || '编码转换失败'));
   } catch (error) {
@@ -2521,7 +3275,7 @@ async function openFile(target) {
   textarea.value = '正在读取……';
   document.getElementById('editor').className = 'modal';
   try {
-    const response = await fetch(url('/api/file', { p: target, w: workspaceId }));
+    const response = await apiFetch(url('/api/file', { p: target, w: workspaceId }));
     if (!response.ok) {
       textarea.value = await response.text();
       return;
@@ -2543,7 +3297,7 @@ async function saveFile() {
   if (!editingPath) { return; }
   const content = document.getElementById('editorText').value;
   try {
-    const response = await fetch(url('/api/write', { p: editingPath }), { method: 'POST', body: content });
+    const response = await apiFetch(url('/api/write', { p: editingPath }), { method: 'POST', body: content });
     document.getElementById('editorHint').textContent = response.ok ? '已保存' : ('保存失败：' + await response.text());
   } catch (error) {
     document.getElementById('editorHint').textContent = '保存失败：' + error;
@@ -2731,7 +3485,7 @@ async function ideFetchText(index) {
   const startedIndex = index;
   ideFetching = true;
   try {
-    const response = await fetch(url('/api/ide/text', { i: index }));
+    const response = await apiFetch(url('/api/ide/text', { i: index }));
     if (response.ok) {
       const data = await response.json();
       // 仅当仍是同一激活编辑器且本地无未推送编辑时才采纳
@@ -2806,7 +3560,7 @@ async function clickIdeSave(id, action) {
 async function idePushText(index, text) {
   idePushPending = true;
   try {
-    const response = await fetch(url('/api/action', { a: 'idetext' }), { method: 'POST', body: index + '\n' + text });
+    const response = await apiFetch(url('/api/action', { a: 'idetext' }), { method: 'POST', body: index + '\n' + text });
     if (response.ok) {
       const body = (await response.text()).trim();
       let token = ideComputeToken(text);
@@ -3011,7 +3765,7 @@ async function ideRequestClose(index) {
   // 关闭前取一次最新状态，避免轮询间隔内脏标记过期导致未确认就丢弃更改
   let editor = null;
   try {
-    const fresh = await (await fetch('/api/state')).json();
+    const fresh = await (await apiFetch('/api/state')).json();
     if (fresh && fresh.ide) { editor = ideFindEditorIn(fresh.ide.editors, index); }
   } catch (error) { /* 拉取失败时回落到本地缓存 */ }
   if (!editor) { editor = ideFindEditorIn(ideEditorList, index); }
@@ -3187,6 +3941,7 @@ document.getElementById('content').addEventListener('click', onContentClick);
 document.getElementById('content').addEventListener('dblclick', onContentDoubleClick);
 document.getElementById('content').addEventListener('change', onContentCheck);
 document.getElementById('content').addEventListener('contextmenu', onContentContextMenu);
+document.addEventListener('keydown', handleContextMenuKeydown, true);
 // 表头列宽拖动：按下判定拖动区，移动改列宽，松开记录日志并吞掉随后的点击
 document.getElementById('content').addEventListener('mousedown', onTableColResizeDown);
 document.addEventListener('mousemove', onTableColResizeMove);
@@ -3344,8 +4099,14 @@ document.getElementById('ideText').addEventListener('keydown', function (event) 
   }
 });
 
-loadPermissions().then(initMode).then(refresh);
-pollTimer = setInterval(refresh, 1500);
+loadSession(false).then(loadPermissions).then(initMode).then(function () {
+  connectEvents();
+  return refresh();
+});
+// 事件推送为主；低频兜底刷新只在连接不可用时执行，避免空闲时反复拉取全量状态
+pollTimer = setInterval(function () {
+  if (!eventSource || eventSource.readyState !== 1) { refresh(); }
+}, 10000);
 </script>
 </body>
 </html>

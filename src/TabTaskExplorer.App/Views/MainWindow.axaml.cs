@@ -45,6 +45,9 @@ public partial class MainWindow : Window
         /// <summary>是否为本程序发起的内部拖拽（区别于外部程序拖入）。</summary>
         public bool IsInternalDrag;
 
+        /// <summary>拖拽源声明的放置语义：目录标签页为移动或复制，产物历史为只读拷贝。</summary>
+        public FileDragMode DragMode = FileDragMode.MoveOrCopy;
+
         /// <summary>该落点允许的拖放效果（移动 / 复制 / 导航）。</summary>
         public DragDropEffects Effects = DragDropEffects.None;
 
@@ -1540,6 +1543,7 @@ public partial class MainWindow : Window
             UiLogger.Log("程序行为", "窗口拖拽经过落点：落点类型=" + decision.DropKind
                 + " 目标路径=" + decision.TargetPath
                 + " 拖放来源=" + (decision.IsInternalDrag ? "本程序发起" : "外部程序拖入")
+                + " 拖拽源语义=" + FileDropPolicy.DescribeDragMode(decision.DragMode)
                 + " 源条目数=" + decision.SourcePaths.Count
                 + " 源条目=" + string.Join("、", decision.SourcePaths)
                 + " 修饰键=" + FileDropPolicy.DescribeModifiers(e.KeyModifiers)
@@ -1552,7 +1556,8 @@ public partial class MainWindow : Window
     private WindowDropDecision EvaluateWindowDrop(DragEventArgs e)
     {
         WindowDropDecision decision = new WindowDropDecision();
-        decision.SourcePaths = FileDropPolicy.CollectSourcePaths(e.DataTransfer, out decision.IsInternalDrag);
+        decision.SourcePaths = FileDropPolicy.CollectSourcePaths(e.DataTransfer, out decision.IsInternalDrag,
+            out decision.DragMode);
         Visual? current = e.Source as Visual;
         ListBoxItem? hitItem = null;
         Button? quickAccessButton = null;
@@ -1636,6 +1641,21 @@ public partial class MainWindow : Window
             }
             if (decision.DropKind == "标签")
             {
+                // 只读拷贝源（产物历史）把文件拖到目录标签上时拷贝进该标签所在目录，仍不移动源文件；
+                // 其余情况保持既有规则：标签落点只接收文件夹，拖文件夹时才切换该标签目录
+                bool allSourcesAreFiles = true;
+                foreach (string sourcePath in decision.SourcePaths)
+                {
+                    if (Directory.Exists(sourcePath))
+                    {
+                        allSourcesAreFiles = false;
+                        break;
+                    }
+                }
+                if (decision.DragMode == FileDragMode.CopyOnly && allSourcesAreFiles)
+                {
+                    return this.ResolveCopyOnlyTabHeaderDrop(decision);
+                }
                 // 标签落点只接收文件夹：逐个校验后取第一个源路径作为导航目标
                 foreach (string sourcePath in decision.SourcePaths)
                 {
@@ -1694,7 +1714,48 @@ public partial class MainWindow : Window
             return decision;
         }
         decision.ProviderTab = providerTab;
-        decision.Effects = FileDropPolicy.ResolveEffects(decision.SourcePaths[0], decision.TargetPath, e.KeyModifiers);
+        decision.Effects = FileDropPolicy.ResolveEffects(decision.SourcePaths[0], decision.TargetPath,
+            e.KeyModifiers, decision.DragMode);
+        return decision;
+    }
+
+    /// <summary>
+    /// 只读拷贝源（产物历史）把文件拖到目录标签上：拷贝进该标签当前所在目录，
+    /// 既不切换该标签的目录，也不移动、改名或删除源产物。
+    /// </summary>
+    private WindowDropDecision ResolveCopyOnlyTabHeaderDrop(WindowDropDecision decision)
+    {
+        FileTabViewModel? targetTab = decision.NavigateTab;
+        decision.IsNavigate = false;
+        if (targetTab == null)
+        {
+            decision.RejectReason = "标签落点没有对应的文件标签，不能接收产物文件拷贝";
+            return decision;
+        }
+        if (targetTab.FileSystemProvider is not DefaultFileSystemProvider)
+        {
+            decision.RejectReason = "目标标签是压缩包或远程连接，不能接收产物文件拷贝";
+            return decision;
+        }
+        string directory = targetTab.CurrentPath;
+        if (string.IsNullOrEmpty(directory))
+        {
+            decision.RejectReason = "目标标签当前在此电脑根视图，没有可用于拷贝的目录，请先在该标签打开具体文件夹";
+            return decision;
+        }
+        if (!Directory.Exists(directory))
+        {
+            decision.RejectReason = "目标标签所在目录不存在：" + directory;
+            return decision;
+        }
+        if (!FileDropPolicy.IsDropTargetValid(decision.SourcePaths, directory, true))
+        {
+            decision.RejectReason = "目标目录与源条目同目录，或位于源文件夹自身内部";
+            return decision;
+        }
+        decision.TargetPath = directory;
+        decision.ProviderTab = targetTab;
+        decision.Effects = DragDropEffects.Copy;
         return decision;
     }
 
@@ -1760,6 +1821,7 @@ public partial class MainWindow : Window
             + " 动作=" + actionName
             + " 目标路径=" + decision.TargetPath
             + " 拖放来源=" + (decision.IsInternalDrag ? "本程序发起" : "外部程序拖入")
+            + " 拖拽源语义=" + FileDropPolicy.DescribeDragMode(decision.DragMode)
             + " 源条目数=" + decision.SourcePaths.Count
             + " 源条目=" + string.Join("、", decision.SourcePaths)
             + " 修饰键=" + FileDropPolicy.DescribeModifiers(e.KeyModifiers)

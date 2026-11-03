@@ -30,6 +30,10 @@ public class WebServiceHost
 
     private readonly List<WebEndpoint> endpoints = new List<WebEndpoint>();
     private readonly IArchiveService archiveService;
+    private readonly WebSessionStore sessionStore = new WebSessionStore();
+    private readonly WebRateLimiter rateLimiter = new WebRateLimiter();
+    private readonly WebLoginFailureLimiter loginFailureLimiter = new WebLoginFailureLimiter();
+    private WebEventHub? eventHub;
     private IWebWorkspaceBridge? bridge;
     private AppSettings? settings;
 
@@ -94,6 +98,8 @@ public class WebServiceHost
         this.settings = appSettings;
         this.ListenUrls = new List<string>();
         this.Failures = new List<string>();
+        this.eventHub = new WebEventHub(workspaceBridge);
+        this.eventHub.Start();
 
         foreach (WebPortRuntime portRuntime in ports)
         {
@@ -111,7 +117,7 @@ public class WebServiceHost
         }
     }
 
-    /// <summary>停止全部监听并清理端口。</summary>
+    /// <summary>停止全部监听并清理端口；同时清空会话，避免旧令牌在服务重启后继续可用。</summary>
     public void Stop()
     {
         foreach (WebEndpoint endpoint in this.endpoints)
@@ -120,11 +126,18 @@ public class WebServiceHost
         }
         this.endpoints.Clear();
         this.ListenUrls = new List<string>();
+        this.eventHub?.Stop();
+        this.eventHub = null;
+        this.sessionStore.Reset();
     }
 
     /// <summary>单个端口监听器：独立线程接收连接，独立应用所属权限方案。</summary>
     private class WebEndpoint
     {
+        /// <summary>当前线程正在处理的请求：供写出响应时回填状态与结果，用于审计日志与响应头。</summary>
+        [ThreadStatic]
+        private static HttpRequest? currentRequest;
+
         private readonly WebServiceHost host;
         private readonly WebPortRuntime runtime;
         private TcpListener? listener;
@@ -142,7 +155,18 @@ public class WebServiceHost
         /// <summary>尝试启动监听；成功返回空文本，失败返回原因。</summary>
         public string TryStart()
         {
+            // 安全基线：默认仅监听回环地址；只有权限方案启用账号密码后才允许监听局域网地址
+            if (runtime.BindScope == WebBindScope.Any
+                && (!runtime.Profile.RequirePassword || string.IsNullOrEmpty(runtime.Profile.PasswordHash)))
+            {
+                return "端口=" + runtime.Port + " 监听范围=Any 原因=非回环监听必须启用账号密码，已拒绝启动";
+            }
             IPAddress bindAddress = runtime.BindScope == WebBindScope.Any ? IPAddress.Any : IPAddress.Loopback;
+            if (runtime.BindScope == WebBindScope.Any)
+            {
+                UiLogger.Log("网页端服务", "风险提示：端口=" + runtime.Port + " 监听范围=全部网络地址"
+                    + " 已强制要求账号密码 方案=" + runtime.Profile.Name);
+            }
             try
             {
                 this.listener = new TcpListener(bindAddress, runtime.Port);
@@ -201,64 +225,271 @@ public class WebServiceHost
             }
         }
 
-        /// <summary>处理单个请求：先判定来源，再判定认证，最后按路由执行。</summary>
+        /// <summary>
+        /// 处理单个请求：来源地址 → 全局限流 → 认证（Basic / 会话令牌）→ 写操作同源与 CSRF 校验 → 路由执行。
+        /// 所有写请求在结束时写入审计日志；认证失败与安全拒绝也进入审计。
+        /// </summary>
         private void HandleClient(TcpClient client)
         {
+            HttpRequest? request = null;
             try
             {
                 client.ReceiveTimeout = 8000;
+                // 写超时用于发现已断开的推送连接，避免线程长期阻塞在向失效套接字写入
+                client.SendTimeout = 15000;
                 using (client)
                 using (NetworkStream stream = client.GetStream())
                 {
-                    HttpRequest? request = HttpRequest.Read(stream);
+                    request = HttpRequest.Read(stream);
                     if (request == null)
                     {
                         return;
                     }
+                    WebEndpoint.currentRequest = request;
+                    request.RequestId = WebSecurity.GenerateRequestId();
                     IPAddress? remote = (client.Client.RemoteEndPoint as IPEndPoint)?.Address;
                     request.RemoteAddress = WebAccessControl.NormalizeAddress(remote ?? IPAddress.Loopback);
 
                     WebAccessProfile profile = this.runtime.Profile;
+                    string remoteText = request.RemoteAddress == null ? "未知" : request.RemoteAddress.ToString();
                     if (!WebAccessControl.IsAddressAllowed(profile, request.RemoteAddress))
                     {
+                        WebAuditLog.RecordDenied(this.runtime.Port, request, string.Empty, "来源地址不在白名单");
                         UiLogger.Log("网页端访问", "拒绝：来源地址不在白名单 端口=" + this.runtime.Port
-                            + " 来源=" + request.RemoteAddress + " 请求=" + request.Method + " " + request.Path);
+                            + " 来源=" + remoteText + " 请求=" + request.Method + " " + request.Path);
                         this.WriteText(stream, "来源地址未获授权", 403);
                         return;
                     }
-                    if (profile.RequirePassword && !this.IsAuthorized(profile, request))
+
+                    int retryAfterSeconds;
+                    if (!this.host.rateLimiter.TryAcquire("全部请求:" + remoteText,
+                        WebSecurity.GeneralRequestsPerMinute, 60, out retryAfterSeconds))
                     {
-                        UiLogger.Log("网页端访问", "拒绝：账号密码未通过 端口=" + this.runtime.Port
-                            + " 来源=" + request.RemoteAddress + " 请求=" + request.Method + " " + request.Path);
-                        this.WriteAuthChallenge(stream);
+                        UiLogger.Log("网页端安全", "拒绝：请求频率超限 端口=" + this.runtime.Port
+                            + " 来源=" + remoteText + " 请求=" + request.Method + " " + request.Path
+                            + " 建议等待秒数=" + retryAfterSeconds);
+                        this.WriteText(stream, "请求过于频繁，请稍后再试", 429, retryAfterSeconds);
                         return;
                     }
 
+                    WebSession? session = this.Authenticate(stream, profile, request);
+                    if (session == null)
+                    {
+                        return;
+                    }
+                    request.Session = session;
+                    request.Account = session.Account;
+
+                    if (WebSecurity.IsWriteMethod(request.Method))
+                    {
+                        if (!this.CheckSameOrigin(request))
+                        {
+                            WebAuditLog.RecordDenied(this.runtime.Port, request, session.Account, "同源校验未通过");
+                            UiLogger.Log("网页端安全", "拒绝：同源校验未通过 端口=" + this.runtime.Port
+                                + " 来源=" + remoteText + " 账号=" + WebSecurity.DescribeAccount(session.Account)
+                                + " 请求=" + request.Method + " " + request.Path);
+                            this.WriteText(stream, "请求来源与本地服务不一致，已拒绝", 403);
+                            return;
+                        }
+                        if (!this.CheckCsrf(session, request))
+                        {
+                            WebAuditLog.RecordDenied(this.runtime.Port, request, session.Account, "缺少或错误的 CSRF 令牌");
+                            UiLogger.Log("网页端安全", "拒绝：CSRF 令牌校验未通过 端口=" + this.runtime.Port
+                                + " 来源=" + remoteText + " 账号=" + WebSecurity.DescribeAccount(session.Account)
+                                + " 请求=" + request.Method + " " + request.Path);
+                            this.WriteText(stream, "缺少或错误的 CSRF 令牌", 403);
+                            return;
+                        }
+                        if (!this.host.rateLimiter.TryAcquire("写操作:" + remoteText + ":" + session.Account,
+                            WebSecurity.WriteRequestsPerMinute, 60, out retryAfterSeconds))
+                        {
+                            UiLogger.Log("网页端安全", "拒绝：写操作频率超限 端口=" + this.runtime.Port
+                                + " 来源=" + remoteText + " 账号=" + WebSecurity.DescribeAccount(session.Account)
+                                + " 请求=" + request.Method + " " + request.Path
+                                + " 建议等待秒数=" + retryAfterSeconds);
+                            this.WriteText(stream, "写操作过于频繁，请稍后再试", 429, retryAfterSeconds);
+                            return;
+                        }
+                    }
+
                     this.Dispatch(stream, request, profile);
+                    this.host.eventHub?.RequestRefresh();
                 }
             }
-            catch (Exception)
+            catch (Exception error)
             {
-                // 单个连接的任何错误都不影响服务继续运行
+                // 单个连接的任何错误都不影响服务继续运行；异常细节只写入本机日志，不回显给客户端
+                UiLogger.LogError("网页端访问", "处理请求失败 端口=" + this.runtime.Port
+                    + " 请求编号=" + (request == null ? "无" : request.RequestId), error);
+            }
+            finally
+            {
+                if (request != null && WebSecurity.IsWriteMethod(request.Method))
+                {
+                    WebAuditLog.Record(this.runtime.Port, request);
+                }
+                WebEndpoint.currentRequest = null;
             }
         }
 
-        /// <summary>校验 HTTP Basic 账号密码；通过时记录账号，不记录密码。</summary>
-        private bool IsAuthorized(WebAccessProfile profile, HttpRequest request)
+        /// <summary>
+        /// 认证：优先使用 Bearer 会话令牌；事件推送允许查询串携带令牌（EventSource 不能设置请求头）；
+        /// 未携带令牌时回落 HTTP Basic，连续失败达到阈值后返回 429。
+        /// </summary>
+        private WebSession? Authenticate(NetworkStream stream, WebAccessProfile profile, HttpRequest request)
         {
+            bool isEventRequest = string.Equals(request.Path, "/api/events", StringComparison.Ordinal);
+            string authorization = request.Headers.GetValueOrDefault("authorization") ?? string.Empty;
+            WebSession? session = null;
+
+            if (authorization.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+            {
+                session = this.host.sessionStore.Find(authorization.Substring("Bearer ".Length).Trim(), profile);
+                if (session != null)
+                {
+                    return session;
+                }
+                if (!profile.RequirePassword)
+                {
+                    return this.host.sessionStore.GetOrCreateAnonymous(profile);
+                }
+                WebAuditLog.RecordDenied(this.runtime.Port, request, string.Empty, "会话令牌无效或已过期");
+                if (isEventRequest)
+                {
+                    this.WriteText(stream, "会话已过期", 401);
+                }
+                else
+                {
+                    this.WriteAuthChallenge(stream);
+                }
+                return null;
+            }
+
+            if (isEventRequest && request.Method == "GET")
+            {
+                string queryToken = request.GetQuery("token");
+                if (queryToken.Length > 0)
+                {
+                    session = this.host.sessionStore.Find(queryToken, profile);
+                    if (session != null)
+                    {
+                        return session;
+                    }
+                    if (!profile.RequirePassword)
+                    {
+                        return this.host.sessionStore.GetOrCreateAnonymous(profile);
+                    }
+                    WebAuditLog.RecordDenied(this.runtime.Port, request, string.Empty, "事件推送令牌无效或已过期");
+                    this.WriteText(stream, "会话已过期", 401);
+                    return null;
+                }
+            }
+
+            if (!profile.RequirePassword)
+            {
+                return this.host.sessionStore.GetOrCreateAnonymous(profile);
+            }
+
             string account;
             string password;
-            if (!WebAccessControl.TryParseBasic(request.Headers.GetValueOrDefault("authorization"), out account, out password))
+            if (!WebAccessControl.TryParseBasic(authorization, out account, out password))
+            {
+                UiLogger.Log("网页端访问", "认证提示：端口=" + this.runtime.Port + " 来源=" + request.RemoteAddress
+                    + " 请求=" + request.Method + " " + request.Path + " 结果=需要 Basic 认证");
+                if (isEventRequest)
+                {
+                    this.WriteText(stream, "需要认证", 401);
+                }
+                else
+                {
+                    this.WriteAuthChallenge(stream);
+                }
+                return null;
+            }
+
+            string failureKey = profile.Name + "\n" + request.RemoteAddress;
+            bool passed = profile.VerifyPassword(account, password);
+            if (!passed)
+            {
+                this.host.loginFailureLimiter.RecordFailure(failureKey);
+                int retryAfterSeconds;
+                bool locked = this.host.loginFailureLimiter.IsLocked(failureKey, out retryAfterSeconds);
+                WebAuditLog.RecordDenied(this.runtime.Port, request, account, "账号或密码错误");
+                UiLogger.Log("网页端安全", "认证失败：端口=" + this.runtime.Port + " 来源=" + request.RemoteAddress
+                    + " 账号=" + account + " 方案=" + profile.Name);
+                if (locked)
+                {
+                    this.WriteText(stream, "登录失败次数过多，请稍后再试", 429, retryAfterSeconds);
+                    return null;
+                }
+                if (isEventRequest)
+                {
+                    this.WriteText(stream, "需要认证", 401);
+                }
+                else
+                {
+                    this.WriteAuthChallenge(stream);
+                }
+                return null;
+            }
+
+            this.host.loginFailureLimiter.RecordSuccess(failureKey);
+            session = this.host.sessionStore.GetOrCreateBasic(profile, account);
+            UiLogger.Log("网页端访问", "认证通过：端口=" + this.runtime.Port + " 来源=" + request.RemoteAddress
+                + " 账号=" + account + " 方案=" + profile.Name);
+            return session;
+        }
+
+        /// <summary>
+        /// 同源校验：浏览器发出的写请求若带 Origin 或 Referer，必须与本端口的回环地址一致。
+        /// 没有这两个请求头时仍由 CSRF 令牌保证请求来自本页面（例如脚本或命令行客户端）。
+        /// </summary>
+        private bool CheckSameOrigin(HttpRequest request)
+        {
+            string origin = request.Headers.GetValueOrDefault("origin") ?? string.Empty;
+            string referer = request.Headers.GetValueOrDefault("referer") ?? string.Empty;
+            if (origin.Length == 0 && referer.Length == 0)
+            {
+                return true;
+            }
+            List<string> allowedAddresses = new List<string>();
+            string hostHeader = request.Headers.GetValueOrDefault("host") ?? string.Empty;
+            if (hostHeader.Length > 0)
+            {
+                allowedAddresses.Add("http://" + hostHeader);
+            }
+            allowedAddresses.Add("http://127.0.0.1:" + this.runtime.Port);
+            allowedAddresses.Add("http://localhost:" + this.runtime.Port);
+            allowedAddresses.Add("http://[::1]:" + this.runtime.Port);
+
+            string candidate = origin.Length > 0 ? origin : referer;
+            Uri? candidateUri;
+            if (!Uri.TryCreate(candidate, UriKind.Absolute, out candidateUri))
             {
                 return false;
             }
-            bool passed = profile.VerifyPassword(account, password);
-            if (passed)
+            foreach (string allowed in allowedAddresses)
             {
-                UiLogger.Log("网页端访问", "认证通过：端口=" + this.runtime.Port + " 来源=" + request.RemoteAddress
-                    + " 账号=" + account + " 方案=" + profile.Name);
+                Uri? allowedUri;
+                if (!Uri.TryCreate(allowed, UriKind.Absolute, out allowedUri))
+                {
+                    continue;
+                }
+                if (string.Equals(candidateUri.Scheme, allowedUri.Scheme, StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(candidateUri.Host, allowedUri.Host, StringComparison.OrdinalIgnoreCase)
+                    && candidateUri.Port == allowedUri.Port)
+                {
+                    return true;
+                }
             }
-            return passed;
+            return false;
+        }
+
+        /// <summary>CSRF 令牌校验：写请求必须携带与当前会话匹配的请求头。</summary>
+        private bool CheckCsrf(WebSession session, HttpRequest request)
+        {
+            string token = request.Headers.GetValueOrDefault("x-csrf-token") ?? string.Empty;
+            return WebSecurity.FixedTimeEquals(token, session.CsrfToken);
         }
 
         /// <summary>按路径分发请求。</summary>
@@ -274,13 +505,50 @@ public class WebServiceHost
             string path = request.Path;
             if (path == "/" || path == "/index.html")
             {
-                string html = WebPageHtml.Content.Replace("__PORT__", this.runtime.Port.ToString());
+                string html;
+                if (WebStaticAssets.TryBuildPage(this.runtime.Port, out html))
+                {
+                    this.WriteBytes(stream, "text/html; charset=utf-8", Encoding.UTF8.GetBytes(html));
+                    return;
+                }
+                // 静态资源缺失时回退到内联页面，保证升级包不完整时仍能打开网页端
+                html = WebPageHtml.Content.Replace("__PORT__", this.runtime.Port.ToString());
                 this.WriteBytes(stream, "text/html; charset=utf-8", Encoding.UTF8.GetBytes(html));
+                return;
+            }
+            if (path.StartsWith(WebStaticAssets.AssetPrefix, StringComparison.Ordinal) && request.Method == "GET")
+            {
+                string assetName = path.Substring(WebStaticAssets.AssetPrefix.Length);
+                string contentType;
+                byte[] assetContent;
+                if (!WebStaticAssets.TryReadAsset(assetName, this.runtime.Port, out contentType, out assetContent))
+                {
+                    this.WriteText(stream, "not found", 404);
+                    return;
+                }
+                bool versionMatched = string.Equals(request.GetQuery("v"), WebStaticAssets.Version, StringComparison.Ordinal);
+                string cacheControl = versionMatched ? "public, max-age=31536000, immutable" : "no-store";
+                this.WriteBytes(stream, contentType, assetContent, 200, cacheControl);
                 return;
             }
             if (path == "/favicon.ico")
             {
                 this.WriteBytes(stream, "image/x-icon", new byte[0]);
+                return;
+            }
+            if (path == "/api/session" && request.Method == "GET")
+            {
+                this.HandleSession(stream, request, profile);
+                return;
+            }
+            if (path == "/api/version" && request.Method == "GET")
+            {
+                string versionJson = JsonSerializer.Serialize(new
+                {
+                    version = "p0-1-web-modules-" + WebStaticAssets.Version,
+                    features = new { session = true, csrf = true, events = true, staticAssets = WebStaticAssets.IsAvailable },
+                }, jsonOptions);
+                this.WriteBytes(stream, "application/json; charset=utf-8", Encoding.UTF8.GetBytes(versionJson));
                 return;
             }
             if (path == "/api/permissions")
@@ -293,6 +561,11 @@ public class WebServiceHost
             {
                 string json = JsonSerializer.Serialize(GetDiagnostics(), jsonOptions);
                 this.WriteBytes(stream, "application/json; charset=utf-8", Encoding.UTF8.GetBytes(json));
+                return;
+            }
+            if (path == "/api/events" && request.Method == "GET")
+            {
+                this.HandleEvents(stream, request, profile, bridge);
                 return;
             }
             if (path == "/api/state" && request.Method == "GET")
@@ -333,6 +606,16 @@ public class WebServiceHost
                 this.HandleAction(stream, request, profile, workspaceId, bridge);
                 return;
             }
+            if (path == "/api/ctxmenu" && request.Method == "POST")
+            {
+                this.HandleContextMenu(stream, request, profile, workspaceId, bridge, false);
+                return;
+            }
+            if (path == "/api/ctxmenu/run" && request.Method == "POST")
+            {
+                this.HandleContextMenu(stream, request, profile, workspaceId, bridge, true);
+                return;
+            }
             if (string.IsNullOrEmpty(workspaceId))
             {
                 this.HandleDesktopAction(stream, request, path, bridge, profile);
@@ -362,6 +645,7 @@ public class WebServiceHost
                 this.WriteText(stream, "缺少动作名称", 400);
                 return;
             }
+            request.AuditTarget = argument.Length > 200 ? argument.Substring(0, 200) + "…" : argument;
             if (!this.CheckActionPermission(stream, profile, request, action, argument))
             {
                 return;
@@ -394,6 +678,131 @@ public class WebServiceHost
             this.WriteText(stream, message);
         }
 
+        /// <summary>
+        /// 网页端右键菜单：build 返回系统外壳菜单层级，run 按命令编号唤起。
+        /// 目标路径先由工作区/桌面校验（只允许当前已打开标签内的路径），越权直接拒绝并记日志。
+        /// </summary>
+        private void HandleContextMenu(NetworkStream stream, HttpRequest request, WebAccessProfile profile,
+            string workspaceId, IWebWorkspaceBridge bridge, bool execute)
+        {
+            ContextMenuRequestPayload? payload;
+            try
+            {
+                string body = Encoding.UTF8.GetString(request.Body);
+                payload = body.Length == 0
+                    ? null
+                    : JsonSerializer.Deserialize<ContextMenuRequestPayload>(body, jsonOptions);
+            }
+            catch (Exception error)
+            {
+                UiLogger.LogError("网页端右键菜单", "解析请求体失败 端口=" + this.runtime.Port
+                    + " 来源=" + request.RemoteAddress + " 请求=" + request.Path, error);
+                this.WriteText(stream, "右键请求格式不正确", 400);
+                return;
+            }
+            if (payload == null || payload.Paths == null || payload.Paths.Count == 0)
+            {
+                this.WriteText(stream, "右键请求缺少目标路径", 400);
+                return;
+            }
+            if (execute && !profile.AllowCreateDelete)
+            {
+                UiLogger.Log("网页端右键菜单", "拒绝执行：未放行新建与删除权限 端口=" + this.runtime.Port
+                    + " 来源=" + request.RemoteAddress + " 命令编号=" + payload.CommandId + " 方案=" + profile.Name);
+                this.WriteText(stream, "该端口未放行新建与删除权限，不能执行系统菜单命令", 403);
+                return;
+            }
+            List<string> paths = new List<string>();
+            foreach (string path in payload.Paths)
+            {
+                if (!string.IsNullOrWhiteSpace(path))
+                {
+                    paths.Add(path.Trim());
+                }
+            }
+            if (paths.Count == 0)
+            {
+                this.WriteText(stream, "右键请求缺少有效目标路径", 400);
+                return;
+            }
+            if (execute && payload.CommandId < 0)
+            {
+                this.WriteText(stream, "右键命令缺少有效命令编号", 400);
+                return;
+            }
+            request.AuditTarget = string.Join("、", paths);
+            try
+            {
+                WebContextMenuResult? result = null;
+                bool success = false;
+                if (string.IsNullOrEmpty(workspaceId))
+                {
+                    if (execute)
+                    {
+                        success = bridge.ExecuteDesktopContextMenuCommand(payload.CommandId, paths, payload.Background);
+                    }
+                    else
+                    {
+                        result = bridge.BuildDesktopContextMenu(paths, payload.Background);
+                    }
+                }
+                else
+                {
+                    WebWorkspace? workspace = bridge.FindWorkspace(workspaceId);
+                    if (workspace == null)
+                    {
+                        UiLogger.Log("网页端右键菜单", "拒绝：工作区不存在或已过期 工作区=" + workspaceId
+                            + " 请求=" + request.Path);
+                        this.WriteText(stream, "工作区不存在或已过期，请刷新页面", 410);
+                        return;
+                    }
+                    if (execute)
+                    {
+                        success = workspace.ExecuteContextMenuCommand(payload.CommandId, paths, payload.Background);
+                    }
+                    else
+                    {
+                        result = workspace.BuildContextMenu(paths, payload.Background);
+                    }
+                }
+                if (execute)
+                {
+                    this.WriteText(stream, success ? "ok" : "执行失败：系统外壳未接受该命令", success ? 200 : 500);
+                    return;
+                }
+                string json = JsonSerializer.Serialize(result, jsonOptions);
+                this.WriteBytes(stream, "application/json; charset=utf-8", Encoding.UTF8.GetBytes(json));
+            }
+            catch (UnauthorizedAccessException error)
+            {
+                UiLogger.Log("网页端右键菜单", "拒绝：越权右键请求 端口=" + this.runtime.Port
+                    + " 来源=" + request.RemoteAddress + " 工作区=" + (string.IsNullOrEmpty(workspaceId) ? "跟随桌面" : workspaceId)
+                    + " 目标=" + string.Join("、", paths) + " 原因=" + error.Message
+                    + " 结果=未枚举也未执行任何外壳命令");
+                this.WriteText(stream, "目标路径不在当前标签允许范围内，已拒绝", 403);
+            }
+            catch (Exception error)
+            {
+                UiLogger.LogError("网页端右键菜单", "处理失败 端口=" + this.runtime.Port
+                    + " 来源=" + request.RemoteAddress + " 工作区=" + (string.IsNullOrEmpty(workspaceId) ? "跟随桌面" : workspaceId)
+                    + " 目标=" + string.Join("、", paths) + " 请求编号=" + request.RequestId, error);
+                this.WriteText(stream, "右键菜单处理失败，请查看本机日志（请求编号=" + request.RequestId + "）", 500);
+            }
+        }
+
+        /// <summary>右键请求体：目标路径、是否空白处、系统外壳命令编号。</summary>
+        private sealed class ContextMenuRequestPayload
+        {
+            /// <summary>目标绝对路径列表。</summary>
+            public List<string>? Paths { get; set; }
+
+            /// <summary>是否为列表空白处右键。</summary>
+            public bool Background { get; set; }
+
+            /// <summary>要唤起的外壳菜单命令编号（枚举请求忽略）。</summary>
+            public int CommandId { get; set; } = -1;
+        }
+
         /// <summary>按动作判定所需权限：增删类要放行新建与删除，改配置与写文件类要放行修改。</summary>
         private bool CheckActionPermission(NetworkStream stream, WebAccessProfile profile, HttpRequest request, string action,
             string argument)
@@ -416,11 +825,15 @@ public class WebServiceHost
             bool needCreateDelete = action == "cut" || action == "paste" || action == "pasteto" || action == "deletechecked"
                 || action == "batchrename" || action == "encodepreview" || action == "encodeapply"
                 || action == "connsave" || action == "conndelete" || action == "connimport"
-                || action == "startupcustomsave" || action == "startupcustomdelete";
+                || action == "startupcustomsave" || action == "startupcustomdelete"
+                || action == "disknewfolder" || action == "disknewfile" || action == "diskrename"
+                || action == "diskdelete" || action == "diskpasteinto" || action == "diskcopyto"
+                || action == "diskmoveto" || action == "diskcutsource";
             bool needModify = action == "togglehidden" || action == "toggleextensions" || action == "pin" || action == "unpin" || action == "chmod"
                 || action == "idetext" || action == "idesave" || action == "idesaveall" || action == "idereplace" || action == "idereplaceall"
                 || action == "processkill" || action == "processpriority" || action == "processaffinity"
-                || action == "startuptoggle" || action == "startupcustomtoggle" || action == "startupcustomrun";
+                || action == "startuptoggle" || action == "startupcustomtoggle" || action == "startupcustomrun"
+                || action == "connhostkeytrust" || action == "connhostkeyforget";
             if (needCreateDelete && !profile.AllowCreateDelete)
             {
                 UiLogger.Log("网页端访问", "拒绝：" + action + " 未放行新建与删除权限 端口=" + this.runtime.Port
@@ -734,8 +1147,9 @@ public class WebServiceHost
             }
             catch (Exception error)
             {
-                UiLogger.LogError("网页端访问", "读取文件失败：端口=" + this.runtime.Port + " 目标=" + target, error);
-                this.WriteText(stream, "读取失败：" + error.Message, 500);
+                UiLogger.LogError("网页端访问", "读取文件失败：端口=" + this.runtime.Port + " 目标=" + target
+                    + " 请求编号=" + request.RequestId, error);
+                this.WriteText(stream, "读取失败，请查看本机日志（请求编号=" + request.RequestId + "）", 500);
             }
             finally
             {
@@ -815,9 +1229,127 @@ public class WebServiceHost
             }
             catch (Exception error)
             {
-                UiLogger.LogError("网页端访问", "读取 IDE 编辑器文本失败：端口=" + this.runtime.Port + " 编辑器下标=" + index, error);
-                this.WriteText(stream, "读取失败：" + error.Message, 500);
+                UiLogger.LogError("网页端访问", "读取 IDE 编辑器文本失败：端口=" + this.runtime.Port + " 编辑器下标=" + index
+                    + " 请求编号=" + request.RequestId, error);
+                this.WriteText(stream, "读取失败，请查看本机日志（请求编号=" + request.RequestId + "）", 500);
             }
+        }
+
+        /// <summary>
+        /// 事件推送（SSE）：建连后先发送当前快照，之后由事件中枢在状态变化时推送；
+        /// 空闲时每 20 秒发送一次心跳注释，客户端断开或服务停止时退出。
+        /// </summary>
+        private void HandleEvents(NetworkStream stream, HttpRequest request, WebAccessProfile profile,
+            IWebWorkspaceBridge bridge)
+        {
+            string workspaceId = request.GetQuery("w");
+            if (string.IsNullOrEmpty(workspaceId) && profile.AllowedPaths != null && profile.AllowedPaths.Count > 0)
+            {
+                UiLogger.Log("网页端事件", "拒绝：该权限方案限定了可访问目录，跟随桌面事件不可用 端口=" + this.runtime.Port
+                    + " 来源=" + request.RemoteAddress + " 方案=" + profile.Name);
+                this.WriteText(stream, "restricted-paths", 403);
+                return;
+            }
+            string scope = string.IsNullOrEmpty(workspaceId) ? "desktop" : workspaceId;
+            if (!string.IsNullOrEmpty(workspaceId))
+            {
+                WebWorkspace? workspace = bridge.FindWorkspace(workspaceId);
+                if (workspace == null)
+                {
+                    this.WriteText(stream, "workspace-missing", 410);
+                    return;
+                }
+            }
+            WebEventHub? hub = this.host.eventHub;
+            if (hub == null || !hub.IsRunning)
+            {
+                this.WriteText(stream, "服务未就绪", 503);
+                return;
+            }
+
+            WebSseClient client = hub.Subscribe(scope);
+            try
+            {
+                this.WriteSseHeaders(stream);
+                DateTime lastHeartbeat = DateTime.UtcNow;
+                while (hub.IsRunning && this.running && !client.IsClosed)
+                {
+                    string? message = client.Take(1000);
+                    if (!string.IsNullOrEmpty(message))
+                    {
+                        this.WriteSseChunk(stream, Encoding.UTF8.GetBytes(message));
+                        lastHeartbeat = DateTime.UtcNow;
+                        continue;
+                    }
+                    if ((DateTime.UtcNow - lastHeartbeat).TotalSeconds >= 20)
+                    {
+                        string heartbeat = ": 心跳 " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "\n\n";
+                        this.WriteSseChunk(stream, Encoding.UTF8.GetBytes(heartbeat));
+                        lastHeartbeat = DateTime.UtcNow;
+                    }
+                }
+            }
+            catch (IOException)
+            {
+                // 客户端关闭连接属于正常结束
+            }
+            catch (ObjectDisposedException)
+            {
+                // 服务停止时套接字已释放
+            }
+            catch (Exception error)
+            {
+                UiLogger.LogError("网页端事件", "推送连接异常 端口=" + this.runtime.Port
+                    + " 来源=" + request.RemoteAddress + " 作用域=" + scope, error);
+            }
+            finally
+            {
+                try
+                {
+                    // 结束分块响应：浏览器看到 0 长度块后正常关闭事件流
+                    byte[] finalChunk = Encoding.ASCII.GetBytes("0\r\n\r\n");
+                    stream.Write(finalChunk, 0, finalChunk.Length);
+                    stream.Flush();
+                }
+                catch (Exception)
+                {
+                    // 客户端已断开时结束块写入失败可忽略
+                }
+                hub.Unsubscribe(client);
+            }
+        }
+
+        /// <summary>写出 SSE 响应头：采用分块传输，避免无 Content-Length 的长连接被浏览器缓存或截断。</summary>
+        private void WriteSseHeaders(NetworkStream stream)
+        {
+            HttpRequest? active = WebEndpoint.currentRequest;
+            if (active != null)
+            {
+                active.ResponseStatus = 200;
+                active.ResponsePreview = "事件推送已连接";
+            }
+            string header = "HTTP/1.1 200 OK\r\n"
+                + "Content-Type: text/event-stream; charset=utf-8\r\n"
+                + "Cache-Control: no-store, no-cache\r\n"
+                + "Transfer-Encoding: chunked\r\n"
+                + "Connection: keep-alive\r\n"
+                + "X-Accel-Buffering: no\r\n"
+                + "\r\n";
+            byte[] headerBytes = Encoding.ASCII.GetBytes(header);
+            stream.Write(headerBytes, 0, headerBytes.Length);
+            stream.Flush();
+        }
+
+        /// <summary>写出一条分块编码的 SSE 消息。</summary>
+        private void WriteSseChunk(NetworkStream stream, byte[] body)
+        {
+            string sizeText = body.Length.ToString("x") + "\r\n";
+            byte[] sizeBytes = Encoding.ASCII.GetBytes(sizeText);
+            stream.Write(sizeBytes, 0, sizeBytes.Length);
+            stream.Write(body, 0, body.Length);
+            byte[] tail = Encoding.ASCII.GetBytes("\r\n");
+            stream.Write(tail, 0, tail.Length);
+            stream.Flush();
         }
 
         /// <summary>工作区状态：工作区编号为空时返回跟随桌面的快照。</summary>
@@ -898,6 +1430,21 @@ public class WebServiceHost
             return false;
         }
 
+        /// <summary>签发或返回当前会话的会话令牌与 CSRF 令牌；页面只保存在内存中，不写入本地存储。</summary>
+        private void HandleSession(NetworkStream stream, HttpRequest request, WebAccessProfile profile)
+        {
+            WebSession session = request.Session ?? this.host.sessionStore.GetOrCreateAnonymous(profile);
+            string json = JsonSerializer.Serialize(new
+            {
+                sessionToken = session.Token,
+                csrfToken = session.CsrfToken,
+                account = WebSecurity.DescribeAccount(session.Account),
+                profile = profile.Name,
+                expiresInSeconds = WebSecurity.SessionIdleMinutes * 60,
+            }, jsonOptions);
+            this.WriteBytes(stream, "application/json; charset=utf-8", Encoding.UTF8.GetBytes(json));
+        }
+
         /// <summary>构建当前端口的权限说明，供页面隐藏无权操作的按钮。</summary>
         private object BuildPermissions(WebAccessProfile profile)
         {
@@ -916,13 +1463,19 @@ public class WebServiceHost
             this.WriteText(stream, "ok");
         }
 
-        private void WriteText(NetworkStream stream, string text, int statusCode = 200)
+        private void WriteText(NetworkStream stream, string text, int statusCode = 200, int retryAfterSeconds = 0)
         {
-            this.WriteBytes(stream, "text/plain; charset=utf-8", Encoding.UTF8.GetBytes(text), statusCode);
+            this.WriteBytes(stream, "text/plain; charset=utf-8", Encoding.UTF8.GetBytes(text), statusCode, null, retryAfterSeconds);
         }
 
         private void WriteAuthChallenge(NetworkStream stream)
         {
+            HttpRequest? active = WebEndpoint.currentRequest;
+            if (active != null)
+            {
+                active.ResponseStatus = 401;
+                active.ResponsePreview = "需要账号密码验证";
+            }
             string body = "需要账号密码验证";
             byte[] bytes = Encoding.UTF8.GetBytes(body);
             string header = "HTTP/1.1 401 Unauthorized\r\n"
@@ -937,8 +1490,33 @@ public class WebServiceHost
             stream.Flush();
         }
 
-        private void WriteBytes(NetworkStream stream, string contentType, byte[] body, int statusCode = 200)
+        /// <summary>
+        /// 写出响应：同时把状态码与脱敏后的响应摘要回填到当前请求，供审计日志记录；
+        /// cacheControl 为空时沿用 no-store，静态资源可显式传入长期缓存策略。
+        /// </summary>
+        private void WriteBytes(NetworkStream stream, string contentType, byte[] body, int statusCode = 200,
+            string? cacheControl = null, int retryAfterSeconds = 0)
         {
+            HttpRequest? active = WebEndpoint.currentRequest;
+            if (active != null)
+            {
+                active.ResponseStatus = statusCode;
+                if (contentType.StartsWith("text/", StringComparison.Ordinal)
+                    || contentType.StartsWith("application/json", StringComparison.Ordinal))
+                {
+                    string preview = Encoding.UTF8.GetString(body);
+                    if (preview.Length > 200)
+                    {
+                        preview = preview.Substring(0, 200) + "…";
+                    }
+                    active.ResponsePreview = WebSecurity.MaskSecrets(preview);
+                }
+                else
+                {
+                    active.ResponsePreview = "二进制响应，字节数=" + body.Length;
+                }
+            }
+
             string reason = "OK";
             if (statusCode == 400)
             {
@@ -960,6 +1538,14 @@ public class WebServiceHost
             {
                 reason = "Gone";
             }
+            else if (statusCode == 413)
+            {
+                reason = "Payload Too Large";
+            }
+            else if (statusCode == 429)
+            {
+                reason = "Too Many Requests";
+            }
             else if (statusCode == 500)
             {
                 reason = "Internal Server Error";
@@ -968,10 +1554,15 @@ public class WebServiceHost
             {
                 reason = "Service Unavailable";
             }
+            string cacheHeader = cacheControl == null
+                ? "Cache-Control: no-store\r\n"
+                : "Cache-Control: " + cacheControl + "\r\n";
+            string retryHeader = retryAfterSeconds > 0 ? "Retry-After: " + retryAfterSeconds + "\r\n" : string.Empty;
             string header = "HTTP/1.1 " + statusCode + " " + reason + "\r\n"
                 + "Content-Type: " + contentType + "\r\n"
                 + "Content-Length: " + body.Length + "\r\n"
-                + "Cache-Control: no-store\r\n"
+                + cacheHeader
+                + retryHeader
                 + "Connection: close\r\n"
                 + "\r\n";
             byte[] headerBytes = Encoding.ASCII.GetBytes(header);
@@ -1018,6 +1609,24 @@ internal class HttpRequest
 
     /// <summary>来源地址。</summary>
     public IPAddress? RemoteAddress { get; set; }
+
+    /// <summary>请求编号：错误响应与审计日志用它关联本机日志，不回显异常细节。</summary>
+    public string RequestId { get; set; } = string.Empty;
+
+    /// <summary>当前请求使用的会话；认证失败时为空。</summary>
+    public WebSession? Session { get; set; }
+
+    /// <summary>当前请求的账号；匿名访问时为空文本。</summary>
+    public string Account { get; set; } = string.Empty;
+
+    /// <summary>审计日志：已写出的响应状态码。</summary>
+    public int ResponseStatus { get; set; }
+
+    /// <summary>审计日志：脱敏后的响应摘要。</summary>
+    public string ResponsePreview { get; set; } = string.Empty;
+
+    /// <summary>审计日志：本次操作的目标路径或对象（由具体处理函数补充）。</summary>
+    public string AuditTarget { get; set; } = string.Empty;
 
     /// <summary>读取一个完整请求；请求非法时返回 null。</summary>
     public static HttpRequest? Read(NetworkStream stream)

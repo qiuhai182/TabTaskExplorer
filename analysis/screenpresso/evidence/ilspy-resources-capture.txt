@@ -1,0 +1,9 @@
+﻿{FEA94A50-E5C8-4edd-BE62-F738BC8C043E}
+ilspycmd.exe : You are not using the latest version of the tool, please update.
+所在位置 行:15 字符: 2359
++ ... s.txt" -Append -Encoding utf8; & $il --list-resources $c 2>&1 | Out-F ...
++                                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (You are not usi... please update.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+Latest version is '11.2.0.10050' (yours is '11.1.0.9782')

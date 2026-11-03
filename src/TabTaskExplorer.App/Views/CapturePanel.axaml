@@ -14,6 +14,8 @@
                 ToolTip.Tip="只截取主显示器" />
         <Button Content="区域截图" Click="OnCaptureRegionClick" IsEnabled="{Binding CanCaptureRegion}"
                 ToolTip.Tip="移动鼠标预选窗口 / 子视图后单击截图，也可拖动自由框选" />
+        <Button Content="贴图截图" Click="OnCapturePinClick" IsEnabled="{Binding CanCaptureRegion}"
+                ToolTip.Tip="选区后先按产物规则保存，再用同一份文件生成可拖动的贴图窗口（默认保存；可在下方关闭落盘）" />
         <Button Content="活动窗口" Click="OnCaptureWindowClick" IsEnabled="{Binding CanCaptureWindow}"
                 ToolTip.Tip="截取当前位于前台的窗口" />
         <Button Content="上次区域" Click="OnCaptureLastRegionClick" IsEnabled="{Binding CanCaptureLastRegion}"
@@ -26,13 +28,29 @@
           <ComboBoxItem Content="10 秒后" />
         </ComboBox>
       </StackPanel>
+      <StackPanel Orientation="Horizontal" Spacing="8">
+        <Button Content="屏幕取色" Click="OnColorPickerClick"
+                ToolTip.Tip="冻结整屏画面，移动鼠标查看颜色，单击复制十六进制颜色" />
+        <Button Content="贴图（剪贴板）" Click="OnPinClipboardClick"
+                ToolTip.Tip="把系统剪贴板中的图片贴到屏幕最上层，可拖动、缩放与调整透明度" />
+        <TextBlock Text="截图保存后会自动打开标注编辑器，可绘制矩形、箭头、马赛克、文字并识别文字。"
+                   VerticalAlignment="Center" FontSize="11" Opacity="0.7" />
+      </StackPanel>
       <StackPanel Orientation="Horizontal" Spacing="18">
         <CheckBox Content="截图后复制到剪贴板" IsChecked="{Binding Settings.CaptureCopyToClipboard, Mode=TwoWay}"
                   Click="OnCaptureOptionChanged" />
         <CheckBox Content="完成后自动打开产物文件夹" IsChecked="{Binding Settings.CaptureOpenFolderAfter, Mode=TwoWay}"
                   Click="OnCaptureOptionChanged" />
+        <CheckBox Content="截图后打开标注编辑器" IsChecked="{Binding Settings.CaptureOpenEditorAfter, Mode=TwoWay}"
+                  Click="OnCaptureOptionChanged" />
         <CheckBox Content="包含鼠标指针" IsChecked="{Binding Settings.CaptureIncludeCursor, Mode=TwoWay}"
                   Click="OnCaptureOptionChanged" />
+      </StackPanel>
+      <StackPanel Orientation="Horizontal" Spacing="18">
+        <CheckBox Content="贴图截图保存产物（默认开启，关闭后只贴图不落盘）"
+                  IsChecked="{Binding Settings.CapturePinShotSaveFile, Mode=TwoWay}"
+                  Click="OnCaptureOptionChanged"
+                  ToolTip.Tip="开启：选区后先保存到产物历史，再用同一份文件生成贴图；关闭：仅在内存中贴图，不产生文件" />
       </StackPanel>
 
       <Border Height="1" Background="{DynamicResource SeparatorBrush}" Margin="0,4" />
@@ -56,7 +74,8 @@
       <TextBlock Text="{Binding EnvironmentText}" TextWrapping="Wrap" Opacity="0.72" FontSize="12" />
     </StackPanel>
 
-    <!-- 产物历史：双击打开，右键复制路径 / 删除 -->
+    <!-- 产物历史：可多选（Ctrl / Shift），双击打开，右键复制路径 / 删除；
+         条目可像普通文件一样拖出，拖拽源声明只读拷贝语义，源产物不会被移动、改名或删除 -->
     <Grid Grid.Row="1" RowDefinitions="Auto,*" Margin="0,12,0,0">
       <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,6">
         <TextBlock Grid.Column="0" Text="产物历史" FontWeight="Medium" VerticalAlignment="Center" />
@@ -66,13 +85,15 @@
         </StackPanel>
       </Grid>
       <ListBox Grid.Row="1" x:Name="HistoryList" ItemsSource="{Binding HistoryItems}"
-               DoubleTapped="OnHistoryDoubleTapped">
+               SelectionMode="Multiple" DoubleTapped="OnHistoryDoubleTapped">
         <ListBox.ItemTemplate>
           <DataTemplate>
             <Border Background="Transparent" ToolTip.Tip="{Binding FullPath}">
               <Border.ContextMenu>
                 <ContextMenu>
                   <MenuItem Header="打开" Click="OnHistoryOpenClick" />
+                  <MenuItem Header="标注此图" Click="OnHistoryEditClick" />
+                  <MenuItem Header="贴到屏幕" Click="OnHistoryPinClick" />
                   <MenuItem Header="打开产物文件夹" Click="OnHistoryOpenFolderClick" />
                   <MenuItem Header="复制完整路径" Click="OnHistoryCopyPathClick" />
                   <MenuItem Header="删除" Click="OnHistoryDeleteClick" />

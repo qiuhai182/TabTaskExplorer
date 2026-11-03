@@ -1,0 +1,10 @@
+﻿{
+    "任务名称":  "rea-version",
+    "工作任务":  "D:\\TabTaskExplorer\\analysis\\screenpresso\\scripts\\Run-Rea-Screenpresso.ps1",
+    "工作参数":  "-Command version",
+    "日志目录":  "D:\\TabTaskExplorer\\analysis\\screenpresso\\ghidra",
+    "进程号":  26708,
+    "返回码":  0,
+    "启动时间":  "2026-11-03 09:56:34",
+    "实际命令行":  "powershell.exe -NoProfile -Command \"Start-Process -FilePath \u0027powershell.exe\u0027 -ArgumentList @(\u0027-NoProfile\u0027,\u0027-ExecutionPolicy\u0027,\u0027Bypass\u0027,\u0027-File\u0027,\u0027D:\\TabTaskExplorer\\analysis\\screenpresso\\scripts\\Run-Rea-Screenpresso.ps1\u0027,\u0027-Command\u0027,\u0027version\u0027) -WindowStyle Hidden\""
+}

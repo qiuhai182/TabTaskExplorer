@@ -67,15 +67,36 @@
         </Button>
       </Grid>
       <ListBox Grid.Row="1" ItemsSource="{Binding Rows}" Tapped="OnRowTapped">
+        <ListBox.ContextMenu>
+          <ContextMenu Opening="OnBackgroundMenuOpening">
+            <MenuItem Header="刷新" Click="OnBackgroundRefreshClick" />
+            <MenuItem Header="新建文件夹…" Click="OnBackgroundNewFolderClick" />
+            <MenuItem Header="新建文件…" Click="OnBackgroundNewFileClick" />
+            <MenuItem Header="粘贴" Click="OnBackgroundPasteClick" />
+            <Separator />
+            <MenuItem Header="返回上一级" Click="OnBackgroundNavigateUpClick" />
+            <MenuItem Header="系统右键菜单（全部）" IsVisible="False" Tag="DiskSystemMenuHost" />
+          </ContextMenu>
+        </ListBox.ContextMenu>
         <ListBox.ItemTemplate>
           <DataTemplate>
             <Border Background="Transparent">
               <Border.ContextMenu>
-                <ContextMenu>
+                <ContextMenu Opening="OnSystemMenuOpening">
                   <MenuItem Header="打开" Click="OnMenuOpenClick" />
                   <MenuItem Header="在新标签打开" Click="OnMenuOpenInNewTabClick" />
+                  <Separator />
+                  <MenuItem Header="复制" Click="OnMenuCopyClick" />
+                  <MenuItem Header="剪切" Click="OnMenuCutClick" />
                   <MenuItem Header="复制路径" Click="OnMenuCopyPathClick" />
-                  <MenuItem Header="粘贴" Click="OnMenuPasteClick" />
+                  <MenuItem Header="粘贴到该文件夹" Click="OnMenuPasteToRowClick" />
+                  <Separator />
+                  <MenuItem Header="重命名" Click="OnMenuRenameClick" />
+                  <MenuItem Header="删除到回收站" Click="OnMenuDeleteClick" />
+                  <MenuItem Header="永久删除…" Click="OnMenuDeletePermanentlyClick" />
+                  <Separator />
+                  <MenuItem Header="在资源管理器打开" Click="OnMenuOpenInExplorerClick" />
+                  <MenuItem Header="系统右键菜单（全部）" IsVisible="False" Tag="DiskSystemMenuHost" />
                 </ContextMenu>
               </Border.ContextMenu>
               <!-- 列定义与表头一致：星号列设上限，列宽拖动结果经附加属性同步到所有行 -->

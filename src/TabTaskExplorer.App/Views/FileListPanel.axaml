@@ -13,7 +13,7 @@
     <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="8,4,8,0">
 
       <!-- 列表：双击空白处返回上一级，右键空白处弹出空白处菜单（右键条目时由条目自身菜单接管） -->
-      <Grid Grid.Column="0" RowDefinitions="Auto,*" DoubleTapped="OnListBackgroundDoubleTapped">
+      <Grid x:Name="ListAreaGrid" Grid.Column="0" RowDefinitions="Auto,*" DoubleTapped="OnListBackgroundDoubleTapped">
         <Grid.ContextMenu>
           <ContextMenu Opening="OnBackgroundMenuOpening">
             <MenuItem Header="刷新" Tag="MenuRefresh" Click="OnBackgroundRefreshClick" />

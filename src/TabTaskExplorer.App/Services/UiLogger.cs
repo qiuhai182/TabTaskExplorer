@@ -140,7 +140,38 @@ public static class UiLogger
         {
             return;
         }
-        UiLogger.Log("键盘输入", "输入文本=" + text + " 来源=" + UiLogger.DescribeSource(e.Source));
+        string source = UiLogger.DescribeSource(e.Source);
+        if (UiLogger.IsSensitiveInput(e.Source))
+        {
+            // 密码框内容不落日志：只记录控件来源与脱敏标记
+            UiLogger.Log("键盘输入", "输入文本=*** 来源=" + source + " 结果=密码框内容已脱敏");
+            return;
+        }
+        UiLogger.Log("键盘输入", "输入文本=" + text + " 来源=" + source);
+    }
+
+    /// <summary>判断输入控件是否为敏感输入框：按控件名识别密码框与密钥框，避免明文写入日志。</summary>
+    private static bool IsSensitiveInput(object? source)
+    {
+        // 事件来源可能是 TextBox 内部的文本呈现控件，向上最多查找 8 层父控件
+        Control? current = source as Control;
+        int depth = 0;
+        while (current != null && depth < 8)
+        {
+            TextBox? box = current as TextBox;
+            if (box != null && !string.IsNullOrEmpty(box.Name))
+            {
+                string name = box.Name ?? string.Empty;
+                if (name.IndexOf("Password", StringComparison.OrdinalIgnoreCase) >= 0
+                    || name.IndexOf("Secret", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    return true;
+                }
+            }
+            current = current.Parent as Control;
+            depth++;
+        }
+        return false;
     }
 
     private static void OnPointerPressed(object? sender, PointerPressedEventArgs e)

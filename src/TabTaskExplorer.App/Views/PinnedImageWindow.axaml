@@ -1,18 +1,25 @@
-<Window xmlns="https://github.com/avaloniaui"
+﻿<Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="TabTaskExplorer.App.Views.PinnedImageWindow"
-        WindowDecorations="None" ShowInTaskbar="False" CanResize="False"
+        Title="贴图" WindowDecorations="None" ShowInTaskbar="False" CanResize="False"
         WindowStartupLocation="Manual" Background="Transparent" Topmost="True">
   <Border x:Name="Frame" BorderBrush="#FF3B82F6" BorderThickness="1"
           BoxShadow="0 6 20 0 #99000000" Background="Transparent">
     <Border.ContextMenu>
       <ContextMenu>
         <MenuItem Header="复制图片（Ctrl+C）" Click="OnCopyClick" />
-        <MenuItem Header="保存为…（Ctrl+S）" Click="OnSaveClick" />
+        <MenuItem Header="另存为…（Ctrl+S）" Click="OnSaveClick" />
+        <MenuItem Header="识别文字（OCR）" Click="OnOcrClick" />
+        <MenuItem Header="识别二维码 / 条码" Click="OnBarcodeClick" />
+        <MenuItem Header="标注此贴图…" Click="OnAnnotateClick" />
         <Separator />
         <MenuItem Header="旋转 90°（R）" Click="OnRotateClick" />
+        <MenuItem Header="水平翻转（H）" Click="OnFlipHorizontalClick" />
+        <MenuItem Header="垂直翻转（V）" Click="OnFlipVerticalClick" />
         <MenuItem Header="原始大小（100%）" Click="OnActualSizeClick" />
         <MenuItem Header="适应屏幕" Click="OnFitScreenClick" />
+        <Separator />
+        <MenuItem x:Name="TopmostMenuItem" Header="置顶：开（T）" Click="OnToggleTopmostClick" />
         <Separator />
         <MenuItem Header="不透明度 100%" Tag="100" Click="OnOpacityClick" />
         <MenuItem Header="不透明度 80%" Tag="80" Click="OnOpacityClick" />

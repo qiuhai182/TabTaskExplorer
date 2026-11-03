@@ -45,6 +45,11 @@ public class JsonConnectionStore : IConnectionStore
         }
     }
 
+    public string StorePath
+    {
+        get { return this.filePath; }
+    }
+
     public IReadOnlyList<RemoteConnectionProfile> LoadAll()
     {
         if (!File.Exists(this.filePath))

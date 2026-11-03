@@ -18,13 +18,103 @@ public class ConnectionManager
     private readonly IConnectionStore store;
     private readonly ISecretProtector protector;
     private readonly IConnectivityTester tester;
+    private readonly Action<string>? log;
 
     /// <summary>使用指定存储、凭据保护器与连通性测试器创建管理器。</summary>
-    public ConnectionManager(IConnectionStore store, ISecretProtector protector, IConnectivityTester tester)
+    public ConnectionManager(IConnectionStore store, ISecretProtector protector, IConnectivityTester tester,
+        Action<string>? log = null)
     {
         this.store = store;
         this.protector = protector;
         this.tester = tester;
+        this.log = log;
+        this.MigrateLegacySecrets();
+    }
+
+    /// <summary>
+    /// 一次性迁移旧凭据：无版本前缀的历史值先解密再以新格式加密写回，迁移前备份原文件。
+    /// 任一凭据迁移失败则不写入任何内容，保留可回滚原件并通过日志回调说明原因。
+    /// </summary>
+    private void MigrateLegacySecrets()
+    {
+        List<RemoteConnectionProfile> all;
+        try
+        {
+            all = new List<RemoteConnectionProfile>(this.store.LoadAll());
+        }
+        catch (Exception error)
+        {
+            this.Log("读取连接配置失败，跳过凭据迁移：原因=" + error.Message);
+            return;
+        }
+
+        int migratedCount = 0;
+        List<string> failedNames = new List<string>();
+        foreach (RemoteConnectionProfile profile in all)
+        {
+            if (profile == null || string.IsNullOrEmpty(profile.ProtectedSecret))
+            {
+                continue;
+            }
+            if (profile.ProtectedSecret.StartsWith("dpapi:v2:", StringComparison.Ordinal)
+                || profile.ProtectedSecret.StartsWith("aesgcm:v1:", StringComparison.Ordinal))
+            {
+                continue;
+            }
+            try
+            {
+                string plaintext = this.protector.Unprotect(profile.ProtectedSecret);
+                string protectedValue = this.protector.Protect(plaintext);
+                if (!string.IsNullOrEmpty(protectedValue) && protectedValue != profile.ProtectedSecret)
+                {
+                    profile.ProtectedSecret = protectedValue;
+                    migratedCount++;
+                }
+            }
+            catch (Exception error)
+            {
+                failedNames.Add(profile.Name + "（" + error.GetType().Name + "）");
+            }
+        }
+
+        if (failedNames.Count > 0)
+        {
+            this.Log("凭据迁移中止：存在无法解密的旧凭据，原文件保持不变，请重新输入凭据。连接="
+                + string.Join("、", failedNames));
+            return;
+        }
+        if (migratedCount == 0)
+        {
+            return;
+        }
+
+        string backupPath = string.Empty;
+        try
+        {
+            string storePath = this.store.StorePath;
+            if (!string.IsNullOrEmpty(storePath) && File.Exists(storePath))
+            {
+                backupPath = storePath + ".bak-" + DateTime.Now.ToString("yyyyMMddHHmmss");
+                File.Copy(storePath, backupPath, false);
+            }
+            this.store.SaveAll(all);
+        }
+        catch (Exception error)
+        {
+            this.Log("凭据迁移写入失败：已保留原文件与备份（备份=" + backupPath + "），原因=" + error.Message);
+            return;
+        }
+        this.Log("凭据迁移完成：迁移条数=" + migratedCount + " 备份文件=" + backupPath
+            + " 新格式=平台保护器版本前缀");
+    }
+
+    private void Log(string message)
+    {
+        Action<string>? handler = this.log;
+        if (handler != null)
+        {
+            handler(message);
+        }
     }
 
     /// <summary>读取全部连接配置。</summary>

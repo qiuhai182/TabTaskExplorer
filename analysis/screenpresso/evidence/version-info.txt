@@ -1,0 +1,9 @@
+﻿FileVersion=1.8.3.0
+ProductVersion=1.8.3.0
+FileDescription=Screenpresso
+CompanyName=Learnpulse
+InternalName=Screenpresso.exe
+OriginalFilename=Screenpresso.exe
+LegalCopyright=Copyright © Learnpulse 2020
+ProductName=Screenpresso
+Comments=Screen capture tool

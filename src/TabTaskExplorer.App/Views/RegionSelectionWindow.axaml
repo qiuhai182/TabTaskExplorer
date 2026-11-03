@@ -1,13 +1,14 @@
 ﻿<Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:capture="using:TabTaskExplorer.App.Services.Capture"
         x:Class="TabTaskExplorer.App.Views.RegionSelectionWindow"
         Title="选择截图区域" WindowDecorations="None" CanResize="False"
         WindowStartupLocation="Manual" Topmost="True" ShowInTaskbar="False"
         Background="Black"
-        KeyDown="OnWindowKeyDown"
         PointerPressed="OnWindowPointerPressed"
         PointerMoved="OnWindowPointerMoved"
-        PointerReleased="OnWindowPointerReleased">
+        PointerReleased="OnWindowPointerReleased"
+        PointerWheelChanged="OnWindowPointerWheelChanged">
   <Panel>
     <Canvas x:Name="RootCanvas" ClipToBounds="True">
       <Image x:Name="ScreenImage" Stretch="Fill" Canvas.Left="0" Canvas.Top="0" />
@@ -20,11 +21,19 @@
       <Border x:Name="SizeBadge" Background="#E61E1E1E" CornerRadius="3" Padding="6,2" IsVisible="False">
         <TextBlock x:Name="SizeText" Foreground="White" FontSize="12" MaxWidth="560" TextTrimming="CharacterEllipsis" />
       </Border>
+      <Border x:Name="MagnifierPanel" Background="#E61E1E1E" CornerRadius="6" Padding="8" IsVisible="False">
+        <StackPanel Spacing="6">
+          <capture:ColorMagnifierControl x:Name="Magnifier" Width="128" Height="128" />
+          <TextBlock x:Name="MagnifierHex" Text="#000000" Foreground="White" FontFamily="Consolas" FontSize="15" />
+          <TextBlock x:Name="MagnifierRgb" Text="RGB 0, 0, 0" Foreground="White" FontSize="11" Opacity="0.85" />
+          <TextBlock x:Name="MagnifierPosition" Text="X 0  Y 0" Foreground="White" FontSize="11" Opacity="0.7" />
+        </StackPanel>
+      </Border>
     </Canvas>
     <Border x:Name="HintPanel" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,36,0,0"
             Background="#E61E1E1E" CornerRadius="6" Padding="14,8">
       <TextBlock x:Name="HintText"
-                 Text="移动鼠标自动预选窗口 / 子视图 / 全屏，单击截图；按住拖动可自由框选，Esc 或右键取消"
+                 Text="移动鼠标实时预选窗口 / 子视图 / 全屏；Tab 或滚轮切换层级，单击或 Enter 截图；按住拖动可自由框选，Esc 或右键取消"
                  Foreground="White" FontSize="13" MaxWidth="900" TextWrapping="Wrap" />
     </Border>
   </Panel>

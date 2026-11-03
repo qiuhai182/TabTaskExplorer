@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -21,6 +21,12 @@ public class ColorMagnifierControl : Control
     private double zoom = 8.0;
 
     private int sampleSize = 13;
+
+    /// <summary>构造放大镜：最近邻放大必须在渲染外设置，避免渲染过程中失效重绘。</summary>
+    public ColorMagnifierControl()
+    {
+        RenderOptions.SetBitmapInterpolationMode(this, BitmapInterpolationMode.None);
+    }
 
     /// <summary>设置放大源图。</summary>
     public void SetSource(Bitmap? image)
@@ -53,7 +59,6 @@ public class ColorMagnifierControl : Control
         {
             return;
         }
-        RenderOptions.SetBitmapInterpolationMode(this, BitmapInterpolationMode.None);
         double half = this.sampleSize * 0.5;
         Rect sourceRect = new Rect(
             this.imagePoint.X - half, this.imagePoint.Y - half,

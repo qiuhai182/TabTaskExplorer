@@ -1,4 +1,6 @@
-﻿using TabTaskExplorer.Kernel.Abstractions;
+﻿using System.Collections.Generic;
+using System.Threading.Tasks;
+using TabTaskExplorer.Kernel.Abstractions;
 using TabTaskExplorer.Kernel.Models;
 
 namespace TabTaskExplorer.Kernel.Services;
@@ -46,6 +48,33 @@ public class NullSystemContextMenuService : ISystemContextMenuService
     public bool ExecuteShellMenuEntry(SystemContextMenuEntry entry, string targetPath, bool isBackground)
     {
         // 留空：非 Windows 平台不提供系统外壳菜单项唤起
+        return false;
+    }
+
+    public bool SupportsNativeShellMenu
+    {
+        get { return false; }
+    }
+
+    public Task<NativeContextMenuResult> ShowNativeShellMenuAsync(NativeContextMenuRequest request)
+    {
+        // 留空：非 Windows 平台没有系统外壳原生菜单，调用方据此退回自有菜单
+        NativeContextMenuResult result = new NativeContextMenuResult();
+        result.Supported = false;
+        result.MenuShown = false;
+        result.Message = "当前系统不支持弹出 Windows 原生外壳右键菜单，已退回本程序菜单";
+        return Task.FromResult(result);
+    }
+
+    public IReadOnlyList<SystemContextMenuEntry> EnumerateShellMenu(IReadOnlyList<string> paths, bool isBackground)
+    {
+        // 留空：非 Windows 平台没有系统外壳菜单，网页端只显示本程序命令
+        return Array.Empty<SystemContextMenuEntry>();
+    }
+
+    public bool ExecuteShellMenuCommand(int commandId, IReadOnlyList<string> paths, bool isBackground)
+    {
+        // 留空：非 Windows 平台不提供系统外壳命令唤起
         return false;
     }
 }

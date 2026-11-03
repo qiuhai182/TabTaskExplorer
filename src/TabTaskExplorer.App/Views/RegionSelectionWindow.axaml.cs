@@ -5,8 +5,12 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Shapes;
 using Avalonia.Input;
+using Avalonia.Interactivity;
+using Avalonia.Media;
 using Avalonia.Media.Imaging;
+using Avalonia.Threading;
 using TabTaskExplorer.App.Services;
+using TabTaskExplorer.App.Services.Capture;
 using TabTaskExplorer.Kernel.Capture;
 
 namespace TabTaskExplorer.App.Views;
@@ -24,37 +28,65 @@ public partial class RegionSelectionWindow : Window
     private readonly List<ScreenRegionCandidate> candidates;
     private readonly ScreenRegionCandidate fullScreenCandidate;
     private readonly IScreenRegionDetector regionDetector;
+    private readonly RegionSelectionSession? session;
+    private readonly string captureMode;
+    private readonly PixelSampler magnifierSampler;
     private readonly TaskCompletionSource<CaptureArea?> completion = new TaskCompletionSource<CaptureArea?>();
+    private readonly DispatcherTimer hoverTimer;
+    private readonly List<ScreenRegionCandidate> hoverLevels = new List<ScreenRegionCandidate>();
     private Point pointerDownPoint;
+    private IPointer? capturedPointer;
     private bool isPointerDown;
     private bool isFreeformDrag;
     private bool hintHiddenByMove;
     private ScreenRegionCandidate? hoverCandidate;
     private Rect selectionRect = new Rect(0, 0, 0, 0);
+    private int hoverLevelIndex;
+    private int lastHoverPhysicalX = int.MinValue;
+    private int lastHoverPhysicalY = int.MinValue;
+    private string lastHoverSignature = string.Empty;
+    private string lastDisplayedKey = string.Empty;
 
     public RegionSelectionWindow(Bitmap previewImage, CaptureArea screenBounds, double screenScaling,
-        IReadOnlyList<ScreenRegionCandidate> regionCandidates, IScreenRegionDetector regionDetector)
+        IReadOnlyList<ScreenRegionCandidate> regionCandidates, IScreenRegionDetector regionDetector,
+        RegionSelectionSession? multiScreenSession = null, string captureMode = "区域截图")
     {
         this.InitializeComponent();
+        // 截图遮罩与窗口识别高亮层：工具窗口 + 归属主窗口，不进入任务栏与 Alt+Tab
+        WindowHostStyler.MakeAuxiliary(this);
         this.Cursor = new Cursor(StandardCursorType.Cross);
         this.screenArea = screenBounds;
         this.scaling = screenScaling <= 0 ? 1.0 : screenScaling;
         this.previewImage = previewImage;
         this.regionDetector = regionDetector;
+        this.session = multiScreenSession;
+        this.captureMode = captureMode;
+        this.magnifierSampler = new PixelSampler(previewImage);
+        this.Magnifier.SetSource(previewImage);
+        this.Magnifier.SetZoom(8.0);
         this.candidates = this.BuildCandidateList(regionCandidates);
         this.fullScreenCandidate = this.ResolveFullScreenCandidate();
         this.hoverCandidate = this.fullScreenCandidate;
+        this.hoverLevels.Add(this.fullScreenCandidate);
         this.ScreenImage.Source = previewImage;
         this.Position = new PixelPoint(screenBounds.X, screenBounds.Y);
         this.Width = screenBounds.Width / this.scaling;
         this.Height = screenBounds.Height / this.scaling;
         this.HintPanel.IsVisible = true;
         this.HintText.Text = regionDetector.IsSupported
-            ? "移动鼠标自动预选窗口 / 子视图 / 全屏，单击截图；按住拖动可自由框选，Esc 或右键取消"
+            ? "移动鼠标实时预选窗口 / 子视图 / 全屏；Tab 或滚轮切换层级，单击或 Enter 截图；按住拖动可自由框选，Esc 或右键取消"
             : "按住拖动鼠标框选截图区域；单击选择全屏，Esc 或右键取消";
         this.Opened += this.OnWindowOpened;
         this.Closed += this.OnWindowClosed;
-        UiLogger.Log("截图", "区域框选窗口已创建：屏幕区域=" + screenBounds
+        // Tab 会被 Avalonia 的焦点导航先行处理，必须在隧道阶段拦截，才能用于切换预选层级
+        this.AddHandler(InputElement.KeyDownEvent, this.OnWindowKeyDown, RoutingStrategies.Tunnel);
+        // 鼠标静止时窗口状态仍可能变化（打开 / 关闭 / 切换虚拟桌面），定时重新命中保证高亮及时刷新
+        this.hoverTimer = new DispatcherTimer();
+        this.hoverTimer.Interval = TimeSpan.FromMilliseconds(140);
+        this.hoverTimer.Tick += this.OnHoverTimerTick;
+        this.session?.Register(this);
+        UiLogger.Log("截图", "区域框选窗口已创建：截图模式=" + this.captureMode
+            + " 屏幕区域=" + screenBounds
             + " 缩放比例=" + this.scaling
             + " 窗口宽度=" + this.Width
             + " 窗口高度=" + this.Height
@@ -65,7 +97,16 @@ public partial class RegionSelectionWindow : Window
     /// <summary>显示框选窗口并等待用户完成或取消，返回物理像素区域。</summary>
     public Task<CaptureArea?> SelectAreaAsync()
     {
-        this.Show();
+        // 有主窗口时以 Owner 方式显示，工具窗口不进 Alt+Tab；主窗口隐藏到托盘时退化为无 Owner 显示
+        MainWindow? owner = WindowRegistry.Primary;
+        if (owner != null && owner.IsVisible)
+        {
+            this.Show(owner);
+        }
+        else
+        {
+            this.Show();
+        }
         this.Activate();
         this.Focus();
         UiLogger.Log("截图", "区域框选窗口已显示：等待用户移动鼠标预选或拖动框选");
@@ -76,18 +117,39 @@ public partial class RegionSelectionWindow : Window
     {
         this.ScreenImage.Width = this.Bounds.Width;
         this.ScreenImage.Height = this.Bounds.Height;
+        if (this.session != null)
+        {
+            // 多屏会话统一管理活动屏幕、命中与跨屏拖拽；单窗口只负责显示本屏内容
+            return;
+        }
         this.ApplyInitialCandidate();
         this.Activate();
         this.Focus();
+        this.hoverTimer.Start();
     }
 
     private void OnWindowClosed(object? sender, EventArgs e)
     {
-        if (!this.completion.Task.IsCompleted)
+        this.hoverTimer.Stop();
+        this.hoverTimer.Tick -= this.OnHoverTimerTick;
+        this.isPointerDown = false;
+        this.isFreeformDrag = false;
+        if (this.capturedPointer != null)
+        {
+            this.capturedPointer.Capture(null);
+            this.capturedPointer = null;
+        }
+        if (this.session != null)
+        {
+            this.session.OnWindowClosed(this);
+        }
+        else if (!this.completion.Task.IsCompleted)
         {
             this.completion.TrySetResult(null);
             UiLogger.Log("截图", "区域框选窗口已关闭：用户没有完成框选，结果=已取消");
         }
+        this.Magnifier.SetSource(null);
+        this.magnifierSampler.Dispose();
         this.previewImage.Dispose();
     }
 
@@ -95,10 +157,31 @@ public partial class RegionSelectionWindow : Window
     {
         if (e.Key == Key.Escape)
         {
-            UiLogger.Log("截图", "区域框选收到取消键：按键=Esc 结果=已取消区域截图");
-            this.CancelSelection();
+            this.CancelSelection("Esc 键");
+            e.Handled = true;
+            return;
+        }
+        if (e.Key == Key.Tab)
+        {
+            string source = e.KeyModifiers.HasFlag(KeyModifiers.Shift) ? "Shift+Tab" : "Tab";
+            this.CycleHoverLevel(e.KeyModifiers.HasFlag(KeyModifiers.Shift) ? -1 : 1, source);
+            e.Handled = true;
+            return;
+        }
+        if (e.Key == Key.Enter)
+        {
+            UiLogger.Log("截图", "区域框选收到确认键：按键=Enter 当前预选=" + DescribeCandidate(this.hoverCandidate)
+                + " 结果=确认截图");
+            this.AcceptHoverCandidate();
             e.Handled = true;
         }
+    }
+
+    /// <summary>滚轮切换预选层级：向上回到更大范围，向下进入更深层子视图。</summary>
+    private void OnWindowPointerWheelChanged(object? sender, PointerWheelEventArgs e)
+    {
+        this.CycleHoverLevel(e.Delta.Y > 0 ? -1 : 1, "滚轮");
+        e.Handled = true;
     }
 
     private void OnWindowPointerPressed(object? sender, PointerPressedEventArgs e)
@@ -106,8 +189,9 @@ public partial class RegionSelectionWindow : Window
         PointerPointProperties properties = e.GetCurrentPoint(this).Properties;
         if (properties.IsRightButtonPressed)
         {
-            UiLogger.Log("截图", "区域框选收到取消操作：来源=鼠标右键 结果=已取消区域截图");
-            this.CancelSelection();
+            // 右键按下即退出，不等待抬起；同时释放可能存在的鼠标捕获
+            e.Pointer.Capture(null);
+            this.CancelSelection("鼠标右键");
             e.Handled = true;
             return;
         }
@@ -120,9 +204,11 @@ public partial class RegionSelectionWindow : Window
         this.isFreeformDrag = false;
         this.HintPanel.IsVisible = false;
         e.Pointer.Capture(this);
+        this.capturedPointer = e.Pointer;
+        this.session?.NotifyPointerPressed();
         UiLogger.Log("截图", "区域框选按下：起点横坐标=" + this.pointerDownPoint.X
             + " 起点纵坐标=" + this.pointerDownPoint.Y
-            + " 当前预选=" + this.DescribeCandidate(this.hoverCandidate)
+            + " 当前预选=" + DescribeCandidate(this.hoverCandidate)
             + " 结果=等待松开单击或拖动");
         e.Handled = true;
     }
@@ -130,6 +216,16 @@ public partial class RegionSelectionWindow : Window
     private void OnWindowPointerMoved(object? sender, PointerEventArgs e)
     {
         Point current = this.ClampPoint(e.GetPosition(this));
+        this.UpdateMagnifier(current);
+        if (this.session != null)
+        {
+            if (this.isPointerDown)
+            {
+                this.session.NotifyPointerMoved();
+                return;
+            }
+            this.session.NotifyPointerMovedHover();
+        }
         if (this.isPointerDown)
         {
             if (!this.isFreeformDrag)
@@ -171,6 +267,11 @@ public partial class RegionSelectionWindow : Window
         }
         this.isPointerDown = false;
         e.Pointer.Capture(null);
+        this.capturedPointer = null;
+        if (this.session != null && this.session.NotifyPointerReleased())
+        {
+            return;
+        }
 
         CaptureArea physicalArea;
         string modeText;
@@ -184,11 +285,10 @@ public partial class RegionSelectionWindow : Window
         }
         else
         {
-            Point releasePoint = this.ClampPoint(e.GetPosition(this));
-            this.hoverCandidate = this.SelectCandidateAtLogicalPoint(releasePoint);
+            // 直接使用当前高亮层级，保证 Tab / 滚轮切换后的窗口、子视图或全屏被原样确认
             physicalArea = this.hoverCandidate == null ? CaptureArea.Empty : this.hoverCandidate.Area;
             modeText = "单击预选";
-            UiLogger.Log("截图", "区域框选松开：模式=单击预选 当前预选=" + this.DescribeCandidate(this.hoverCandidate)
+            UiLogger.Log("截图", "区域框选松开：模式=单击预选 当前预选=" + DescribeCandidate(this.hoverCandidate)
                 + " 物理区域=" + physicalArea);
         }
         if (!physicalArea.IsValid || physicalArea.Width < 8 || physicalArea.Height < 8)
@@ -202,15 +302,63 @@ public partial class RegionSelectionWindow : Window
             this.HintPanel.IsVisible = true;
             return;
         }
-        this.completion.TrySetResult(physicalArea);
+        this.CompleteResult(physicalArea);
+    }
+
+    /// <summary>完成选区：多屏会话关闭全部遮罩，单屏直接关闭当前窗口。</summary>
+    private void CompleteResult(CaptureArea area)
+    {
+        if (this.session != null)
+        {
+            this.session.Complete(area);
+            return;
+        }
+        this.completion.TrySetResult(area);
         this.Close();
     }
 
-    /// <summary>按 Esc 或右键取消：返回空结果并关闭窗口。</summary>
-    private void CancelSelection()
+    /// <summary>按 Esc 或右键取消：立即释放捕获并撤销遮罩，多屏会话取消全部遮罩。</summary>
+    private void CancelSelection(string sourceText)
     {
+        this.ReleaseInputState();
+        if (this.session != null)
+        {
+            this.session.Cancel(sourceText, this.captureMode);
+            return;
+        }
+        if (this.completion.Task.IsCompleted)
+        {
+            return;
+        }
+        UiLogger.Log("截图", "截图取消：来源=" + sourceText
+            + " 截图模式=" + this.captureMode
+            + " 阶段=框选遮罩"
+            + " 结果=已撤销遮罩、高亮与放大镜，未生成产物");
         this.completion.TrySetResult(null);
         this.Close();
+    }
+
+    /// <summary>全局取消轮询兜底：遮罩没有拿到焦点时也能按右键 / Esc 退出。</summary>
+    internal void CancelSelectionFromInput(string sourceText)
+    {
+        this.CancelSelection(sourceText);
+    }
+
+    /// <summary>释放鼠标捕获与所有临时视觉状态，避免取消后残留点击层或卡住输入。</summary>
+    private void ReleaseInputState()
+    {
+        this.isPointerDown = false;
+        this.isFreeformDrag = false;
+        if (this.capturedPointer != null)
+        {
+            this.capturedPointer.Capture(null);
+            this.capturedPointer = null;
+        }
+        this.hoverTimer.Stop();
+        this.HintPanel.IsVisible = false;
+        this.MagnifierPanel.IsVisible = false;
+        this.SelectionBorder.IsVisible = false;
+        this.SizeBadge.IsVisible = false;
     }
 
     /// <summary>窗口打开时按当前鼠标位置立即预选下方区域；读取不到指针位置时保持全屏预选。</summary>
@@ -224,35 +372,248 @@ public partial class RegionSelectionWindow : Window
             UiLogger.Log("截图", "区域框选初始预选：鼠标位置不可用 结果=使用全屏预选");
             return;
         }
-        if (pointerX < this.screenArea.X || pointerX >= this.screenArea.X + this.screenArea.Width
-            || pointerY < this.screenArea.Y || pointerY >= this.screenArea.Y + this.screenArea.Height)
+        if (!this.IsPointInsideScreen(pointerX, pointerY))
         {
             this.RestoreFullScreenCandidate();
             UiLogger.Log("截图", "区域框选初始预选：鼠标位置不在当前屏幕内 横坐标=" + pointerX
                 + " 纵坐标=" + pointerY + " 结果=使用全屏预选");
             return;
         }
-        this.hoverCandidate = this.SelectCandidateAtPhysicalPoint(pointerX, pointerY);
-        this.ShowCandidateSelection(this.hoverCandidate);
+        this.RefreshHoverAtPhysical(pointerX, pointerY, true, "初始预选");
         UiLogger.Log("截图", "区域框选初始预选：鼠标位置横坐标=" + pointerX + " 纵坐标=" + pointerY
-            + " 预选区域=" + this.DescribeCandidate(this.hoverCandidate));
+            + " 预选区域=" + DescribeCandidate(this.hoverCandidate));
     }
 
-    /// <summary>鼠标移动时更新当前预选候选区域；候选未变化时不重复刷新界面。</summary>
-    private void UpdateHoverCandidate(Point logicalPoint)
+    /// <summary>鼠标静止时定时重新命中：窗口被打开、关闭或切换虚拟桌面后高亮能自动跟随。</summary>
+    private void OnHoverTimerTick(object? sender, EventArgs e)
     {
-        ScreenRegionCandidate? candidate = this.SelectCandidateAtLogicalPoint(logicalPoint);
-        if (candidate == null)
+        if (this.isPointerDown)
         {
             return;
         }
-        if (object.ReferenceEquals(candidate, this.hoverCandidate))
+        int pointerX;
+        int pointerY;
+        if (!this.regionDetector.TryGetPointerPosition(out pointerX, out pointerY))
         {
             return;
         }
+        if (!this.IsPointInsideScreen(pointerX, pointerY))
+        {
+            return;
+        }
+        this.RefreshHoverAtPhysical(pointerX, pointerY, false, "定时刷新");
+    }
+
+    /// <summary>
+    /// 按物理坐标刷新命中链：优先使用平台的实时命中（窗口 + 嵌套子视图），
+    /// 枚举不到时回落全屏；鼠标移动时重置到窗口层级，窗口状态变化时保留用户用 Tab 选中的层级。
+    /// </summary>
+    private void RefreshHoverAtPhysical(int x, int y, bool resetLevel, string reason)
+    {
+        List<ScreenRegionCandidate> chain = new List<ScreenRegionCandidate>();
+        if (this.regionDetector.IsSupported)
+        {
+            IReadOnlyList<ScreenRegionCandidate> hit = this.regionDetector.HitTest(x, y);
+            foreach (ScreenRegionCandidate candidate in hit)
+            {
+                if (candidate != null && candidate.Area.IsValid)
+                {
+                    chain.Add(candidate);
+                }
+            }
+        }
+        if (chain.Count == 0 && !this.regionDetector.IsSupported)
+        {
+            ScreenRegionCandidate? fallback = this.SelectCandidateAtPhysicalPoint(x, y);
+            if (fallback != null)
+            {
+                chain.Add(fallback);
+            }
+        }
+        string signature = BuildCandidateSignature(chain);
+        bool chainChanged = signature != this.lastHoverSignature;
+        this.lastHoverSignature = signature;
+        this.lastHoverPhysicalX = x;
+        this.lastHoverPhysicalY = y;
+        if (!chainChanged && !resetLevel)
+        {
+            return;
+        }
+        this.RebuildHoverLevels(chain);
+        if (resetLevel)
+        {
+            this.hoverLevelIndex = 0;
+        }
+        else if (this.hoverLevelIndex >= this.hoverLevels.Count)
+        {
+            this.hoverLevelIndex = this.hoverLevels.Count - 1;
+        }
+        if (this.hoverLevelIndex < 0)
+        {
+            this.hoverLevelIndex = 0;
+        }
+        this.ShowHoverLevel(reason, chainChanged);
+    }
+
+    /// <summary>把命中链接上全屏候选，形成「窗口 → 子视图 → 全屏」的可循环层级列表。</summary>
+    private void RebuildHoverLevels(List<ScreenRegionCandidate> chain)
+    {
+        this.hoverLevels.Clear();
+        foreach (ScreenRegionCandidate candidate in chain)
+        {
+            this.hoverLevels.Add(candidate);
+        }
+        bool hasFullScreen = this.hoverLevels.Count > 0
+            && this.hoverLevels[this.hoverLevels.Count - 1].Kind == ScreenRegionKind.FullScreen;
+        if (!hasFullScreen)
+        {
+            this.hoverLevels.Add(this.fullScreenCandidate);
+        }
+    }
+
+    /// <summary>显示当前层级并写入切换日志；仅层级或命中区域变化时刷新界面。</summary>
+    private void ShowHoverLevel(string reason, bool chainChanged)
+    {
+        if (this.hoverLevels.Count == 0)
+        {
+            this.RestoreFullScreenCandidate();
+            return;
+        }
+        if (this.hoverLevelIndex < 0)
+        {
+            this.hoverLevelIndex = 0;
+        }
+        if (this.hoverLevelIndex >= this.hoverLevels.Count)
+        {
+            this.hoverLevelIndex = this.hoverLevels.Count - 1;
+        }
+        ScreenRegionCandidate candidate = this.hoverLevels[this.hoverLevelIndex];
         this.hoverCandidate = candidate;
         this.ShowCandidateSelection(candidate);
-        UiLogger.Log("截图", "区域预选变化：预选区域=" + this.DescribeCandidate(candidate));
+        if (chainChanged)
+        {
+            UiLogger.Log("截图", "区域预选实时更新：原因=" + reason
+                + " 鼠标横坐标=" + this.lastHoverPhysicalX
+                + " 鼠标纵坐标=" + this.lastHoverPhysicalY
+                + " 层级=" + (this.hoverLevelIndex + 1) + "/" + this.hoverLevels.Count
+                + " 预选=" + DescribeCandidate(candidate));
+        }
+    }
+
+    /// <summary>在层级列表中前后切换：+1 进入更深的子视图或全屏，-1 回到更大范围。</summary>
+    private void CycleHoverLevel(int delta, string source)
+    {
+        if (this.hoverLevels.Count <= 1)
+        {
+            return;
+        }
+        int next = (this.hoverLevelIndex + delta) % this.hoverLevels.Count;
+        if (next < 0)
+        {
+            next += this.hoverLevels.Count;
+        }
+        this.hoverLevelIndex = next;
+        ScreenRegionCandidate candidate = this.hoverLevels[next];
+        this.hoverCandidate = candidate;
+        this.ShowCandidateSelection(candidate);
+        UiLogger.Log("截图", "区域预选层级切换：来源=" + source
+            + " 层级=" + (next + 1) + "/" + this.hoverLevels.Count
+            + " 预选=" + DescribeCandidate(candidate));
+    }
+
+    /// <summary>Enter 确认当前高亮区域：与单击预选走同一套完成路径。</summary>
+    private void AcceptHoverCandidate()
+    {
+        ScreenRegionCandidate? candidate = this.hoverCandidate;
+        if (candidate == null || !candidate.Area.IsValid
+            || candidate.Area.Width < 8 || candidate.Area.Height < 8)
+        {
+            UiLogger.Log("截图", "区域框选 Enter 确认被忽略：当前预选区域过小 预选=" + DescribeCandidate(candidate));
+            return;
+        }
+        UiLogger.Log("截图", "区域框选 Enter 确认：物理区域=" + candidate.Area + " 结果=完成区域截图");
+        this.CompleteResult(candidate.Area);
+    }
+
+    /// <summary>判断物理坐标是否落在当前框选窗口覆盖的屏幕区域内。</summary>
+    private bool IsPointInsideScreen(int x, int y)
+    {
+        return x >= this.screenArea.X && x < this.screenArea.X + this.screenArea.Width
+            && y >= this.screenArea.Y && y < this.screenArea.Y + this.screenArea.Height;
+    }
+
+    /// <summary>生成命中链签名，用于判断高亮是否需要刷新，避免同一窗口反复重绘造成闪烁。</summary>
+    private static string BuildCandidateSignature(List<ScreenRegionCandidate> chain)
+    {
+        if (chain.Count == 0)
+        {
+            return string.Empty;
+        }
+        string signature = string.Empty;
+        foreach (ScreenRegionCandidate candidate in chain)
+        {
+            signature = signature + candidate.Kind + ":" + candidate.NativeHandle + ":"
+                + candidate.Area.X + "," + candidate.Area.Y + "," + candidate.Area.Width + ","
+                + candidate.Area.Height + "|";
+        }
+        return signature;
+    }
+
+    /// <summary>刷新截图放大镜：显示光标附近的像素放大图、颜色值与屏幕坐标。</summary>
+    private void UpdateMagnifier(Point logicalPoint)
+    {
+        double physicalX = logicalPoint.X * this.scaling;
+        double physicalY = logicalPoint.Y * this.scaling;
+        double maximumX = Math.Max(0, this.screenArea.Width - 1);
+        double maximumY = Math.Max(0, this.screenArea.Height - 1);
+        physicalX = Math.Max(0, Math.Min(physicalX, maximumX));
+        physicalY = Math.Max(0, Math.Min(physicalY, maximumY));
+        this.Magnifier.SetImagePoint(new Point(physicalX, physicalY));
+        Color color = this.magnifierSampler.GetPixel(physicalX, physicalY);
+        this.MagnifierHex.Text = this.magnifierSampler.GetHex(physicalX, physicalY, true);
+        this.MagnifierRgb.Text = "RGB " + color.R + ", " + color.G + ", " + color.B;
+        this.MagnifierPosition.Text = "X " + (int)(this.screenArea.X + physicalX)
+            + "  Y " + (int)(this.screenArea.Y + physicalY);
+        this.MagnifierPanel.IsVisible = true;
+        double panelWidth = 150;
+        double panelHeight = 230;
+        double panelLeft = logicalPoint.X + 24;
+        double panelTop = logicalPoint.Y + 24;
+        if (panelLeft + panelWidth > this.Bounds.Width)
+        {
+            panelLeft = logicalPoint.X - panelWidth - 24;
+        }
+        if (panelTop + panelHeight > this.Bounds.Height)
+        {
+            panelTop = logicalPoint.Y - panelHeight - 24;
+        }
+        if (panelLeft < 0)
+        {
+            panelLeft = 0;
+        }
+        if (panelTop < 0)
+        {
+            panelTop = 0;
+        }
+        Canvas.SetLeft(this.MagnifierPanel, panelLeft);
+        Canvas.SetTop(this.MagnifierPanel, panelTop);
+    }
+
+    /// <summary>鼠标移动时实时命中窗口与子视图；移动超过阈值时回到窗口层级。</summary>
+    private void UpdateHoverCandidate(Point logicalPoint)
+    {
+        double physicalX = this.screenArea.X + logicalPoint.X * this.scaling;
+        double physicalY = this.screenArea.Y + logicalPoint.Y * this.scaling;
+        int x = (int)Math.Floor(physicalX);
+        int y = (int)Math.Floor(physicalY);
+        bool moved = Math.Abs(x - this.lastHoverPhysicalX) >= 3
+            || Math.Abs(y - this.lastHoverPhysicalY) >= 3
+            || this.lastHoverSignature.Length == 0;
+        if (!moved)
+        {
+            return;
+        }
+        this.RefreshHoverAtPhysical(x, y, true, "鼠标移动");
     }
 
     /// <summary>按逻辑坐标选择候选区域：优先鼠标下方最靠前的窗口，再取该窗口内最小子视图，桌面空白处回落全屏。</summary>
@@ -312,7 +673,7 @@ public partial class RegionSelectionWindow : Window
         return bestChild ?? topWindow;
     }
 
-    /// <summary>把候选区域换算为窗口逻辑坐标并刷新遮罩、边框与尺寸标签。</summary>
+    /// <summary>把候选区域换算为窗口逻辑坐标并刷新遮罩、边框与尺寸标签；同一区域不重复刷新以避免闪烁。</summary>
     private void ShowCandidateSelection(ScreenRegionCandidate? candidate)
     {
         if (candidate == null)
@@ -320,6 +681,14 @@ public partial class RegionSelectionWindow : Window
             this.RestoreFullScreenCandidate();
             return;
         }
+        string key = candidate.Kind + "|" + candidate.NativeHandle + "|"
+            + candidate.Area.X + "," + candidate.Area.Y + "," + candidate.Area.Width + ","
+            + candidate.Area.Height + "|" + candidate.Name;
+        if (key == this.lastDisplayedKey)
+        {
+            return;
+        }
+        this.lastDisplayedKey = key;
         this.UpdateSelection(this.ToLogicalRect(candidate.Area), candidate.Name);
     }
 
@@ -327,7 +696,80 @@ public partial class RegionSelectionWindow : Window
     private void RestoreFullScreenCandidate()
     {
         this.hoverCandidate = this.fullScreenCandidate;
-        this.UpdateSelection(this.ToLogicalRect(this.fullScreenCandidate.Area), this.fullScreenCandidate.Name);
+        this.hoverLevels.Clear();
+        this.hoverLevels.Add(this.fullScreenCandidate);
+        this.hoverLevelIndex = 0;
+        this.ShowCandidateSelection(this.fullScreenCandidate);
+    }
+
+    /// <summary>本窗口覆盖的屏幕物理区域（多屏会话用于判断光标所在屏幕）。</summary>
+    internal CaptureArea ScreenArea
+    {
+        get { return this.screenArea; }
+    }
+
+    /// <summary>本窗口所在显示器的缩放比例。</summary>
+    internal double ScreenScaling
+    {
+        get { return this.scaling; }
+    }
+
+    /// <summary>多屏会话切换活动屏幕：激活时恢复定时命中，非激活时清除高亮与放大镜。</summary>
+    internal void SetSessionActive(bool active)
+    {
+        if (active)
+        {
+            this.Cursor = new Cursor(StandardCursorType.Cross);
+            if (!this.hintHiddenByMove)
+            {
+                this.HintPanel.IsVisible = true;
+            }
+            this.hoverTimer.Start();
+            return;
+        }
+        this.hoverTimer.Stop();
+        this.HintPanel.IsVisible = false;
+        this.MagnifierPanel.IsVisible = false;
+        this.ShowNoHover();
+    }
+
+    /// <summary>多屏会话在活动屏幕上立即刷新命中，用于光标跨屏后的即时高亮。</summary>
+    internal void RefreshHoverAtPhysical(int x, int y, string reason)
+    {
+        if (!this.IsPointInsideScreen(x, y))
+        {
+            return;
+        }
+        this.RefreshHoverAtPhysical(x, y, true, reason);
+    }
+
+    /// <summary>
+    /// 多屏跨屏拖拽时，把全局物理选区画到本屏：只画与本屏的交集，尺寸标签仅活动屏显示。
+    /// </summary>
+    internal void ApplyExternalSelection(CaptureArea selection, string label, bool showBadge)
+    {
+        int left = Math.Max(selection.X, this.screenArea.X);
+        int top = Math.Max(selection.Y, this.screenArea.Y);
+        int right = Math.Min(selection.X + selection.Width, this.screenArea.X + this.screenArea.Width);
+        int bottom = Math.Min(selection.Y + selection.Height, this.screenArea.Y + this.screenArea.Height);
+        if (right <= left || bottom <= top)
+        {
+            this.ShowNoHover();
+            return;
+        }
+        CaptureArea intersection = new CaptureArea(left, top, right - left, bottom - top);
+        Rect rect = this.ToLogicalRect(intersection);
+        this.UpdateSelection(rect, string.Empty, label, showBadge);
+        this.MagnifierPanel.IsVisible = false;
+    }
+
+    /// <summary>清除本屏高亮、边框与尺寸标签，只保留整屏遮罩（多屏会话中的非活动屏）。</summary>
+    internal void ShowNoHover()
+    {
+        this.hoverCandidate = null;
+        this.lastDisplayedKey = string.Empty;
+        this.UpdateSelection(new Rect(0, 0, 0, 0), string.Empty, null, false);
+        this.MagnifierPanel.IsVisible = false;
     }
 
     /// <summary>把逻辑坐标点限制在窗口范围内。</summary>
@@ -361,7 +803,7 @@ public partial class RegionSelectionWindow : Window
     }
 
     /// <summary>刷新遮罩、选择框与尺寸标签的位置。</summary>
-    private void UpdateSelection(Rect rect, string label)
+    private void UpdateSelection(Rect rect, string label, string? sizeOverride = null, bool showBadge = true)
     {
         double canvasWidth = this.CurrentCanvasWidth();
         double canvasHeight = this.CurrentCanvasHeight();
@@ -389,10 +831,17 @@ public partial class RegionSelectionWindow : Window
         this.SelectionBorder.Width = right - left;
         this.SelectionBorder.Height = bottom - top;
         this.SelectionBorder.IsVisible = true;
+        if (!showBadge)
+        {
+            this.SizeBadge.IsVisible = false;
+            return;
+        }
 
         CaptureArea physicalArea = this.ToPhysicalArea(new Rect(left, top, right - left, bottom - top));
         string nameText = label.Length == 0 ? string.Empty : label + " · ";
-        this.SizeText.Text = nameText + physicalArea.Width + " × " + physicalArea.Height + " 像素";
+        this.SizeText.Text = sizeOverride != null
+            ? sizeOverride
+            : nameText + physicalArea.Width + " × " + physicalArea.Height + " 像素";
         this.SizeBadge.IsVisible = true;
         this.SizeBadge.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
         double badgeWidth = this.SizeBadge.DesiredSize.Width;

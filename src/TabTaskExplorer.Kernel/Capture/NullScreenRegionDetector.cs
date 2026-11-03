@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 
 namespace TabTaskExplorer.Kernel.Capture;
 
@@ -26,5 +26,11 @@ public class NullScreenRegionDetector : IScreenRegionDetector
         x = 0;
         y = 0;
         return false;
+    }
+
+    /// <inheritdoc />
+    public IReadOnlyList<ScreenRegionCandidate> HitTest(int x, int y)
+    {
+        return new List<ScreenRegionCandidate>();
     }
 }

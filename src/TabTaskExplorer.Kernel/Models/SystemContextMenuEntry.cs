@@ -86,4 +86,22 @@ public class SystemContextMenuEntry
 
     /// <summary>子菜单项：系统外壳菜单里的级联子菜单（例如“发送到”“打开方式”）。</summary>
     public List<SystemContextMenuEntry> Children { get; } = new List<SystemContextMenuEntry>();
+
+    /// <summary>菜单项快捷键说明（标题里制表符之后的部分，例如 Ctrl+C），网页端显示在右侧。</summary>
+    public string AcceleratorText { get; set; } = string.Empty;
+
+    /// <summary>菜单项访问键（标题里单个 &amp; 之后的字符），供网页端在标题下方划线。</summary>
+    public string AccessKey { get; set; } = string.Empty;
+
+    /// <summary>菜单项是否带勾选标记（例如“显示隐藏文件”）。</summary>
+    public bool IsChecked { get; set; }
+
+    /// <summary>菜单项是否为单选样式勾选（同组内互斥）。</summary>
+    public bool IsRadioCheck { get; set; }
+
+    /// <summary>菜单项是否为默认项（系统以粗体显示）。</summary>
+    public bool IsDefault { get; set; }
+
+    /// <summary>菜单项图标（BMP data URI）；系统未提供可直接读取的位图时为空字符串。</summary>
+    public string IconDataUri { get; set; } = string.Empty;
 }

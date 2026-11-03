@@ -14,6 +14,17 @@ internal static class Program
             + " 参数个数=" + args.Length + " 参数内容=" + string.Join(" | ", args));
         LogInvocationContext();
 
+        // 进程级 AppUserModelID 必须在任何窗口（包括 Avalonia 内部窗口）创建前设置；
+        // 放在入口点，覆盖命令行、文件关联、浏览器/系统唤起与第二实例降级启动等全部路径
+        if (OperatingSystem.IsWindows())
+        {
+            bool identityApplied = TabTaskExplorer.Platform.Windows.WindowsWindowHostService
+                .TrySetProcessAppUserModelId(Services.WindowHostStyler.AppUserModelId);
+            Services.UiLogger.Log("窗口任务栏", "程序入口提前设置进程 AppUserModelID：取值="
+                + Services.WindowHostStyler.AppUserModelId
+                + " 结果=" + (identityApplied ? "成功" : "失败"));
+        }
+
         // 单实例：拿到互斥量说明没有既有实例，正常启动主实例
         if (Services.SingleInstanceService.AcquirePrimary())
         {

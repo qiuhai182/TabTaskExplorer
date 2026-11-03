@@ -1,4 +1,6 @@
-﻿using TabTaskExplorer.Kernel.Models;
+﻿using System.Collections.Generic;
+using System.Threading.Tasks;
+using TabTaskExplorer.Kernel.Models;
 
 namespace TabTaskExplorer.Kernel.Abstractions;
 
@@ -52,4 +54,35 @@ public interface ISystemContextMenuService
     /// <param name="isBackground">是否为文件夹空白处菜单。</param>
     /// <returns>唤起成功返回 true。</returns>
     bool ExecuteShellMenuEntry(SystemContextMenuEntry entry, string targetPath, bool isBackground);
+
+    /// <summary>
+    /// 当前平台是否支持弹出系统原生右键菜单（Windows 支持，其他平台返回 false）。
+    /// </summary>
+    bool SupportsNativeShellMenu { get; }
+
+    /// <summary>
+    /// 弹出一次原生右键菜单：菜单里先放本程序命令，再插入系统外壳菜单（静态动词 + 全部第三方扩展），
+    /// 多选时以包含全部路径的 IDataObject 调用外壳，保证批量扩展命令一次处理全部选中项。
+    /// 平台不支持、构建失败或超时降级时返回 Supported 或 MenuShown 为 false，调用方退回自有菜单。
+    /// </summary>
+    /// <param name="request">弹出请求（目标路径、是否空白处、屏幕坐标与本程序命令）。</param>
+    /// <returns>弹出结果；调用方据此执行本程序命令或判断是否已唤起系统命令。</returns>
+    Task<NativeContextMenuResult> ShowNativeShellMenuAsync(NativeContextMenuRequest request);
+
+    /// <summary>
+    /// 枚举指定目标（单个、多选或空白处）适用的系统外壳菜单层级：包含静态动词与第三方扩展，
+    /// 保留禁用状态与子菜单结构，供网页端渲染树形菜单。平台不支持时返回空列表。
+    /// </summary>
+    /// <param name="paths">目标绝对路径列表（多选时包含全部选中项；空白处传当前目录）。</param>
+    /// <param name="isBackground">true 表示目录空白处菜单。</param>
+    IReadOnlyList<SystemContextMenuEntry> EnumerateShellMenu(IReadOnlyList<string> paths, bool isBackground);
+
+    /// <summary>
+    /// 按命令编号唤起系统外壳命令（编号来自 <see cref="EnumerateShellMenu(IReadOnlyList{string}, bool)"/>）。
+    /// </summary>
+    /// <param name="commandId">外壳菜单命令编号。</param>
+    /// <param name="paths">目标绝对路径列表（必须与枚举时一致）。</param>
+    /// <param name="isBackground">是否为目录空白处菜单。</param>
+    /// <returns>唤起成功返回 true。</returns>
+    bool ExecuteShellMenuCommand(int commandId, IReadOnlyList<string> paths, bool isBackground);
 }

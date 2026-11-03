@@ -1,7 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using Avalonia.Threading;
 using Microsoft.Extensions.DependencyInjection;
@@ -34,6 +36,12 @@ public class WebWorkspace
 
     /// <summary>该工作区当前是否处于 IDE 模式。</summary>
     private bool isIdeMode;
+
+    /// <summary>服务端最近一次操作提示（连接失败等），网页端轮询快照后展示。</summary>
+    private string lastNotice = string.Empty;
+
+    /// <summary>待用户确认的主机密钥（首次连接或密钥变更），网页端据此渲染确认对话框。</summary>
+    private DebugPendingHostKey? pendingHostKey;
 
     /// <summary>工作区标识（网页端回传时使用）。</summary>
     public string Id { get; private set; } = string.Empty;
@@ -168,7 +176,8 @@ public class WebWorkspace
     {
         DiskViewPanelViewModel tab = new DiskViewPanelViewModel(
             this.services.GetRequiredService<IDiskUsageProvider>(),
-            this.services.GetRequiredService<DiskScanService>());
+            this.services.GetRequiredService<DiskScanService>(),
+            this.services.GetRequiredService<IFileSystemProvider>());
         this.tabs.Add(tab);
         this.selectedIndex = this.tabs.Count - 1;
         UiLogger.Log("网页端工作区", "工作区=" + this.Id + " 新建磁盘视图标签：标签总数=" + this.tabs.Count);
@@ -607,6 +616,64 @@ public class WebWorkspace
         FileTabViewModel? fileTab = this.CurrentFileTab();
         DiskViewPanelViewModel? diskTab = this.CurrentDiskTab();
 
+        if (action.StartsWith("disk", StringComparison.Ordinal))
+        {
+            return this.RunOnUiThread<string>(delegate { return this.ExecuteDiskAction(action, argument); });
+        }
+        if (action == "openinmanager")
+        {
+            List<string> targetLines = WebWorkspace.SplitPathLines(argument);
+            string path = targetLines.Count > 0 ? targetLines[0] : string.Empty;
+            if (path.Length == 0)
+            {
+                return "在资源管理器打开失败：缺少目标路径";
+            }
+            bool exists = Directory.Exists(path) || File.Exists(path);
+            if (!exists)
+            {
+                return "在资源管理器打开失败：目标不存在 " + path;
+            }
+            if (diskTab != null && this.FindDiskRow(diskTab, path) == null
+                && !string.Equals(WebContextMenuPolicy.NormalizePath(path), WebContextMenuPolicy.NormalizePath(diskTab.RootPathInput), StringComparison.OrdinalIgnoreCase))
+            {
+                return "在资源管理器打开失败：目标不在当前磁盘视图内";
+            }
+            if (diskTab == null && fileTab != null)
+            {
+                bool matched = false;
+                foreach (FileRow row in fileTab.VisibleRows)
+                {
+                    if (string.Equals(WebContextMenuPolicy.NormalizePath(row.FullPath), WebContextMenuPolicy.NormalizePath(path), StringComparison.OrdinalIgnoreCase))
+                    {
+                        matched = true;
+                        break;
+                    }
+                }
+                if (!matched)
+                {
+                    return "在资源管理器打开失败：目标不在当前文件列表中";
+                }
+            }
+            try
+            {
+                if (Directory.Exists(path))
+                {
+                    Process.Start(new ProcessStartInfo { FileName = "explorer.exe", Arguments = "\"" + path + "\"", UseShellExecute = true });
+                }
+                else
+                {
+                    Process.Start(new ProcessStartInfo { FileName = "explorer.exe", Arguments = "/select,\"" + path + "\"", UseShellExecute = true });
+                }
+                UiLogger.Log("网页端工作区", "在资源管理器打开：工作区=" + this.Id + " 目标=" + path + " 结果=已调用资源管理器");
+                return "已在资源管理器中打开：" + path;
+            }
+            catch (Exception error)
+            {
+                UiLogger.LogError("网页端工作区", "在资源管理器打开失败：目标=" + path, error);
+                return "在资源管理器打开失败：" + error.Message;
+            }
+        }
+
         if (action == "sort")
         {
             if (fileTab != null)
@@ -1036,6 +1103,10 @@ public class WebWorkspace
     /// <summary>执行网页端连接管理动作（选择、保存、删除、测试、一键导入、打开远程文件夹）。</summary>
     private string ExecuteConnectionAction(string action, string argument)
     {
+        if (action == "connhostkeytrust" || action == "connhostkeyforget" || action == "connhostkeycancel")
+        {
+            return this.ExecuteHostKeyAction(action);
+        }
         ConnectionManagerViewModel? tab = this.CurrentConnectionsTab();
         if (tab == null)
         {
@@ -1102,6 +1173,7 @@ public class WebWorkspace
             {
                 return "请先选择要打开的连接";
             }
+            this.pendingHostKey = null;
             this.OpenRemoteFolder(profile);
             return "正在连接 " + profile.Host + "，远程目录标签将在连接成功后出现";
         }
@@ -1110,6 +1182,66 @@ public class WebWorkspace
             return "网页端暂不展示终端会话，请在桌面端打开终端";
         }
         return "未知动作：" + action;
+    }
+
+    /// <summary>执行网页端主机密钥确认动作：信任首次指纹、显式删除旧记录或取消。</summary>
+    private string ExecuteHostKeyAction(string action)
+    {
+        DebugPendingHostKey? pending = this.pendingHostKey;
+        if (action == "connhostkeycancel")
+        {
+            this.pendingHostKey = null;
+            UiLogger.Log("远程连接审计", "网页端取消主机密钥确认：工作区=" + this.Id + " 结果=未建立连接");
+            return "已取消主机密钥确认";
+        }
+        if (pending == null)
+        {
+            return "当前没有待确认的主机密钥";
+        }
+        KnownHostStore store = this.services.GetRequiredService<KnownHostStore>();
+        if (action == "connhostkeytrust")
+        {
+            if (pending.ErrorCode != "HOST_KEY_UNKNOWN")
+            {
+                return "主机密钥已变化，不能直接信任；请先删除旧记录再重新确认新指纹";
+            }
+            store.Trust(pending.Host, pending.Port, pending.KeyType, pending.FingerprintSha256);
+            UiLogger.Log("远程连接审计", "网页端信任主机密钥：工作区=" + this.Id + " 连接=" + pending.ProfileName
+                + " 主机=" + pending.Host + " 端口=" + pending.Port + " 算法=" + pending.KeyType
+                + " 指纹=" + pending.FingerprintSha256 + " 结果=已写入 known_hosts 并重试连接");
+            this.pendingHostKey = null;
+            this.RetryPendingConnection(pending, "主机密钥已保存，正在重新连接……");
+            return "已信任主机密钥并重新连接：" + pending.Host + ":" + pending.Port;
+        }
+        if (action == "connhostkeyforget")
+        {
+            if (pending.ErrorCode != "HOST_KEY_MISMATCH")
+            {
+                return "当前没有密钥变更记录需要删除";
+            }
+            int removed = store.Remove(pending.Host, pending.Port);
+            UiLogger.Log("远程连接审计", "网页端删除旧主机密钥：工作区=" + this.Id + " 连接=" + pending.ProfileName
+                + " 主机=" + pending.Host + " 端口=" + pending.Port + " 删除条数=" + removed
+                + " 结果=已删除，重新连接需要再次确认新指纹");
+            this.pendingHostKey = null;
+            this.RetryPendingConnection(pending, "旧主机密钥已删除，正在重新连接，请再次确认新指纹");
+            return "已删除旧主机密钥记录 " + removed + " 条；重新连接需要再次确认新指纹";
+        }
+        return "未知主机密钥动作：" + action;
+    }
+
+    /// <summary>确认主机密钥后按原连接重试；连接配置不存在时只记录提示。</summary>
+    private void RetryPendingConnection(DebugPendingHostKey pending, string notice)
+    {
+        this.lastNotice = notice;
+        ConnectionManager manager = this.services.GetRequiredService<ConnectionManager>();
+        RemoteConnectionProfile? profile = manager.FindById(pending.ProfileId);
+        if (profile == null)
+        {
+            this.lastNotice = "连接配置已不存在：" + pending.ProfileName;
+            return;
+        }
+        this.OpenRemoteFolder(profile);
     }
 
     /// <summary>按编号查找连接管理标签中的连接配置；找不到返回 null。</summary>
@@ -1192,6 +1324,9 @@ public class WebWorkspace
             try
             {
                 IFileSystemProvider provider = factory.OpenFileSystem(profile, secret);
+                // 先实际读取一次根目录验证认证与 SFTP 通道；失败直接返回提示，避免生成一个空标签
+                provider.ListDirectory("/");
+                workspace.lastNotice = string.Empty;
                 Dispatcher.UIThread.Post(delegate
                 {
                     for (int index = 0; index < workspace.tabs.Count; index++)
@@ -1200,7 +1335,9 @@ public class WebWorkspace
                         if (existing != null && existing.AttachedProfileId == profile.Id)
                         {
                             workspace.selectedIndex = index;
-                            UiLogger.Log("网页端工作区", "工作区=" + workspace.Id + " 远程文件夹标签已存在：直接切换到该标签 连接=" + profile.Name);
+                            // 复用标签可能停留在上次失败的空列表：重新读取，触发真实重连
+                            existing.Refresh();
+                            UiLogger.Log("网页端工作区", "工作区=" + workspace.Id + " 远程文件夹标签已存在：重新读取并切换到该标签 连接=" + profile.Name);
                             workspace.SyncTabForeground();
                             return;
                         }
@@ -1215,9 +1352,49 @@ public class WebWorkspace
                     workspace.SyncTabForeground();
                 });
             }
+            catch (HostKeyUnknownException keyError)
+            {
+                workspace.pendingHostKey = new DebugPendingHostKey
+                {
+                    ErrorCode = "HOST_KEY_UNKNOWN",
+                    ProfileId = profile.Id,
+                    ProfileName = profile.Name,
+                    Host = keyError.Host,
+                    Port = keyError.Port,
+                    KeyType = keyError.KeyType,
+                    FingerprintSha256 = keyError.FingerprintSha256,
+                };
+                workspace.lastNotice = "首次连接 " + keyError.Host + ":" + keyError.Port
+                    + "，需要确认主机指纹：" + keyError.FingerprintSha256;
+                UiLogger.Log("远程连接审计", "主机密钥待确认：连接=" + profile.Name + " 主机=" + keyError.Host
+                    + " 端口=" + keyError.Port + " 算法=" + keyError.KeyType + " 指纹=" + keyError.FingerprintSha256
+                    + " 结果=已阻断，等待用户确认");
+            }
+            catch (HostKeyMismatchException keyError)
+            {
+                workspace.pendingHostKey = new DebugPendingHostKey
+                {
+                    ErrorCode = "HOST_KEY_MISMATCH",
+                    ProfileId = profile.Id,
+                    ProfileName = profile.Name,
+                    Host = keyError.Host,
+                    Port = keyError.Port,
+                    KeyType = keyError.KeyType,
+                    FingerprintSha256 = keyError.ActualFingerprintSha256,
+                    ExpectedFingerprintSha256 = keyError.ExpectedFingerprintSha256,
+                };
+                workspace.lastNotice = "主机密钥与已信任记录不一致，连接已阻断："
+                    + keyError.Host + ":" + keyError.Port;
+                UiLogger.Log("远程连接审计", "主机密钥变更被阻断：连接=" + profile.Name + " 主机=" + keyError.Host
+                    + " 端口=" + keyError.Port + " 算法=" + keyError.KeyType
+                    + " 已信任指纹=" + keyError.ExpectedFingerprintSha256
+                    + " 当前指纹=" + keyError.ActualFingerprintSha256 + " 结果=硬阻断，未建立会话");
+            }
             catch (Exception error)
             {
-                UiLogger.LogError("网页端工作区", "打开远程文件夹失败：连接=" + profile.Name + " 服务器=" + profile.Host, error);
+                workspace.lastNotice = "打开远程文件夹失败：" + error.Message;
+                UiLogger.LogError("网页端工作区", "打开远程文件夹失败：连接=" + profile.Name + " 服务器=" + profile.Host
+                    + " 端口=" + profile.GetEffectivePort() + " 认证方式=" + profile.AuthType, error);
             }
         });
     }
@@ -1229,7 +1406,7 @@ public class WebWorkspace
     }
 
     /// <summary>把剪贴板中的条目复制或移动到指定目录（独立工作区自己的剪贴板），供当前目录粘贴与「粘贴到该文件夹」共用。</summary>
-    private string PasteClipboard(FileTabViewModel fileTab, string targetDirectory)
+    private string PasteClipboard(FileTabViewModel? fileTab, string targetDirectory)
     {
         if (this.clipboardPaths == null || this.clipboardPaths.Count == 0)
         {
@@ -1271,14 +1448,237 @@ public class WebWorkspace
         {
             this.clipboardPaths = null;
         }
+        string message = "粘贴完成：成功 " + successCount + " 项，失败 " + failedCount + " 项";
         UiLogger.Log("网页端工作区", "工作区=" + this.Id + " 粘贴落地：目标目录=" + targetDirectory
             + " 路径列表=" + landedPathsText
             + " 方式=" + (landedIsCut ? "移动" : "复制")
             + " 成功条数=" + successCount + " 失败条数=" + failedCount
             + " 结果=" + (failedCount == 0 ? "全部成功" : "部分或全部失败"));
-        fileTab.ShowMessage("粘贴完成：成功 " + successCount + " 项，失败 " + failedCount + " 项");
-        fileTab.Refresh();
-        return "粘贴完成：成功 " + successCount + " 项，失败 " + failedCount + " 项";
+        if (fileTab != null)
+        {
+            fileTab.ShowMessage(message);
+            fileTab.Refresh();
+        }
+        this.RefreshTabsAtDirectory(targetDirectory);
+        DiskViewPanelViewModel? diskTab = this.CurrentDiskTab();
+        if (diskTab != null)
+        {
+            diskTab.RefreshAfterChange(targetDirectory);
+        }
+        return message;
+    }
+
+    /// <summary>刷新当前工作区内所有正好停在指定目录的文件标签（磁盘视图操作后保持文件夹视图同步）。</summary>
+    public void RefreshTabsAtDirectory(string directory)
+    {
+        if (string.IsNullOrEmpty(directory))
+        {
+            return;
+        }
+        foreach (object tab in this.tabs)
+        {
+            FileTabViewModel? fileTab = tab as FileTabViewModel;
+            if (fileTab != null
+                && string.Equals(WebContextMenuPolicy.NormalizePath(fileTab.CurrentPath),
+                    WebContextMenuPolicy.NormalizePath(directory), StringComparison.OrdinalIgnoreCase))
+            {
+                fileTab.Refresh();
+            }
+        }
+    }
+
+    /// <summary>执行磁盘视图专属的文件操作：所有目标必须位于当前磁盘标签根目录或可见行内。</summary>
+    private string ExecuteDiskAction(string action, string argument)
+    {
+        DiskViewPanelViewModel? diskTab = this.CurrentDiskTab();
+        if (diskTab == null)
+        {
+            return "当前标签不是磁盘视图";
+        }
+        List<string> lines = WebWorkspace.SplitPathLines(argument);
+        if (action == "disknewfolder" || action == "disknewfile")
+        {
+            if (lines.Count < 2)
+            {
+                return "参数不足：需要目录与新名称";
+            }
+            string directory = lines[0];
+            string name = lines[1];
+            string guard = this.EnsureDiskDirectory(diskTab, directory);
+            if (guard.Length > 0)
+            {
+                return guard;
+            }
+            string message = action == "disknewfolder"
+                ? diskTab.CreateFolder(directory, name)
+                : diskTab.CreateFile(directory, name);
+            this.RefreshTabsAtDirectory(directory);
+            return message;
+        }
+        if (action == "diskrename")
+        {
+            if (lines.Count < 2)
+            {
+                return "参数不足：需要原路径与新名称";
+            }
+            DiskRow? row = this.FindDiskRow(diskTab, lines[0]);
+            if (row == null)
+            {
+                return "重命名失败：目标不在当前磁盘视图内";
+            }
+            string parent = Path.GetDirectoryName(row.FullPath) ?? string.Empty;
+            string guard = this.EnsureDiskDirectory(diskTab, parent);
+            if (guard.Length > 0)
+            {
+                return guard;
+            }
+            string message = diskTab.Rename(row, lines[1]);
+            this.RefreshTabsAtDirectory(parent);
+            return message;
+        }
+        if (action == "diskdelete")
+        {
+            bool permanent = lines.Count > 0 && lines[0] == "1";
+            int startIndex = permanent ? 1 : 0;
+            int deletedCount = 0;
+            string lastMessage = string.Empty;
+            for (int index = startIndex; index < lines.Count; index++)
+            {
+                DiskRow? row = this.FindDiskRow(diskTab, lines[index]);
+                if (row == null)
+                {
+                    continue;
+                }
+                string parent = Path.GetDirectoryName(row.FullPath) ?? string.Empty;
+                string guard = this.EnsureDiskDirectory(diskTab, parent);
+                if (guard.Length > 0)
+                {
+                    lastMessage = guard;
+                    continue;
+                }
+                lastMessage = diskTab.Delete(row, permanent);
+                deletedCount++;
+                this.RefreshTabsAtDirectory(parent);
+            }
+            return deletedCount == 0 ? "删除失败：目标不在当前磁盘视图内" : lastMessage;
+        }
+        if (action == "diskpasteinto")
+        {
+            if (lines.Count == 0)
+            {
+                return "粘贴失败：缺少目标目录";
+            }
+            string guard = this.EnsureDiskDirectory(diskTab, lines[0]);
+            if (guard.Length > 0)
+            {
+                return guard;
+            }
+            string message = this.PasteClipboard(null, lines[0]);
+            return message;
+        }
+        if (action == "diskcopysource" || action == "diskcutsource")
+        {
+            List<string> paths = new List<string>();
+            foreach (string line in lines)
+            {
+                DiskRow? row = this.FindDiskRow(diskTab, line);
+                if (row != null)
+                {
+                    paths.Add(row.FullPath);
+                }
+            }
+            if (paths.Count == 0)
+            {
+                return "请先选择要复制或剪切的条目";
+            }
+            this.clipboardPaths = paths;
+            this.clipboardIsCut = action == "diskcutsource";
+            return (this.clipboardIsCut ? "已剪切 " : "已复制 ") + paths.Count + " 项，可粘贴到目标文件夹";
+        }
+        if (action == "diskcopyto" || action == "diskmoveto")
+        {
+            if (lines.Count < 2)
+            {
+                return "拖放失败：需要目标目录与源条目";
+            }
+            string target = lines[0];
+            string guard = this.EnsureDiskDirectory(diskTab, target);
+            if (guard.Length > 0)
+            {
+                return guard;
+            }
+            List<string> sources = new List<string>();
+            for (int index = 1; index < lines.Count; index++)
+            {
+                DiskRow? row = this.FindDiskRow(diskTab, lines[index]);
+                if (row != null)
+                {
+                    sources.Add(row.FullPath);
+                }
+            }
+            if (sources.Count == 0)
+            {
+                return "拖放失败：源条目不在当前磁盘视图内";
+            }
+            bool isMove = action == "diskmoveto";
+            int successCount = diskTab.TransferPaths(sources, target, isMove, out int failedCount);
+            foreach (string source in sources)
+            {
+                string parent = Path.GetDirectoryName(source) ?? string.Empty;
+                this.RefreshTabsAtDirectory(parent);
+            }
+            this.RefreshTabsAtDirectory(target);
+            return "拖放完成（" + (isMove ? "移动" : "复制") + "）：成功 " + successCount + " 项，失败 " + failedCount + " 项";
+        }
+        return "未知磁盘操作：" + action;
+    }
+
+    /// <summary>校验磁盘操作目录：必须等于根目录或当前可见目录行，返回空表示通过。</summary>
+    private string EnsureDiskDirectory(DiskViewPanelViewModel diskTab, string directory)
+    {
+        string target = WebContextMenuPolicy.NormalizePath(directory);
+        if (target.Length == 0)
+        {
+            return "此电脑视图没有具体目录，请先打开某个磁盘或目录";
+        }
+        // 此电脑根视图（未设置根目录）下仍允许操作已展开的目录行：
+        // 行路径来自当前磁盘视图，属于可操作范围，不能因为根目录为空就整体拒绝
+        foreach (DiskRow row in diskTab.Rows)
+        {
+            if (row.IsDirectory
+                && string.Equals(WebContextMenuPolicy.NormalizePath(row.FullPath), target, StringComparison.OrdinalIgnoreCase))
+            {
+                return string.Empty;
+            }
+        }
+        string root = WebContextMenuPolicy.NormalizePath(diskTab.RootPathInput);
+        if (string.Equals(root, target, StringComparison.OrdinalIgnoreCase))
+        {
+            return string.Empty;
+        }
+        if (root.Length == 0)
+        {
+            return "此电脑视图没有具体目录，请先打开某个磁盘或目录";
+        }
+        return "目标目录不在当前磁盘视图内：" + directory;
+    }
+
+    /// <summary>在当前磁盘视图的可见行里按完整路径查找一行；找不到返回空。</summary>
+    private DiskRow? FindDiskRow(DiskViewPanelViewModel diskTab, string path)
+    {
+        string target = WebContextMenuPolicy.NormalizePath(path);
+        if (target.Length == 0)
+        {
+            return null;
+        }
+        foreach (DiskRow row in diskTab.Rows)
+        {
+            if (string.Equals(WebContextMenuPolicy.NormalizePath(row.FullPath), target, StringComparison.OrdinalIgnoreCase))
+            {
+                return row;
+            }
+        }
+        return null;
     }
 
     /// <summary>保存共享设置并让本工作区全部文件标签按新设置刷新。</summary>
@@ -1298,7 +1698,7 @@ public class WebWorkspace
     }
 
     /// <summary>把"每行一个路径"的文本拆成路径列表（去掉空行与行尾回车）。</summary>
-    private static List<string> SplitPathLines(string text)
+    public static List<string> SplitPathLines(string text)
     {
         List<string> paths = new List<string>();
         foreach (string line in text.Split('\n'))
@@ -1455,6 +1855,8 @@ public class WebWorkspace
         state.Theme = this.settings.Theme;
         state.WorkspaceId = this.Id;
         state.FollowDesktop = this.FollowDesktop;
+        state.Notice = this.lastNotice;
+        state.PendingHostKey = this.pendingHostKey;
         state.TabCount = this.tabs.Count;
         int index = 0;
         foreach (object tab in this.tabs)
@@ -1528,6 +1930,278 @@ public class WebWorkspace
             return null;
         }
         return this.tabs[this.selectedIndex] as DiskViewPanelViewModel;
+    }
+
+    /// <summary>收集当前已打开的本地目录：文件标签取当前目录，磁盘视图标签取根目录；远程与压缩包标签不参与。</summary>
+    public List<string> GetOpenLocalDirectories()
+    {
+        List<string> directories = new List<string>();
+        foreach (object tab in this.tabs)
+        {
+            FileTabViewModel? fileTab = tab as FileTabViewModel;
+            if (fileTab != null)
+            {
+                if (fileTab.FileSystemProvider is DefaultFileSystemProvider && !string.IsNullOrEmpty(fileTab.CurrentPath))
+                {
+                    directories.Add(fileTab.CurrentPath);
+                }
+                continue;
+            }
+            DiskViewPanelViewModel? diskTab = tab as DiskViewPanelViewModel;
+            if (diskTab != null)
+            {
+                if (!string.IsNullOrEmpty(diskTab.RootPathInput))
+                {
+                    directories.Add(diskTab.RootPathInput);
+                }
+                // 磁盘视图里已展开的目录也是合法的右键目标父目录，否则深层条目会被误判为越权
+                foreach (DiskRow row in diskTab.Rows)
+                {
+                    if (row.IsDirectory && !string.IsNullOrEmpty(row.FullPath))
+                    {
+                        directories.Add(row.FullPath);
+                    }
+                }
+            }
+        }
+        return directories;
+    }
+
+    /// <summary>
+    /// 构建网页端右键菜单的系统项：先校验目标必须落在已打开标签内，
+    /// 再按标签类型判定系统外壳菜单是否可用（远程、压缩包与非 Windows 返回受限菜单）。
+    /// </summary>
+    /// <param name="paths">目标绝对路径列表。</param>
+    /// <param name="isBackground">是否为列表空白处右键。</param>
+    public WebContextMenuResult BuildContextMenu(IReadOnlyList<string> paths, bool isBackground)
+    {
+        ContextMenuTargetDecision decision = this.RunOnUiThread<ContextMenuTargetDecision>(
+            delegate { return this.EvaluateContextMenuTargets(paths, isBackground); });
+        ISystemContextMenuService? service = decision.MatchedLocalTab
+            ? this.services.GetService<ISystemContextMenuService>()
+            : null;
+        WebContextMenuResult result = WebContextMenuBuilder.Build(service, paths, isBackground,
+            decision.MatchedLocalTab ? string.Empty : decision.Note);
+        UiLogger.Log("网页端右键菜单", "构建结果：工作区=" + this.Id + " 落点=" + (isBackground ? "空白处" : "条目")
+            + " 目标数=" + paths.Count + " 系统项可用=" + result.SystemMenuAvailable
+            + " 顶层条目数=" + result.Items.Count + " 说明=" + (result.SystemMenuNote.Length == 0 ? "无" : result.SystemMenuNote));
+        return result;
+    }
+
+    /// <summary>校验并执行一条系统外壳命令编号：只允许当前已打开标签内的路径，越权直接抛异常。</summary>
+    /// <param name="commandId">外壳菜单命令编号。</param>
+    /// <param name="paths">目标绝对路径列表（必须与枚举时一致）。</param>
+    /// <param name="isBackground">是否为列表空白处右键。</param>
+    public bool ExecuteContextMenuCommand(int commandId, IReadOnlyList<string> paths, bool isBackground)
+    {
+        this.RunOnUiThread<bool>(delegate
+        {
+            this.EvaluateContextMenuTargets(paths, isBackground);
+            return true;
+        });
+        ISystemContextMenuService? service = this.services.GetService<ISystemContextMenuService>();
+        if (service == null || !service.IsSupported)
+        {
+            UiLogger.Log("网页端右键菜单", "拒绝执行：当前平台不支持系统外壳命令 工作区=" + this.Id + " 命令编号=" + commandId);
+            return false;
+        }
+        EnumerationState state = new EnumerationState();
+        Thread thread = new Thread(delegate ()
+        {
+            try
+            {
+                state.Success = service.ExecuteShellMenuCommand(commandId, paths, isBackground);
+            }
+            catch (Exception error)
+            {
+                state.Error = error;
+            }
+            finally
+            {
+                state.Completed.Set();
+            }
+        });
+        thread.IsBackground = true;
+        thread.Name = "网页端右键命令执行";
+        if (OperatingSystem.IsWindows())
+        {
+            try
+            {
+                thread.SetApartmentState(ApartmentState.STA);
+            }
+            catch (Exception)
+            {
+                // 运行时不允许设置套间时保持默认
+            }
+        }
+        thread.Start();
+        if (!state.Completed.Wait(30000))
+        {
+            UiLogger.Log("网页端右键菜单", "执行系统外壳命令超时：工作区=" + this.Id + " 命令编号=" + commandId
+                + " 目标=" + string.Join("、", paths) + " 结果=已放弃等待，扩展可能仍在运行");
+            return false;
+        }
+        if (state.Error != null)
+        {
+            UiLogger.LogError("网页端右键菜单", "执行系统外壳命令失败：工作区=" + this.Id + " 命令编号=" + commandId
+                + " 目标=" + string.Join("、", paths), state.Error);
+            return false;
+        }
+        UiLogger.Log("网页端右键菜单", "执行系统外壳命令：工作区=" + this.Id + " 命令编号=" + commandId
+            + " 落点=" + (isBackground ? "空白处" : "条目") + " 目标=" + string.Join("、", paths)
+            + " 结果=" + (state.Success ? "成功，已交给外壳扩展执行" : "失败，外壳扩展未接受该命令"));
+        return state.Success;
+    }
+
+    /// <summary>在界面线程上评估右键目标：校验越权并判定系统外壳菜单是否可用。</summary>
+    private ContextMenuTargetDecision EvaluateContextMenuTargets(IReadOnlyList<string> paths, bool isBackground)
+    {
+        WebContextMenuPolicy.Validate(this.GetOpenLocalDirectories(), this.CollectVisibleItemsForContextMenu(),
+            paths, isBackground);
+        ContextMenuTargetDecision decision = new ContextMenuTargetDecision();
+        decision.Note = "当前标签是远程连接、压缩包或非本机位置，系统右键项不可用，仅保留本程序命令";
+        foreach (object tab in this.tabs)
+        {
+            FileTabViewModel? fileTab = tab as FileTabViewModel;
+            if (fileTab != null && this.MatchesFileTab(fileTab, paths, isBackground))
+            {
+                decision.MatchedAnyTab = true;
+                if (fileTab.FileSystemProvider is DefaultFileSystemProvider && fileTab.ContentAccess == null)
+                {
+                    decision.MatchedLocalTab = true;
+                }
+            }
+            DiskViewPanelViewModel? diskTab = tab as DiskViewPanelViewModel;
+            if (diskTab != null && this.MatchesDiskTab(diskTab, paths, isBackground))
+            {
+                decision.MatchedAnyTab = true;
+                decision.MatchedLocalTab = true;
+            }
+        }
+        if (!decision.MatchedAnyTab)
+        {
+            UiLogger.Log("网页端右键菜单", "拒绝：右键目标不在任何已打开标签内 工作区=" + this.Id
+                + " 落点=" + (isBackground ? "空白处" : "条目") + " 目标=" + string.Join("、", paths)
+                + " 结果=未枚举也未执行任何外壳命令");
+            throw new UnauthorizedAccessException("右键目标不在当前已打开的标签内");
+        }
+        return decision;
+    }
+
+    /// <summary>在界面线程执行并等待结果；已处于界面线程时直接执行。</summary>
+    private T RunOnUiThread<T>(Func<T> action)
+    {
+        if (Dispatcher.UIThread.CheckAccess())
+        {
+            return action();
+        }
+        return Dispatcher.UIThread.InvokeAsync(action).GetTask().GetAwaiter().GetResult();
+    }
+
+    /// <summary>一次右键目标评估结果。</summary>
+    private sealed class ContextMenuTargetDecision
+    {
+        public bool MatchedAnyTab { get; set; }
+
+        public bool MatchedLocalTab { get; set; }
+
+        public string Note { get; set; } = string.Empty;
+    }
+
+    /// <summary>收集当前标签的可见条目路径（磁盘视图用可见行，文件标签用可见行）；无当前标签时为空。</summary>
+    private List<string> CollectVisibleItemsForContextMenu()
+    {
+        List<string> items = new List<string>();
+        FileTabViewModel? fileTab = this.CurrentFileTab();
+        if (fileTab != null)
+        {
+            foreach (FileRow row in fileTab.VisibleRows)
+            {
+                items.Add(row.FullPath);
+            }
+            return items;
+        }
+        DiskViewPanelViewModel? diskTab = this.CurrentDiskTab();
+        if (diskTab != null)
+        {
+            foreach (DiskRow row in diskTab.Rows)
+            {
+                items.Add(row.FullPath);
+            }
+        }
+        return items;
+    }
+
+    /// <summary>判断目标是否属于某个文件标签：空白处等于当前目录，条目与当前目录同父。</summary>
+    private bool MatchesFileTab(FileTabViewModel tab, IReadOnlyList<string> paths, bool isBackground)
+    {
+        string current = WebContextMenuPolicy.NormalizePath(tab.CurrentPath);
+        if (current.Length == 0)
+        {
+            return false;
+        }
+        foreach (string path in paths)
+        {
+            string target = WebContextMenuPolicy.NormalizePath(path);
+            if (target.Length == 0)
+            {
+                continue;
+            }
+            if (isBackground)
+            {
+                if (string.Equals(target, current, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+                continue;
+            }
+            string parent = WebContextMenuPolicy.NormalizePath(Path.GetDirectoryName(target) ?? string.Empty);
+            if (string.Equals(parent, current, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>判断目标是否属于某个磁盘视图标签：空白处等于根目录，条目必须出现在可见行内。</summary>
+    private bool MatchesDiskTab(DiskViewPanelViewModel tab, IReadOnlyList<string> paths, bool isBackground)
+    {
+        string root = WebContextMenuPolicy.NormalizePath(tab.RootPathInput);
+        foreach (string path in paths)
+        {
+            string target = WebContextMenuPolicy.NormalizePath(path);
+            if (target.Length == 0)
+            {
+                continue;
+            }
+            if (isBackground)
+            {
+                if (root.Length > 0 && string.Equals(target, root, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+                continue;
+            }
+            foreach (DiskRow row in tab.Rows)
+            {
+                if (string.Equals(WebContextMenuPolicy.NormalizePath(row.FullPath), target, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /// <summary>右键枚举线程的状态容器。</summary>
+    private sealed class EnumerationState
+    {
+        public bool Success { get; set; }
+
+        public Exception? Error { get; set; }
+
+        public ManualResetEventSlim Completed { get; } = new ManualResetEventSlim(false);
     }
 
     /// <summary>取标签标题，用于日志与网页标签条。</summary>
@@ -1609,6 +2283,12 @@ public interface IWebWorkspaceBridge
 
     /// <summary>执行跟随桌面模式的界面动作（排序、历史、搜索、勾选、剪贴板、视图、开关等），返回给页面的提示文字。</summary>
     string ExecuteDesktopAction(string action, string argument);
+
+    /// <summary>构建桌面当前标签的系统右键菜单层级（校验目标必须位于桌面已打开标签内）。</summary>
+    WebContextMenuResult BuildDesktopContextMenu(IReadOnlyList<string> paths, bool isBackground);
+
+    /// <summary>执行桌面当前标签的一条系统外壳命令编号（编号来自 <see cref="BuildDesktopContextMenu"/>）。</summary>
+    bool ExecuteDesktopContextMenuCommand(int commandId, IReadOnlyList<string> paths, bool isBackground);
 
     /// <summary>在桌面当前文件标签中新建文件夹。</summary>
     void CreateDesktopFolder(string folderName);

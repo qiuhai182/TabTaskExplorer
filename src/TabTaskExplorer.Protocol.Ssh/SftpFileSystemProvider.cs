@@ -1,7 +1,9 @@
 ﻿using Renci.SshNet;
+using Renci.SshNet.Common;
 using Renci.SshNet.Sftp;
 using TabTaskExplorer.Kernel.Abstractions;
 using TabTaskExplorer.Kernel.Models;
+using TabTaskExplorer.Kernel.Services;
 
 namespace TabTaskExplorer.Protocol.Ssh;
 
@@ -17,13 +19,21 @@ public class SftpFileSystemProvider : IFileSystemProvider, IFileContentAccess, I
     private readonly object connectGate = new object();
     private readonly RemoteConnectionProfile profile;
     private readonly string credential;
+    private readonly KnownHostStore? knownHosts;
     private SftpClient? client;
 
     /// <summary>使用连接配置与明文凭据创建提供者；连接延迟到首次操作时建立，避免阻塞调用线程。</summary>
     public SftpFileSystemProvider(RemoteConnectionProfile profile, string credential)
+        : this(profile, credential, null)
+    {
+    }
+
+    /// <summary>创建提供者并指定已知主机存储；传入后每次连接都会校验主机密钥，未信任或变更时阻断。</summary>
+    public SftpFileSystemProvider(RemoteConnectionProfile profile, string credential, KnownHostStore? knownHosts)
     {
         this.profile = profile;
         this.credential = credential;
+        this.knownHosts = knownHosts;
     }
 
     /// <summary>确保 SFTP 连接已建立；全部操作开始前调用。</summary>
@@ -49,10 +59,59 @@ public class SftpFileSystemProvider : IFileSystemProvider, IFileContentAccess, I
                 this.client = null;
             }
 
+            string keyType = string.Empty;
+            string actualFingerprint = string.Empty;
+            string expectedFingerprint = string.Empty;
+            bool unknown = false;
+            bool mismatch = false;
+            KnownHostStore? store = this.knownHosts;
             ConnectionInfo info = SshSessionFactory.BuildConnectionInfo(this.profile, this.credential);
             SftpClient created = new SftpClient(info);
             created.KeepAliveInterval = TimeSpan.FromSeconds(15);
-            created.Connect();
+            if (store != null)
+            {
+                // 远程文件夹与终端走同一套 known_hosts 校验：SFTP 客户端默认接受任意主机密钥，
+                // 不显式挂接校验回调会让首次连接绕过指纹确认
+                created.HostKeyReceived += delegate(object? sender, HostKeyEventArgs e)
+                {
+                    keyType = string.IsNullOrEmpty(e.HostKeyName) ? "unknown" : e.HostKeyName;
+                    actualFingerprint = e.FingerPrintSHA256;
+                    KnownHostEntry? known = store.Find(this.profile.Host, this.profile.GetEffectivePort(), keyType);
+                    if (known == null)
+                    {
+                        unknown = true;
+                        e.CanTrust = false;
+                        return;
+                    }
+                    if (!store.Matches(this.profile.Host, this.profile.GetEffectivePort(), keyType, actualFingerprint))
+                    {
+                        mismatch = true;
+                        expectedFingerprint = known.FingerprintSha256;
+                        e.CanTrust = false;
+                        return;
+                    }
+                    e.CanTrust = true;
+                };
+            }
+            try
+            {
+                created.Connect();
+            }
+            catch (Exception error)
+            {
+                created.Dispose();
+                if (unknown)
+                {
+                    throw new HostKeyUnknownException(this.profile.Host, this.profile.GetEffectivePort(), keyType,
+                        actualFingerprint, error);
+                }
+                if (mismatch)
+                {
+                    throw new HostKeyMismatchException(this.profile.Host, this.profile.GetEffectivePort(), keyType,
+                        expectedFingerprint, actualFingerprint, error);
+                }
+                throw;
+            }
             if (!created.IsConnected)
             {
                 created.Dispose();

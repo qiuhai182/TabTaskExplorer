@@ -1,15 +1,15 @@
-<Window xmlns="https://github.com/avaloniaui"
+﻿<Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:capture="using:TabTaskExplorer.App.Services.Capture"
         x:Class="TabTaskExplorer.App.Views.CaptureEditorWindow"
         Title="标注截图" Width="1100" Height="760" MinWidth="720" MinHeight="480"
-        WindowStartupLocation="CenterScreen" Background="#F21B1B1F">
+        ShowInTaskbar="False" WindowStartupLocation="CenterScreen" Background="#F21B1B1F">
   <Grid RowDefinitions="Auto,*,Auto">
 
     <!-- 顶部工具栏：形状工具、颜色、粗细与填充 -->
     <Border Grid.Row="0" Background="#FF26262B" Padding="10,8">
       <StackPanel Spacing="8">
-        <WrapPanel Orientation="Horizontal" ItemWidth="NaN">
+        <WrapPanel Orientation="Horizontal">
           <StackPanel Orientation="Horizontal" Spacing="4">
             <RadioButton x:Name="ToolRect" Content="矩形" GroupName="annotationTool" Tag="Rectangle" Click="OnToolClick" />
             <RadioButton x:Name="ToolEllipse" Content="椭圆" GroupName="annotationTool" Tag="Ellipse" Click="OnToolClick" />
@@ -87,6 +87,7 @@
           <Button Content="重做" Click="OnRedoClick" />
           <Button Content="清空" Click="OnClearClick" />
           <Button Content="识别文字" Click="OnOcrClick" />
+          <Button Content="识别二维码" Click="OnBarcodeClick" />
           <Button Content="贴图" Click="OnPinClick" />
           <Button Content="复制" Click="OnCopyClick" />
           <Button Content="保存" Click="OnSaveClick" />

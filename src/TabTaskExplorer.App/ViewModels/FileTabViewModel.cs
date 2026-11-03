@@ -1158,9 +1158,11 @@ public class FileTabViewModel : INotifyPropertyChanged, IColumnWidthViewModel, I
                     rows.Add(FileRow.FromEntry(entry, this.appSettings.ShowFileExtensions));
                 }
             }
-            catch
+            catch (Exception error)
             {
-                // 读取失败时展示空列表，界面线程上给出提示
+                // 读取失败时展示空列表，界面线程上给出提示；同时把异常写入日志，避免认证/网络失败被静默吞掉
+                UiLogger.LogError("文件标签", "读取目录失败：标签标题=" + this.title + " 路径=" + path
+                    + " 文件系统提供者=" + this.fileSystemProvider.GetType().Name, error);
             }
         }
 

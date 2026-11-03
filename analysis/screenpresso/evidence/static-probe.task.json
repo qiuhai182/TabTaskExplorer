@@ -1,0 +1,10 @@
+﻿{
+    "任务名称":  "static-probe",
+    "工作任务":  "D:\\TabTaskExplorer\\analysis\\screenpresso\\scripts\\Invoke-StaticProbe.ps1",
+    "工作参数":  "-TargetPath C:\\Users\\QiuHai\\.cache\\rea-screenpresso-target\\screenpresso.exe -OutDir D:\\TabTaskExplorer\\analysis\\screenpresso\\evidence",
+    "日志目录":  "D:\\TabTaskExplorer\\analysis\\screenpresso\\evidence",
+    "进程号":  53756,
+    "返回码":  0,
+    "启动时间":  "2026-11-03 09:58:42",
+    "实际命令行":  "powershell.exe -NoProfile -Command \"Start-Process -FilePath \u0027powershell.exe\u0027 -ArgumentList @(\u0027-NoProfile\u0027,\u0027-ExecutionPolicy\u0027,\u0027Bypass\u0027,\u0027-File\u0027,\u0027D:\\TabTaskExplorer\\analysis\\screenpresso\\scripts\\Invoke-StaticProbe.ps1\u0027,\u0027-TargetPath\u0027,\u0027C:\\Users\\QiuHai\\.cache\\rea-screenpresso-target\\screenpresso.exe\u0027,\u0027-OutDir\u0027,\u0027D:\\TabTaskExplorer\\analysis\\screenpresso\\evidence\u0027) -WindowStyle Hidden\""
+}

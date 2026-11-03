@@ -22,6 +22,8 @@ public partial class BatchRenameDialog : Window
     public BatchRenameDialog()
     {
         this.InitializeComponent();
+        // 批量改名对话框属于辅助工具窗口，不进入任务栏与 Alt+Tab
+        WindowHostStyler.MakeAuxiliary(this);
         UiLogger.AttachWindow(this);
     }
 

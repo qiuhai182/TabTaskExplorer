@@ -32,6 +32,10 @@ public class App : Application
             IServiceProvider services = CompositionRoot.BuildServices();
             this.appServices = services;
 
+            // 进程 AppUserModelID 必须在任何窗口显示前设置，保证任务栏归入同一个应用分组；
+            // 此时主窗口尚未创建，只做进程级设置与宿主服务登记
+            WindowHostStyler.Initialize(services.GetRequiredService<IWindowHostService>(), null);
+
             // 多窗口：最后一个窗口关闭才退出程序（关闭中间窗口只关该窗口本身）
             desktop.ShutdownMode = ShutdownMode.OnLastWindowClose;
 
@@ -41,6 +45,9 @@ public class App : Application
             // 多窗口注册表：主窗口登记在册，窗口真正关闭后由 Closed 事件注销
             WindowRegistry.Init(services);
             WindowRegistry.Register((MainWindow)desktop.MainWindow);
+
+            // 辅助窗口统一策略：贴图 / 遮罩 / 取色 / 编辑器 / 对话框均不进任务栏与 Alt+Tab；
+            // 主窗口保持正常任务栏入口（AppUserModelID 已在创建主窗口前设置）
             desktop.MainWindow.Closed += this.OnAnyMainWindowClosed;
 
             // 扩展客户区下隐藏系统绘制的窗口图标与程序名（与 TabX 一致，只留自绘徽标）
@@ -267,6 +274,22 @@ public class App : Application
         showItem.Click += this.OnTrayShowClick;
         menu.Add(showItem);
 
+        NativeMenuItem captureItem = new NativeMenuItem("区域截图");
+        captureItem.Click += this.OnTrayCaptureRegionClick;
+        menu.Add(captureItem);
+
+        NativeMenuItem capturePinItem = new NativeMenuItem("贴图截图");
+        capturePinItem.Click += this.OnTrayCapturePinClick;
+        menu.Add(capturePinItem);
+
+        NativeMenuItem colorPickItem = new NativeMenuItem("屏幕取色");
+        colorPickItem.Click += this.OnTrayColorPickClick;
+        menu.Add(colorPickItem);
+
+        NativeMenuItem pastePinItem = new NativeMenuItem("贴图（剪贴板）");
+        pastePinItem.Click += this.OnTrayPastePinClick;
+        menu.Add(pastePinItem);
+
         NativeMenuItem openWebItem = new NativeMenuItem("打开网页");
         openWebItem.Click += this.OnTrayOpenWebClick;
         menu.Add(openWebItem);
@@ -360,6 +383,66 @@ public class App : Application
     public void OnTrayShowClick(object? sender, EventArgs e)
     {
         this.ShowMainWindow();
+    }
+
+    /// <summary>托盘菜单：区域截图（使用主窗口设置的截图延迟）。</summary>
+    public void OnTrayCaptureRegionClick(object? sender, EventArgs e)
+    {
+        if (this.appServices == null)
+        {
+            Services.UiLogger.Log("截图", "托盘区域截图被跳过：服务容器未就绪");
+            return;
+        }
+        MainWindowViewModel? mainViewModel = this.MainViewModel;
+        int delaySeconds = mainViewModel == null ? 0 : mainViewModel.Settings.CaptureDelaySeconds;
+        Services.Capture.CaptureCoordinator coordinator =
+            this.appServices.GetRequiredService<Services.Capture.CaptureCoordinator>();
+        Services.UiLogger.Log("截图", "托盘菜单已点击区域截图：延迟秒数=" + delaySeconds);
+        _ = coordinator.CaptureRegionAsync(delaySeconds);
+    }
+
+    /// <summary>托盘菜单：贴图截图（选区后保存产物并生成贴图）。</summary>
+    public void OnTrayCapturePinClick(object? sender, EventArgs e)
+    {
+        if (this.appServices == null)
+        {
+            Services.UiLogger.Log("截图", "托盘贴图截图被跳过：服务容器未就绪");
+            return;
+        }
+        MainWindowViewModel? mainViewModel = this.MainViewModel;
+        int delaySeconds = mainViewModel == null ? 0 : mainViewModel.Settings.CaptureDelaySeconds;
+        Services.Capture.CaptureCoordinator coordinator =
+            this.appServices.GetRequiredService<Services.Capture.CaptureCoordinator>();
+        Services.UiLogger.Log("截图", "托盘菜单已点击贴图截图：延迟秒数=" + delaySeconds);
+        _ = coordinator.CapturePinRegionAsync(delaySeconds);
+    }
+
+    /// <summary>托盘菜单：全屏取色。</summary>
+    public void OnTrayColorPickClick(object? sender, EventArgs e)
+    {
+        if (this.appServices == null)
+        {
+            Services.UiLogger.Log("屏幕取色", "托盘取色被跳过：服务容器未就绪");
+            return;
+        }
+        Services.Capture.CaptureCoordinator coordinator =
+            this.appServices.GetRequiredService<Services.Capture.CaptureCoordinator>();
+        Services.UiLogger.Log("屏幕取色", "托盘菜单已点击屏幕取色");
+        _ = coordinator.OpenScreenColorPickerAsync();
+    }
+
+    /// <summary>托盘菜单：把剪贴板图片贴到屏幕。</summary>
+    public void OnTrayPastePinClick(object? sender, EventArgs e)
+    {
+        if (this.appServices == null)
+        {
+            Services.UiLogger.Log("贴图", "托盘贴图被跳过：服务容器未就绪");
+            return;
+        }
+        Services.Capture.CaptureCoordinator coordinator =
+            this.appServices.GetRequiredService<Services.Capture.CaptureCoordinator>();
+        Services.UiLogger.Log("贴图", "托盘菜单已点击剪贴板贴图");
+        _ = coordinator.PinClipboardImageAsync();
     }
 
     /// <summary>托盘菜单：用系统默认浏览器打开本机网页端服务页面。</summary>

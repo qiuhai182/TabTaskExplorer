@@ -1,0 +1,4 @@
+﻿导出模块=SCREENPRESSOCODEC.dll 函数数=3 名称数=3 基数=1
+    序号=1 地址=0x00006490 名称=DriverProc
+    序号=2 地址=0x00006A70 名称=SetDebugMode
+    序号=3 地址=0x000077B0 名称=SetSpriteMode

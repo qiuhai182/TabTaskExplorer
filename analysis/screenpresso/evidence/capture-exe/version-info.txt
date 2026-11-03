@@ -1,0 +1,9 @@
+﻿FileVersion=1.5.0.0
+ProductVersion=1.5.0.0
+FileDescription=ScreenpressoCapture
+CompanyName=Learnpulse
+InternalName=ScreenpressoCapture.exe
+OriginalFilename=ScreenpressoCapture.exe
+LegalCopyright=Copyright © Learnpulse 2020
+ProductName=Screenpresso
+Comments=Screen capture tool

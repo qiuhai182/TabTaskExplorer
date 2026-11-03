@@ -2,7 +2,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:svc="using:TabTaskExplorer.App.Services"
         x:Class="TabTaskExplorer.App.Views.SettingsWindow"
-        Title="TabTaskExplorer 设置" Width="900" Height="640"
+        Title="TabTaskExplorer 设置" Width="900" Height="640" ShowInTaskbar="False"
         WindowStartupLocation="CenterOwner">
   <Grid RowDefinitions="*,Auto">
     <Grid Grid.Row="0" ColumnDefinitions="150,*">
@@ -294,7 +294,13 @@
             <StackPanel Orientation="Horizontal" Spacing="18" Margin="0,6,0,0">
               <CheckBox Content="截图后复制到剪贴板" IsChecked="{Binding CaptureCopyToClipboard, Mode=TwoWay}" />
               <CheckBox Content="完成后自动打开产物文件夹标签" IsChecked="{Binding CaptureOpenFolderAfter, Mode=TwoWay}" />
+              <CheckBox Content="截图后打开标注编辑器" IsChecked="{Binding CaptureOpenEditorAfter, Mode=TwoWay}" />
               <CheckBox Content="截图与录屏包含鼠标指针" IsChecked="{Binding CaptureIncludeCursor, Mode=TwoWay}" />
+              <CheckBox Content="贴图窗口始终置顶" IsChecked="{Binding CapturePinTopmost, Mode=TwoWay}" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="18" Margin="0,6,0,0">
+              <CheckBox Content="贴图截图保存产物（关闭后只贴图不落盘）"
+                        IsChecked="{Binding CapturePinShotSaveFile, Mode=TwoWay}" />
             </StackPanel>
             <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,6,0,0">
               <TextBlock Text="截图延迟" VerticalAlignment="Center" />
@@ -324,6 +330,19 @@
             </StackPanel>
             <TextBlock TextWrapping="Wrap" Opacity="0.72"
                        Text="说明：录屏通过 FFmpeg 采集屏幕并编码为 MP4（H.264）。未安装 FFmpeg 时截图仍可用；录屏按钮会提示缺少 FFmpeg。截图或录屏完成后，默认自动新建（或复用）产物文件夹标签页。" />
+            <TextBlock Text="文字识别（截图编辑器中的「识别文字」）" FontWeight="Medium" Margin="0,8,0,0" />
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <TextBox x:Name="OcrTesseractPathBox" Width="380" PlaceholderText="留空自动查找；Windows 优先使用系统内置识别" />
+              <Button Content="浏览…" Click="OnBrowseTesseractClick" />
+              <Button Content="清空" Click="OnClearTesseractPathClick" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <TextBlock Text="识别语言" VerticalAlignment="Center" />
+              <TextBox x:Name="OcrLanguageBox" Width="300"
+                       PlaceholderText="留空：Windows 跟随系统语言，Tesseract 使用 eng+chi_sim" />
+            </StackPanel>
+            <TextBlock TextWrapping="Wrap" Opacity="0.72"
+                       Text="说明：Windows 默认调用系统内置 Windows.Media.Ocr（离线、无需联网）；Linux 与 macOS 需安装 Tesseract-OCR 并指定路径；识别语言可填 chi_sim、eng 或 eng+chi_sim。" />
             <TextBlock Text="快捷键" FontWeight="Medium" Margin="0,8,0,0" />
             <TextBlock TextWrapping="Wrap" Opacity="0.72"
                        Text="截图、录屏以及其它功能的快捷键统一在左侧「快捷操作」分页配置；同一个功能可添加任意多条组合，并可选择应用内或系统全局作用域。" />

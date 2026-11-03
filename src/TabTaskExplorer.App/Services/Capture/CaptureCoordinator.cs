@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input.Platform;
 using Avalonia.Media.Imaging;
@@ -84,7 +85,10 @@ public class CaptureCoordinator : IDisposable
     private readonly ISystemClipboardService systemClipboardService;
     private readonly ITextRecognitionService ocrService;
     private readonly IScreenRegionDetector screenRegionDetector;
+    private readonly ICaptureCancelInput captureCancelInput;
+    private readonly IForegroundWindowService foregroundWindowService;
     private readonly AppSettingsStore settingsStore = new AppSettingsStore();
+    private IntPtr pendingForegroundWindow;
     private MainWindowViewModel? viewModel;
     private DispatcherTimer? recordingWatchTimer;
     private DateTime recordingStartedAt = DateTime.MinValue;
@@ -96,7 +100,9 @@ public class CaptureCoordinator : IDisposable
         IGlobalHotkeyService globalHotkeyService,
         ISystemClipboardService systemClipboardService,
         IScreenRegionDetector screenRegionDetector,
-        ITextRecognitionService textRecognitionService)
+        ITextRecognitionService textRecognitionService,
+        ICaptureCancelInput captureCancelInput,
+        IForegroundWindowService foregroundWindowService)
     {
         this.screenCaptureService = screenCaptureService;
         this.screenRecordingService = screenRecordingService;
@@ -104,6 +110,8 @@ public class CaptureCoordinator : IDisposable
         this.systemClipboardService = systemClipboardService;
         this.screenRegionDetector = screenRegionDetector;
         this.ocrService = textRecognitionService;
+        this.captureCancelInput = captureCancelInput;
+        this.foregroundWindowService = foregroundWindowService;
     }
 
     /// <summary>一次截图或录屏完成（无论成功、失败或取消），用于刷新历史列表与状态文字。</summary>
@@ -297,6 +305,10 @@ public class CaptureCoordinator : IDisposable
         {
             _ = this.CaptureLastRegionAsync(mainViewModel.Settings.CaptureDelaySeconds);
         }
+        else if (string.Equals(actionName, "ScreenshotPin", StringComparison.Ordinal))
+        {
+            _ = this.CapturePinRegionAsync(mainViewModel.Settings.CaptureDelaySeconds);
+        }
         else if (string.Equals(actionName, "RecordToggle", StringComparison.Ordinal))
         {
             _ = this.ToggleRecordingAsync(this.ResolveRecordingTargetIndex(mainViewModel.Settings.CaptureRecordTarget));
@@ -335,25 +347,206 @@ public class CaptureCoordinator : IDisposable
     /// <summary>执行一次截图：可选延迟、可选区域框选，保存后复制到剪贴板并按设置打开产物文件夹标签。</summary>
     public async Task<CaptureOutcome> CaptureAsync(CaptureTarget target, int delaySeconds)
     {
-        return await this.CaptureInternalAsync(target, CaptureArea.Empty, delaySeconds);
+        return await this.CaptureInternalAsync(target, CaptureArea.Empty, delaySeconds,
+            DescribeCaptureMode(target));
     }
 
     /// <summary>执行区域截图：先弹出全屏框选窗口，用户取消时返回取消结果。</summary>
     public async Task<CaptureOutcome> CaptureRegionAsync(int delaySeconds)
     {
-        if (delaySeconds > 0)
+        CaptureCancelSource cancelSource = await this.WaitForCancelablePhaseAsync(delaySeconds, "区域截图", "延迟等待");
+        if (cancelSource != CaptureCancelSource.None)
         {
-            UiLogger.Log("截图", "区域截图进入延迟等待：延迟秒数=" + delaySeconds + " 当前线程=界面线程");
-            await Task.Delay(TimeSpan.FromSeconds(delaySeconds));
+            return this.CreateCaptureCancelOutcome(cancelSource, "区域截图", "延迟等待");
         }
-        CaptureArea? selectedArea = await this.SelectRegionAreaAsync();
+        CaptureArea? selectedArea = await this.SelectRegionAreaAsync("区域截图", false);
         if (selectedArea == null)
         {
             UiLogger.Log("截图", "区域截图已取消：用户没有完成框选");
             return CaptureOutcome.CreateCancelled("已取消区域截图");
         }
-        await this.WaitForOverlayClosedAsync("区域截图");
-        return await this.CaptureInternalAsync(CaptureTarget.Region, selectedArea.Value, 0);
+        cancelSource = await this.WaitForOverlayClosedAsync("区域截图", "区域截图");
+        if (cancelSource != CaptureCancelSource.None)
+        {
+            return this.CreateCaptureCancelOutcome(cancelSource, "区域截图", "遮罩关闭后");
+        }
+        return await this.CaptureInternalAsync(CaptureTarget.Region, selectedArea.Value, 0, "区域截图", false);
+    }
+
+    /// <summary>
+    /// 「贴图截图」：与区域截图完全相同的选区流程（窗口自动识别、Tab/滚轮层级切换），
+    /// 确认后用同一份产物生成贴图。默认先按产物规则保存文件（进入产物历史），再用该文件生成贴图；
+    /// 关闭设置项后则只在内存中生成贴图，不落盘、不进入历史。
+    /// </summary>
+    public async Task<CaptureOutcome> CapturePinRegionAsync(int delaySeconds)
+    {
+        MainWindowViewModel? mainViewModel = this.viewModel;
+        if (mainViewModel == null)
+        {
+            return CaptureOutcome.CreateFailure("主窗口视图模型未就绪，无法贴图截图");
+        }
+        UiLogger.Log("截图", "开始贴图截图：延迟秒数=" + delaySeconds
+            + " 保存产物=" + mainViewModel.Settings.CapturePinShotSaveFile
+            + " 包含鼠标指针=" + mainViewModel.Settings.CaptureIncludeCursor);
+        CaptureCancelSource cancelSource = await this.WaitForCancelablePhaseAsync(delaySeconds, "贴图截图", "延迟等待");
+        if (cancelSource != CaptureCancelSource.None)
+        {
+            return this.CreateCaptureCancelOutcome(cancelSource, "贴图截图", "延迟等待");
+        }
+        CaptureArea? selectedArea = await this.SelectRegionAreaAsync("贴图截图", false);
+        if (selectedArea == null)
+        {
+            UiLogger.Log("截图", "贴图截图已取消：用户没有完成框选");
+            return CaptureOutcome.CreateCancelled("已取消贴图截图");
+        }
+        cancelSource = await this.WaitForOverlayClosedAsync("贴图截图", "贴图截图");
+        if (cancelSource != CaptureCancelSource.None)
+        {
+            return this.CreateCaptureCancelOutcome(cancelSource, "贴图截图", "遮罩关闭后");
+        }
+
+        ScreenCaptureRequest request = new ScreenCaptureRequest();
+        request.Target = CaptureTarget.Region;
+        request.Area = selectedArea.Value;
+        request.IncludeCursor = mainViewModel.Settings.CaptureIncludeCursor;
+        request.ToolPath = mainViewModel.Settings.FfmpegPath;
+        ScreenCaptureResult captureResult = await this.screenCaptureService.CaptureAsync(request);
+        if (!captureResult.Success)
+        {
+            string failureMessage = "贴图截图失败：" + captureResult.ErrorMessage;
+            UiLogger.Log("截图", "贴图截图失败：区域=" + selectedArea.Value + " 原因=" + captureResult.ErrorMessage);
+            CaptureOutcome failure = CaptureOutcome.CreateFailure(failureMessage);
+            this.CaptureFinished?.Invoke(failure);
+            this.ShowFailure("贴图截图失败", failureMessage);
+            return failure;
+        }
+        cancelSource = this.captureCancelInput.PollCancelRequest();
+        if (cancelSource != CaptureCancelSource.None)
+        {
+            return this.CreateCaptureCancelOutcome(cancelSource, "贴图截图", "截图完成前");
+        }
+        this.RememberLastRegion(selectedArea.Value);
+        UiLogger.Log("截图", "贴图截图平台截图成功：区域=" + captureResult.Area
+            + " 图像宽度=" + captureResult.PixelWidth
+            + " 图像高度=" + captureResult.PixelHeight
+            + " 图像字节数=" + captureResult.ImageBytes.Length);
+
+        bool saveFile = mainViewModel.Settings.CapturePinShotSaveFile;
+        string savedPath = string.Empty;
+        Bitmap bitmap;
+        if (saveFile)
+        {
+            string outputDirectory = CapturePaths.ResolveOutputDirectory(mainViewModel.Settings);
+            if (!CapturePaths.EnsureOutputDirectory(outputDirectory, out string directoryError))
+            {
+                UiLogger.Log("截图", "贴图截图保存失败：目录=" + outputDirectory + " 原因=" + directoryError);
+                CaptureOutcome directoryFailure = CaptureOutcome.CreateFailure(directoryError);
+                this.CaptureFinished?.Invoke(directoryFailure);
+                this.ShowFailure("保存贴图截图失败", directoryError);
+                return directoryFailure;
+            }
+            string screenshotPath = CapturePaths.CreateScreenshotPath(outputDirectory, DateTime.Now);
+            try
+            {
+                await File.WriteAllBytesAsync(screenshotPath, captureResult.ImageBytes);
+                // 贴图必须与产物文件同源：直接从刚写入的文件解码，不做二次编码或额外落盘
+                using (FileStream stream = new FileStream(screenshotPath, FileMode.Open, FileAccess.Read, FileShare.Read))
+                {
+                    bitmap = new Bitmap(stream);
+                }
+                savedPath = screenshotPath;
+                UiLogger.Log("截图", "贴图截图产物已保存：路径=" + screenshotPath
+                    + " 字节数=" + captureResult.ImageBytes.Length
+                    + " 结果=贴图将使用同一份文件");
+            }
+            catch (Exception error)
+            {
+                UiLogger.LogError("截图", "贴图截图保存或读取产物失败：路径=" + screenshotPath, error);
+                CaptureOutcome saveFailure = CaptureOutcome.CreateFailure("保存贴图截图失败：" + error.Message);
+                this.CaptureFinished?.Invoke(saveFailure);
+                this.ShowFailure("保存贴图截图失败", "写入或读取截图文件失败：" + error.Message);
+                return saveFailure;
+            }
+        }
+        else
+        {
+            try
+            {
+                using (MemoryStream imageStream = new MemoryStream(captureResult.ImageBytes))
+                {
+                    bitmap = new Bitmap(imageStream);
+                }
+                UiLogger.Log("截图", "贴图截图未保存产物：图像只存在于内存，像素宽度=" + bitmap.PixelSize.Width
+                    + " 像素高度=" + bitmap.PixelSize.Height);
+            }
+            catch (Exception error)
+            {
+                UiLogger.LogError("截图", "贴图截图内存位图解码失败", error);
+                CaptureOutcome decodeFailure = CaptureOutcome.CreateFailure("贴图截图解码失败：" + error.Message);
+                this.CaptureFinished?.Invoke(decodeFailure);
+                this.ShowFailure("贴图截图失败", "截图像素解码失败：" + error.Message);
+                return decodeFailure;
+            }
+        }
+
+        cancelSource = this.captureCancelInput.PollCancelRequest();
+        if (cancelSource != CaptureCancelSource.None)
+        {
+            bitmap.Dispose();
+            this.DeleteCancelledProduct(savedPath, "贴图截图");
+            return this.CreateCaptureCancelOutcome(cancelSource, "贴图截图", "贴图创建前");
+        }
+
+        PixelPoint pinPosition = new PixelPoint(captureResult.Area.X, captureResult.Area.Y);
+        try
+        {
+            PinWindowManager.ShowPinnedImage(bitmap, pinPosition, mainViewModel.Settings,
+                this.ResolveOcrService(), false);
+        }
+        catch (Exception error)
+        {
+            UiLogger.LogError("贴图", "贴图截图创建贴图窗口失败：区域=" + captureResult.Area, error);
+            CaptureOutcome pinFailure = CaptureOutcome.CreateFailure("创建贴图窗口失败：" + error.Message);
+            this.CaptureFinished?.Invoke(pinFailure);
+            this.ShowFailure("贴图截图失败", "创建贴图窗口失败：" + error.Message);
+            return pinFailure;
+        }
+
+        if (saveFile)
+        {
+            bool copied = false;
+            if (mainViewModel.Settings.CaptureCopyToClipboard)
+            {
+                try
+                {
+                    copied = await this.systemClipboardService.WriteAsync(new string[] { savedPath }, false);
+                }
+                catch (Exception error)
+                {
+                    UiLogger.LogError("截图", "贴图截图写入剪贴板异常：路径=" + savedPath, error);
+                }
+            }
+            string outputDirectory = Path.GetDirectoryName(savedPath) ?? CapturePaths.ResolveOutputDirectory(mainViewModel.Settings);
+            CaptureOutcome outcome = CaptureOutcome.CreateSuccess(savedPath, "贴图截图已保存并贴到屏幕：" + savedPath);
+            this.CaptureFinished?.Invoke(outcome);
+            if (mainViewModel.Settings.CaptureOpenFolderAfter)
+            {
+                this.OpenOutputFolderTab(outputDirectory);
+            }
+            UiLogger.Log("截图", "贴图截图完成：产物路径=" + savedPath
+                + " 贴图源=同一产物文件"
+                + " 贴图位置横坐标=" + pinPosition.X
+                + " 贴图位置纵坐标=" + pinPosition.Y
+                + " 复制到剪贴板=" + copied);
+            return outcome;
+        }
+
+        CaptureOutcome pinOnlyOutcome = CaptureOutcome.CreateSuccess(string.Empty, "贴图截图已贴到屏幕（未保存产物）");
+        this.CaptureFinished?.Invoke(pinOnlyOutcome);
+        UiLogger.Log("截图", "贴图截图完成：产物不落盘 贴图源=内存位图"
+            + " 贴图位置横坐标=" + pinPosition.X
+            + " 贴图位置纵坐标=" + pinPosition.Y);
+        return pinOnlyOutcome;
     }
 
     /// <summary>使用上次区域截图；没有可用历史区域时回落到重新框选。</summary>
@@ -373,11 +566,12 @@ public class CaptureCoordinator : IDisposable
             UiLogger.Log("截图", "上次区域截图回落为重新框选：没有有效的历史区域");
             return await this.CaptureRegionAsync(delaySeconds);
         }
-        return await this.CaptureInternalAsync(CaptureTarget.Region, lastArea, delaySeconds);
+        return await this.CaptureInternalAsync(CaptureTarget.Region, lastArea, delaySeconds, "上次区域截图");
     }
 
     /// <summary>截图主流程：解析区域、调用平台截图、保存 PNG、写剪贴板并打开产物目录。</summary>
-    private async Task<CaptureOutcome> CaptureInternalAsync(CaptureTarget target, CaptureArea area, int delaySeconds)
+    private async Task<CaptureOutcome> CaptureInternalAsync(CaptureTarget target, CaptureArea area,
+        int delaySeconds, string captureMode, bool resetCancelTracking = true)
     {
         MainWindowViewModel? mainViewModel = this.viewModel;
         if (mainViewModel == null)
@@ -390,10 +584,11 @@ public class CaptureCoordinator : IDisposable
             + " 包含鼠标指针=" + mainViewModel.Settings.CaptureIncludeCursor
             + " 复制到剪贴板=" + mainViewModel.Settings.CaptureCopyToClipboard
             + " 完成后打开产物文件夹=" + mainViewModel.Settings.CaptureOpenFolderAfter);
-        if (delaySeconds > 0)
+        CaptureCancelSource cancelSource = await this.WaitForCancelablePhaseAsync(delaySeconds,
+            captureMode, "延迟等待", resetCancelTracking);
+        if (cancelSource != CaptureCancelSource.None)
         {
-            UiLogger.Log("截图", "截图进入延迟等待：延迟秒数=" + delaySeconds);
-            await Task.Delay(TimeSpan.FromSeconds(delaySeconds));
+            return this.CreateCaptureCancelOutcome(cancelSource, captureMode, "延迟等待");
         }
 
         ScreenCaptureRequest request = new ScreenCaptureRequest();
@@ -416,6 +611,11 @@ public class CaptureCoordinator : IDisposable
             + " 图像高度=" + captureResult.PixelHeight
             + " 图像字节数=" + captureResult.ImageBytes.Length
             + " 实际区域=" + captureResult.Area);
+        cancelSource = this.captureCancelInput.PollCancelRequest();
+        if (cancelSource != CaptureCancelSource.None)
+        {
+            return this.CreateCaptureCancelOutcome(cancelSource, captureMode, "保存产物前");
+        }
 
         if (target == CaptureTarget.Region)
         {
@@ -446,6 +646,12 @@ public class CaptureCoordinator : IDisposable
             return failure;
         }
         UiLogger.Log("截图", "截图文件已保存：路径=" + screenshotPath + " 字节数=" + captureResult.ImageBytes.Length);
+        cancelSource = this.captureCancelInput.PollCancelRequest();
+        if (cancelSource != CaptureCancelSource.None)
+        {
+            this.DeleteCancelledProduct(screenshotPath, captureMode);
+            return this.CreateCaptureCancelOutcome(cancelSource, captureMode, "写入剪贴板前");
+        }
 
         if (mainViewModel.Settings.CaptureCopyToClipboard)
         {
@@ -509,13 +715,17 @@ public class CaptureCoordinator : IDisposable
         CaptureArea area = CaptureArea.Empty;
         if (target == CaptureTarget.Region)
         {
-            CaptureArea? selectedArea = await this.SelectRegionAreaAsync();
+            CaptureArea? selectedArea = await this.SelectRegionAreaAsync("区域录屏");
             if (selectedArea == null)
             {
                 UiLogger.Log("录屏", "区域录屏已取消：用户没有完成框选");
                 return CaptureOutcome.CreateCancelled("已取消区域录屏");
             }
-            await this.WaitForOverlayClosedAsync("区域录屏");
+            CaptureCancelSource cancelSource = await this.WaitForOverlayClosedAsync("区域录屏", "区域录屏");
+            if (cancelSource != CaptureCancelSource.None)
+            {
+                return this.CreateCaptureCancelOutcome(cancelSource, "区域录屏", "遮罩关闭后");
+            }
             area = selectedArea.Value;
         }
         if (target == CaptureTarget.ActiveWindow && !this.CaptureCapabilities.ActiveWindow)
@@ -718,14 +928,32 @@ public class CaptureCoordinator : IDisposable
     }
 
     /// <summary>弹出区域框选窗口并返回物理像素区域；用户取消或截图失败时返回空。</summary>
-    private async Task<CaptureArea?> SelectRegionAreaAsync()
+    private async Task<CaptureArea?> SelectRegionAreaAsync(string captureMode,
+        bool resetCancelTracking = true)
     {
         MainWindowViewModel? mainViewModel = this.viewModel;
         if (mainViewModel == null)
         {
             return null;
         }
+        // 打开遮罩前清除已按下的按键，避免用右键菜单触发截图时旧按键被当成取消；
+        // 已经经过延迟/遮罩阶段的截图不再复位，保证阶段切换瞬间按下的右键仍能被捕获
+        if (resetCancelTracking)
+        {
+            this.captureCancelInput.Reset();
+        }
+        this.pendingForegroundWindow = this.foregroundWindowService.CaptureForegroundWindow();
+        UiLogger.Log("截图", "区域框选前记录前台窗口：句柄=" + this.pendingForegroundWindow.ToInt64()
+            + " 结果=" + (this.pendingForegroundWindow == IntPtr.Zero ? "不可用" : "已记录，取消时恢复"));
         MainWindow? ownerWindow = WindowRegistry.Primary;
+        // 多显示器：整个虚拟桌面分别创建遮罩，光标跨屏时识别与高亮跟随当前屏幕；
+        // 单显示器仍沿用原有单窗口流程
+        if (ownerWindow != null && this.screenRegionDetector.IsSupported
+            && ownerWindow.Screens.All.Count > 1)
+        {
+            return await this.SelectMultiScreenAreaAsync(ownerWindow, ownerWindow.Screens.All,
+                mainViewModel, captureMode);
+        }
         Screen? screen = null;
         int pointerX = 0;
         int pointerY = 0;
@@ -789,13 +1017,17 @@ public class CaptureCoordinator : IDisposable
                 bitmap = new Bitmap(imageStream);
             }
             RegionSelectionWindow selectionWindow = new RegionSelectionWindow(bitmap, bounds.Area, bounds.Scaling,
-                regionCandidates, this.screenRegionDetector);
+                regionCandidates, this.screenRegionDetector, null, captureMode);
             selectionWindowCreated = true;
-            CaptureArea? selected = await selectionWindow.SelectAreaAsync();
+            Task<CaptureArea?> selectionTask = selectionWindow.SelectAreaAsync();
+            CaptureArea? selected = await this.AwaitSelectionWithCancelAsync(selectionTask,
+                selectionWindow, null, captureMode);
             if (selected == null)
             {
+                this.RestorePendingForeground(captureMode);
                 return null;
             }
+            this.pendingForegroundWindow = IntPtr.Zero;
             UiLogger.Log("截图", "区域框选完成：选择区域=" + selected.Value);
             return selected;
         }
@@ -805,10 +1037,147 @@ public class CaptureCoordinator : IDisposable
             {
                 bitmap.Dispose();
             }
+            this.RestorePendingForeground(captureMode);
             UiLogger.LogError("截图", "区域框选窗口异常", error);
             this.ShowFailure("区域截图失败", "无法打开区域框选窗口：" + error.Message);
             return null;
         }
+    }
+
+    /// <summary>
+    /// 多显示器框选：按显示器分别创建预览与遮罩（各自使用该屏 DPI），
+    /// 由 <see cref="RegionSelectionSession"/> 统一处理光标跨屏、Tab/滚轮层级与跨屏拖拽。
+    /// </summary>
+    private async Task<CaptureArea?> SelectMultiScreenAreaAsync(MainWindow ownerWindow,
+        IReadOnlyList<Screen> screens, MainWindowViewModel mainViewModel, string captureMode)
+    {
+        List<CaptureArea> areas = new List<CaptureArea>();
+        List<double> scalings = new List<double>();
+        List<Bitmap> pendingBitmaps = new List<Bitmap>();
+        RegionSelectionSession? session = null;
+        try
+        {
+            foreach (Screen screen in screens)
+            {
+                CaptureArea area = new CaptureArea(screen.Bounds.X, screen.Bounds.Y,
+                    screen.Bounds.Width, screen.Bounds.Height);
+                if (!area.IsValid)
+                {
+                    continue;
+                }
+                ScreenCaptureRequest previewRequest = new ScreenCaptureRequest();
+                previewRequest.Target = CaptureTarget.Region;
+                previewRequest.Area = area;
+                previewRequest.IncludeCursor = false;
+                previewRequest.ToolPath = mainViewModel.Settings.FfmpegPath;
+                ScreenCaptureResult preview = await this.screenCaptureService.CaptureAsync(previewRequest);
+                if (!preview.Success)
+                {
+                    UiLogger.Log("截图", "多屏框选失败：无法获取屏幕预览图 屏幕区域=" + area
+                        + " 原因=" + preview.ErrorMessage);
+                    this.ShowFailure("区域截图失败", preview.ErrorMessage);
+                    return null;
+                }
+                Bitmap bitmap;
+                using (MemoryStream imageStream = new MemoryStream(preview.ImageBytes))
+                {
+                    bitmap = new Bitmap(imageStream);
+                }
+                pendingBitmaps.Add(bitmap);
+                areas.Add(area);
+                scalings.Add(screen.Scaling);
+                UiLogger.Log("截图", "多屏框选预览已获取：屏幕区域=" + area
+                    + " 缩放比例=" + screen.Scaling
+                    + " 图像宽度=" + preview.PixelWidth + " 图像高度=" + preview.PixelHeight);
+            }
+            if (areas.Count == 0)
+            {
+                UiLogger.Log("截图", "多屏框选失败：没有可用的显示器区域");
+                this.ShowFailure("区域截图失败", "没有可用的显示器区域");
+                return null;
+            }
+            session = new RegionSelectionSession(this.screenRegionDetector);
+            List<RegionSelectionWindow> windows = new List<RegionSelectionWindow>();
+            for (int index = 0; index < areas.Count; index++)
+            {
+                Bitmap bitmap = pendingBitmaps[index];
+                RegionSelectionWindow window = new RegionSelectionWindow(bitmap, areas[index], scalings[index],
+                    new List<ScreenRegionCandidate>(), this.screenRegionDetector, session, captureMode);
+                pendingBitmaps[index] = null;
+                windows.Add(window);
+            }
+            UiLogger.Log("截图", "多屏框选窗口已创建：显示器数量=" + windows.Count
+                + " 虚拟桌面覆盖=" + DescribeVirtualDesktop(areas)
+                + " 结果=等待用户跨屏框选");
+            session.ShowAll(ownerWindow);
+            CaptureArea? selected = await this.AwaitSelectionWithCancelAsync(session.Completion,
+                null, session, captureMode);
+            if (selected == null)
+            {
+                UiLogger.Log("截图", "多屏框选已取消：用户没有完成跨屏框选");
+                this.RestorePendingForeground(captureMode);
+                return null;
+            }
+            this.pendingForegroundWindow = IntPtr.Zero;
+            UiLogger.Log("截图", "多屏框选完成：选择区域=" + selected.Value
+                + " 横跨显示器数量=" + CountIntersectedScreens(selected.Value, areas));
+            return selected;
+        }
+        catch (Exception error)
+        {
+            UiLogger.LogError("截图", "多屏框选会话异常", error);
+            this.RestorePendingForeground(captureMode);
+            session?.Complete(null);
+            this.ShowFailure("区域截图失败", "无法打开多屏框选窗口：" + error.Message);
+            return null;
+        }
+        finally
+        {
+            foreach (Bitmap bitmap in pendingBitmaps)
+            {
+                if (bitmap != null)
+                {
+                    bitmap.Dispose();
+                }
+            }
+        }
+    }
+
+    private static string DescribeVirtualDesktop(List<CaptureArea> areas)
+    {
+        int left = int.MaxValue;
+        int top = int.MaxValue;
+        int right = int.MinValue;
+        int bottom = int.MinValue;
+        foreach (CaptureArea area in areas)
+        {
+            left = Math.Min(left, area.X);
+            top = Math.Min(top, area.Y);
+            right = Math.Max(right, area.X + area.Width);
+            bottom = Math.Max(bottom, area.Y + area.Height);
+        }
+        if (left == int.MaxValue)
+        {
+            return "无";
+        }
+        return new CaptureArea(left, top, right - left, bottom - top).ToString();
+    }
+
+    private static int CountIntersectedScreens(CaptureArea selection, List<CaptureArea> areas)
+    {
+        int count = 0;
+        foreach (CaptureArea area in areas)
+        {
+            int left = Math.Max(selection.X, area.X);
+            int top = Math.Max(selection.Y, area.Y);
+            int right = Math.Min(selection.X + selection.Width, area.X + area.Width);
+            int bottom = Math.Min(selection.Y + selection.Height, area.Y + area.Height);
+            if (right > left && bottom > top)
+            {
+                count++;
+            }
+        }
+        return count;
     }
 
     /// <summary>枚举当前屏幕上的可预选区域；平台不支持时返回只含全屏的空列表，框选窗口降级为手工拖动。</summary>
@@ -854,11 +1223,169 @@ public class CaptureCoordinator : IDisposable
         }
     }
 
-    /// <summary>等待框选窗口完全从屏幕消失，避免把遮罩边框截进最终图片或录像。</summary>
-    private async Task WaitForOverlayClosedAsync(string actionName)
+    /// <summary>等待框选窗口完全从屏幕消失，避免把遮罩边框截进最终图片或录像；期间右键或 Esc 仍可取消。</summary>
+    private async Task<CaptureCancelSource> WaitForOverlayClosedAsync(string actionName, string captureMode)
     {
         UiLogger.Log("截图", "等待框选窗口从屏幕消失：" + actionName + " 等待毫秒=220");
-        await Task.Delay(220);
+        return await this.WaitForCancelableDurationAsync(TimeSpan.FromMilliseconds(220),
+            captureMode, "遮罩关闭等待", false);
+    }
+
+    /// <summary>
+    /// 可取消的延迟等待：每 40 毫秒轮询一次右键与 Esc，命中后立即结束等待。
+    /// 延迟为 0 时也会复位按键状态并检查一次，保证紧接着按下的右键不会被吞掉。
+    /// </summary>
+    private async Task<CaptureCancelSource> WaitForCancelablePhaseAsync(int delaySeconds,
+        string captureMode, string stage, bool resetCancelTracking = true)
+    {
+        if (delaySeconds <= 0)
+        {
+            if (resetCancelTracking)
+            {
+                this.captureCancelInput.Reset();
+            }
+            return this.captureCancelInput.PollCancelRequest();
+        }
+        UiLogger.Log("截图", captureMode + "进入延迟等待：延迟秒数=" + delaySeconds
+            + " 取消方式=鼠标右键或Esc");
+        return await this.WaitForCancelableDurationAsync(TimeSpan.FromSeconds(delaySeconds),
+            captureMode, stage, resetCancelTracking);
+    }
+
+    /// <summary>在指定时长内轮询取消输入；返回非 None 表示用户按下了右键或 Esc。</summary>
+    private async Task<CaptureCancelSource> WaitForCancelableDurationAsync(TimeSpan duration,
+        string captureMode, string stage, bool resetCancelTracking = true)
+    {
+        if (resetCancelTracking)
+        {
+            this.captureCancelInput.Reset();
+        }
+        DateTime deadline = DateTime.UtcNow + duration;
+        while (true)
+        {
+            CaptureCancelSource source = this.captureCancelInput.PollCancelRequest();
+            if (source != CaptureCancelSource.None)
+            {
+                return source;
+            }
+            if (DateTime.UtcNow >= deadline)
+            {
+                return CaptureCancelSource.None;
+            }
+            await Task.Delay(40);
+        }
+    }
+
+    /// <summary>
+    /// 等待框选完成，同时轮询全局右键 / Esc：遮罩没有拿到焦点时也能立即取消。
+    /// 取消时关闭全部遮罩并返回空区域，不进入后续截图与保存流程。
+    /// </summary>
+    private async Task<CaptureArea?> AwaitSelectionWithCancelAsync(Task<CaptureArea?> selectionTask,
+        RegionSelectionWindow? window, RegionSelectionSession? session, string captureMode)
+    {
+        while (!selectionTask.IsCompleted)
+        {
+            CaptureCancelSource source = this.captureCancelInput.PollCancelRequest();
+            if (source != CaptureCancelSource.None)
+            {
+                this.LogCaptureCancel(source, captureMode, "框选遮罩");
+                if (session != null)
+                {
+                    session.Cancel(DescribeCancelSource(source), captureMode);
+                }
+                else if (window != null)
+                {
+                    window.CancelSelectionFromInput(DescribeCancelSource(source));
+                }
+                break;
+            }
+            await Task.Delay(40);
+        }
+        return await selectionTask;
+    }
+
+    /// <summary>记录一次取消并按约定返回取消结果，不触发产物保存、历史刷新或贴图。</summary>
+    private CaptureOutcome CreateCaptureCancelOutcome(CaptureCancelSource source, string captureMode,
+        string stage)
+    {
+        this.LogCaptureCancel(source, captureMode, stage);
+        return CaptureOutcome.CreateCancelled("已取消" + captureMode + "（" + DescribeCancelSource(source) + "）");
+    }
+
+    /// <summary>写入纯中文取消日志：记录来源、截图模式与所处阶段。</summary>
+    private void LogCaptureCancel(CaptureCancelSource source, string captureMode, string stage)
+    {
+        UiLogger.Log("截图", "截图取消：来源=" + DescribeCancelSource(source)
+            + " 截图模式=" + captureMode
+            + " 阶段=" + stage
+            + " 结果=已立即退出截图，未生成产物、未进入历史、未生成贴图");
+    }
+
+    /// <summary>取消框选后把焦点还给取消前的窗口，避免前台停留在本程序。</summary>
+    private void RestorePendingForeground(string captureMode)
+    {
+        IntPtr handle = this.pendingForegroundWindow;
+        this.pendingForegroundWindow = IntPtr.Zero;
+        if (handle == IntPtr.Zero)
+        {
+            return;
+        }
+        bool restored = this.foregroundWindowService.RestoreForegroundWindow(handle);
+        UiLogger.Log("截图", "截图取消后恢复前台窗口：截图模式=" + captureMode
+            + " 原前台句柄=" + handle.ToInt64()
+            + " 结果=" + (restored ? "成功" : "失败，前台保持当前窗口"));
+    }
+
+    /// <summary>取消过程中已经写出的文件必须删除，避免留下无主产物。</summary>
+    private void DeleteCancelledProduct(string filePath, string captureMode)
+    {
+        if (string.IsNullOrEmpty(filePath))
+        {
+            return;
+        }
+        try
+        {
+            if (File.Exists(filePath))
+            {
+                File.Delete(filePath);
+                UiLogger.Log("截图", "截图取消：截图模式=" + captureMode
+                    + " 阶段=产物清理 结果=已删除取消过程中生成的临时文件 路径=" + filePath);
+            }
+        }
+        catch (Exception error)
+        {
+            UiLogger.LogError("截图", "截图取消后删除临时产物失败：路径=" + filePath, error);
+        }
+    }
+
+    private static string DescribeCancelSource(CaptureCancelSource source)
+    {
+        if (source == CaptureCancelSource.RightButton)
+        {
+            return "鼠标右键";
+        }
+        if (source == CaptureCancelSource.Escape)
+        {
+            return "Esc 键";
+        }
+        return "未知来源";
+    }
+
+    private static string DescribeCaptureMode(CaptureTarget target)
+    {
+        if (target == CaptureTarget.FullScreen)
+        {
+            return "全屏截图";
+        }
+        if (target == CaptureTarget.PrimaryScreen)
+        {
+            return "主屏截图";
+        }
+        if (target == CaptureTarget.ActiveWindow)
+        {
+            return "活动窗口截图";
+        }
+        return "区域截图";
     }
 
     /// <summary>保存上次区域截图范围，供「上次区域」快速复用。</summary>
@@ -1091,19 +1618,80 @@ public class CaptureCoordinator : IDisposable
             this.ShowFailure("无法贴图", "系统剪贴板中没有可用图片。\n请先复制一张图片，或使用截图后直接点击「贴图」。");
             return CaptureOutcome.CreateFailure("系统剪贴板中没有可用图片");
         }
-        PixelPoint position = new PixelPoint(60, 60);
-        Screen? screen = window.Screens.Primary;
-        if (screen != null)
-        {
-            PixelRect workingArea = screen.WorkingArea;
-            position = new PixelPoint(workingArea.X + 60, workingArea.Y + 60);
-        }
-        PinWindowManager.ShowPinnedImage(bitmap, position, mainViewModel.Settings);
+        PixelPoint position = this.ResolvePinPosition(window);
+        PinWindowManager.ShowPinnedImage(bitmap, position, mainViewModel.Settings, this.ResolveOcrService());
         UiLogger.Log("贴图", "剪贴板图片已贴到屏幕：像素宽度=" + bitmap.PixelSize.Width
             + " 像素高度=" + bitmap.PixelSize.Height
             + " 贴图横坐标=" + position.X
             + " 贴图纵坐标=" + position.Y);
         return CaptureOutcome.CreateSuccess(string.Empty, "剪贴板图片已贴到屏幕");
+    }
+
+    /// <summary>
+    /// 把已有图片文件贴到屏幕（截图区域再次贴图 / 产物历史贴图）：
+    /// 在鼠标当前位置附近显示，可拖动、缩放、翻转、调透明度与再次标注。
+    /// </summary>
+    public CaptureOutcome PinImageFile(string filePath)
+    {
+        MainWindowViewModel? mainViewModel = this.viewModel;
+        MainWindow? window = WindowRegistry.Primary;
+        if (mainViewModel == null || window == null)
+        {
+            UiLogger.Log("贴图", "图片文件贴图被拒绝：主窗口或视图模型未就绪 路径=" + filePath);
+            return CaptureOutcome.CreateFailure("主窗口尚未就绪，无法贴图");
+        }
+        if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
+        {
+            UiLogger.Log("贴图", "图片文件贴图被拒绝：文件不存在 路径=" + filePath);
+            return CaptureOutcome.CreateFailure("图片文件不存在：" + filePath);
+        }
+        Bitmap bitmap;
+        try
+        {
+            using (FileStream stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read))
+            {
+                bitmap = new Bitmap(stream);
+            }
+        }
+        catch (Exception error)
+        {
+            UiLogger.LogError("贴图", "读取图片文件失败：路径=" + filePath, error);
+            return CaptureOutcome.CreateFailure("读取图片失败：" + error.Message);
+        }
+        PixelPoint position = this.ResolvePinPosition(window);
+        PinWindowManager.ShowPinnedImage(bitmap, position, mainViewModel.Settings, this.ResolveOcrService());
+        UiLogger.Log("贴图", "图片文件已贴到屏幕：路径=" + filePath
+            + " 像素宽度=" + bitmap.PixelSize.Width
+            + " 像素高度=" + bitmap.PixelSize.Height
+            + " 贴图横坐标=" + position.X
+            + " 贴图纵坐标=" + position.Y);
+        return CaptureOutcome.CreateSuccess(string.Empty, "已贴到屏幕：" + filePath);
+    }
+
+    /// <summary>解析新贴图的初始位置：鼠标当前位置优先，读不到指针时使用主屏工作区左上角偏移。</summary>
+    private PixelPoint ResolvePinPosition(MainWindow window)
+    {
+        int pointerX;
+        int pointerY;
+        if (this.screenRegionDetector.TryGetPointerPosition(out pointerX, out pointerY))
+        {
+            foreach (Screen candidateScreen in window.Screens.All)
+            {
+                PixelRect bounds = candidateScreen.Bounds;
+                if (pointerX >= bounds.X && pointerX < bounds.X + bounds.Width
+                    && pointerY >= bounds.Y && pointerY < bounds.Y + bounds.Height)
+                {
+                    return new PixelPoint(pointerX, pointerY);
+                }
+            }
+        }
+        Screen? primary = window.Screens.Primary;
+        if (primary != null)
+        {
+            PixelRect workingArea = primary.WorkingArea;
+            return new PixelPoint(workingArea.X + 60, workingArea.Y + 60);
+        }
+        return new PixelPoint(60, 60);
     }
 
     /// <summary>在媒体标签中打开截图 / 录像；非媒体文件交给系统默认程序。</summary>
@@ -1225,6 +1813,7 @@ public class CaptureCoordinator : IDisposable
             + " 延迟秒数=" + mainViewModel.Settings.CaptureDelaySeconds
             + " 录屏帧率=" + mainViewModel.Settings.CaptureRecordFps
             + " 录屏画质=" + mainViewModel.Settings.CaptureRecordQuality
+            + " 贴图截图保存产物=" + mainViewModel.Settings.CapturePinShotSaveFile
             + " 录屏目标=" + mainViewModel.Settings.CaptureRecordTarget
             + " 麦克风设备=" + (string.IsNullOrEmpty(mainViewModel.Settings.CaptureMicrophoneDevice) ? "未启用" : mainViewModel.Settings.CaptureMicrophoneDevice)
             + " FFmpeg路径=" + (string.IsNullOrEmpty(mainViewModel.Settings.FfmpegPath) ? "自动查找" : mainViewModel.Settings.FfmpegPath));

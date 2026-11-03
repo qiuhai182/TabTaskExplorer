@@ -1,5 +1,6 @@
 ﻿using TabTaskExplorer.Kernel.Abstractions;
 using TabTaskExplorer.Kernel.Models;
+using TabTaskExplorer.Kernel.Services;
 using TabTaskExplorer.Protocol.Ftp;
 using TabTaskExplorer.Protocol.Ssh;
 
@@ -11,8 +12,14 @@ namespace TabTaskExplorer.App.Services;
 /// </summary>
 public class CompositeRemoteSessionFactory : IRemoteSessionFactory
 {
-    private readonly SshSessionFactory sshFactory = new SshSessionFactory();
+    private readonly SshSessionFactory sshFactory;
     private readonly FtpSessionFactory ftpFactory = new FtpSessionFactory();
+
+    /// <summary>注入已知主机密钥存储，SSH 连接前据此校验主机密钥。</summary>
+    public CompositeRemoteSessionFactory(KnownHostStore knownHosts)
+    {
+        this.sshFactory = new SshSessionFactory(knownHosts);
+    }
 
     /// <inheritdoc />
     public ITerminalSession OpenTerminal(RemoteConnectionProfile profile, string credential, int columns, int rows)

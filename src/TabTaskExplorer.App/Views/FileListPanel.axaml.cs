@@ -52,6 +52,9 @@ public partial class FileListPanel : UserControl
         /// <summary>是否为本程序发起的拖拽。</summary>
         public bool IsInternalDrag;
 
+        /// <summary>拖拽源声明的放置语义：目录标签页为移动或复制，产物历史为只读拷贝。</summary>
+        public FileDragMode DragMode = FileDragMode.MoveOrCopy;
+
         /// <summary>该落点允许的拖放效果。</summary>
         public DragDropEffects Effects = DragDropEffects.None;
 
@@ -107,6 +110,70 @@ public partial class FileListPanel : UserControl
     /// <summary>条目与空白处右键菜单里系统菜单项占位子菜单的标记。</summary>
     private const string SystemMenuHostTag = "SystemMenuItemsHost";
 
+    /// <summary>本程序行菜单命令编号：原生菜单里用固定编号回传，避开外壳菜单 1 到 0x7FFF 的编号段。</summary>
+    private const int RowCommandOpen = 0x8001;
+
+    /// <summary>行菜单命令：在新标签打开。</summary>
+    private const int RowCommandOpenInNewTab = 0x8002;
+
+    /// <summary>行菜单命令：复制到剪贴板。</summary>
+    private const int RowCommandCopy = 0x8003;
+
+    /// <summary>行菜单命令：剪切到剪贴板。</summary>
+    private const int RowCommandCut = 0x8004;
+
+    /// <summary>行菜单命令：复制完整路径文本。</summary>
+    private const int RowCommandCopyPath = 0x8005;
+
+    /// <summary>行菜单命令：压缩为。</summary>
+    private const int RowCommandCompress = 0x8006;
+
+    /// <summary>行菜单命令：解压到。</summary>
+    private const int RowCommandExtract = 0x8007;
+
+    /// <summary>行菜单命令：重命名。</summary>
+    private const int RowCommandRename = 0x8008;
+
+    /// <summary>行菜单命令：删除。</summary>
+    private const int RowCommandDelete = 0x8009;
+
+    /// <summary>行菜单命令：粘贴到该文件夹。</summary>
+    private const int RowCommandPasteToFolder = 0x800A;
+
+    /// <summary>行菜单命令：比较所选两项。</summary>
+    private const int RowCommandCompare = 0x800B;
+
+    /// <summary>空白处菜单命令：刷新。</summary>
+    private const int BackgroundCommandRefresh = 0x8101;
+
+    /// <summary>空白处菜单命令：返回上一级。</summary>
+    private const int BackgroundCommandNavigateUp = 0x8102;
+
+    /// <summary>空白处菜单命令：粘贴。</summary>
+    private const int BackgroundCommandPaste = 0x8103;
+
+    /// <summary>空白处菜单命令：新建文件夹。</summary>
+    private const int BackgroundCommandNewFolder = 0x8104;
+
+    /// <summary>空白处菜单命令：按名称排序。</summary>
+    private const int BackgroundCommandSortName = 0x8105;
+
+    /// <summary>空白处菜单命令：按修改日期排序。</summary>
+    private const int BackgroundCommandSortModified = 0x8106;
+
+    /// <summary>空白处菜单命令：按类型排序。</summary>
+    private const int BackgroundCommandSortType = 0x8107;
+
+    /// <summary>空白处菜单命令：按大小排序。</summary>
+    private const int BackgroundCommandSortSize = 0x8108;
+
+    /// <summary>解压菜单的适用扩展名（与压缩为菜单提供的压缩格式保持一致）。</summary>
+    private static readonly string[] ArchiveExtensions = new string[]
+    {
+        ".zip", ".7z", ".rar", ".tar", ".gz", ".tgz", ".bz2", ".tbz2", ".xz", ".zst",
+    };
+
+
     /// <summary>条目右键菜单里「粘贴」菜单项的标记（只在文件夹条目上显示，粘贴进该文件夹）。</summary>
     private const string PasteToFolderTag = "MenuPasteToFolder";
 
@@ -132,6 +199,10 @@ public partial class FileListPanel : UserControl
         DragDrop.AddDragOverHandler(this, this.OnListDragOver);
         DragDrop.AddDragLeaveHandler(this, this.OnListDragLeave);
         DragDrop.AddDropHandler(this, this.OnListDrop);
+        // 右键请求在隧道阶段先拦截：Windows 上用原生外壳菜单（含第三方扩展），
+        // 其他平台或原生菜单降级时再交给下方既有的 Avalonia 右键菜单
+        this.AddHandler(InputElement.ContextRequestedEvent, this.OnListContextRequested,
+            RoutingStrategies.Tunnel, handledEventsToo: true);
     }
 
     /// <summary>当前标签页视图模型。</summary>
@@ -507,13 +578,15 @@ public partial class FileListPanel : UserControl
         DataTransfer data = new DataTransfer();
         FileDragPayload payload = new FileDragPayload();
         payload.Paths.AddRange(paths);
+        // 目录标签页内拖动按移动语义发起，可供内部移动、也可供外部程序按系统规则接收
+        payload.Mode = FileDragMode.MoveOrCopy;
         data.Add(DataTransferItem.Create(FileDropPolicy.Format, payload));
         int fileItemCount = 0;
         if (carryFileItems)
         {
             foreach (string path in paths)
             {
-                IStorageItem? item = await TryCreateStorageItem(owner, path);
+                IStorageItem? item = await FileDropPolicy.TryCreateStorageItemAsync(owner, path);
                 if (item != null)
                 {
                     data.Add(DataTransferItem.CreateFile(item));
@@ -524,6 +597,7 @@ public partial class FileListPanel : UserControl
         UiLogger.Log("程序行为", "列表发起拖拽：源目录=" + viewModel.CurrentPath + " 按下行=" + pressedRow.FullPath
             + " 拖拽条目数=" + paths.Count + " 拖拽条目=" + string.Join("、", paths)
             + " 是否本机条目=" + (carryFileItems ? "是" : "否") + " 携带文件项数=" + fileItemCount
+            + " 拖拽源语义=" + FileDropPolicy.DescribeDragMode(payload.Mode)
             + " 允许效果=移动或复制 发起时修饰键=" + FileDropPolicy.DescribeModifiers(pressEvent.KeyModifiers)
             + " 结果=成功，拖拽内容已交给系统拖放");
         FileDropPolicy.LastInternalDropAction = string.Empty;
@@ -561,37 +635,6 @@ public partial class FileListPanel : UserControl
         }
         UiLogger.Log("程序行为", "列表拖拽结束：拖拽条目数=" + paths.Count + " 拖拽条目=" + string.Join("、", paths)
             + " 目标实际应用效果=" + appliedDescription + " 结果=" + finishResult);
-    }
-
-    /// <summary>把本机路径转成系统存储项（拖拽时携带文件项用），转换出错时记日志并返回空。</summary>
-    private async Task<IStorageItem?> TryCreateStorageItem(TopLevel owner, string path)
-    {
-        try
-        {
-            if (Directory.Exists(path))
-            {
-                return await owner.StorageProvider.TryGetFolderFromPathAsync(CreateFileUri(path));
-            }
-            if (File.Exists(path))
-            {
-                return await owner.StorageProvider.TryGetFileFromPathAsync(CreateFileUri(path));
-            }
-        }
-        catch (Exception error)
-        {
-            UiLogger.LogError("程序行为", "列表发起拖拽：条目路径=" + path + " 结果=失败，转换系统存储项时出错", error);
-        }
-        return null;
-    }
-
-    /// <summary>把路径转成文件协议 URI：本身不是合法绝对文件路径时补上 file:// 前缀。</summary>
-    private static Uri CreateFileUri(string path)
-    {
-        if (Uri.TryCreate(path, UriKind.Absolute, out Uri? uri) && uri.IsFile)
-        {
-            return uri;
-        }
-        return new Uri("file://" + path);
     }
 
     /// <summary>拖拽进入列表：按落点决定本次拖放允许的效果。</summary>
@@ -634,6 +677,7 @@ public partial class FileListPanel : UserControl
             this.dropLogKey = logKey;
             UiLogger.Log("程序行为", "列表拖拽经过落点：落点类型=" + decision.DropKind + " 目标目录=" + decision.TargetDirectory
                 + " 拖放来源=" + (decision.IsInternalDrag ? "本程序发起" : "外部程序拖入")
+                + " 拖拽源语义=" + FileDropPolicy.DescribeDragMode(decision.DragMode)
                 + " 源条目数=" + decision.SourcePaths.Count + " 源条目=" + string.Join("、", decision.SourcePaths)
                 + " 修饰键=" + FileDropPolicy.DescribeModifiers(e.KeyModifiers)
                 + " 效果=" + FileDropPolicy.DescribeEffects(decision.Effects)
@@ -653,6 +697,7 @@ public partial class FileListPanel : UserControl
         {
             UiLogger.Log("程序行为", "列表拖放执行：落点类型=" + decision.DropKind + " 目标目录=" + decision.TargetDirectory
                 + " 拖放来源=" + (decision.IsInternalDrag ? "本程序发起" : "外部程序拖入")
+                + " 拖拽源语义=" + FileDropPolicy.DescribeDragMode(decision.DragMode)
                 + " 源条目数=" + decision.SourcePaths.Count + " 源条目=" + string.Join("、", decision.SourcePaths)
                 + " 修饰键=" + FileDropPolicy.DescribeModifiers(e.KeyModifiers)
                 + " 效果=" + FileDropPolicy.DescribeEffects(decision.Effects)
@@ -684,6 +729,7 @@ public partial class FileListPanel : UserControl
             + " 成功 " + successCount + " 项，失败 " + failedCount + " 项");
         UiLogger.Log("程序行为", "列表拖放执行：落点类型=" + decision.DropKind + " 动作=" + actionText
             + " 拖放来源=" + (decision.IsInternalDrag ? "本程序发起" : "外部程序拖入")
+            + " 拖拽源语义=" + FileDropPolicy.DescribeDragMode(decision.DragMode)
             + " 源条目数=" + decision.SourcePaths.Count + " 源条目=" + string.Join("、", decision.SourcePaths)
             + " 修饰键=" + FileDropPolicy.DescribeModifiers(e.KeyModifiers)
             + " 目标目录=" + decision.TargetDirectory
@@ -727,7 +773,8 @@ public partial class FileListPanel : UserControl
                 decision.RejectReason = "当前没有打开的目录（此电脑根视图），不能接收拖放";
             }
         }
-        decision.SourcePaths = FileDropPolicy.CollectSourcePaths(e.DataTransfer, out decision.IsInternalDrag);
+        decision.SourcePaths = FileDropPolicy.CollectSourcePaths(e.DataTransfer, out decision.IsInternalDrag,
+            out decision.DragMode);
         if (decision.RejectReason == null && decision.SourcePaths.Count == 0)
         {
             decision.RejectReason = "拖放内容中没有可用的本机路径";
@@ -745,7 +792,8 @@ public partial class FileListPanel : UserControl
             }
             else
             {
-                decision.Effects = FileDropPolicy.ResolveEffects(decision.SourcePaths[0], decision.TargetDirectory, e.KeyModifiers);
+                decision.Effects = FileDropPolicy.ResolveEffects(decision.SourcePaths[0], decision.TargetDirectory,
+                    e.KeyModifiers, decision.DragMode);
             }
         }
         return decision;
@@ -835,6 +883,14 @@ public partial class FileListPanel : UserControl
         }
         systemMenuHost.Items.Clear();
         ISystemContextMenuService? systemContextMenuService = this.MainViewModel?.SystemContextMenus;
+        if (viewModel.FileSystemProvider is not DefaultFileSystemProvider)
+        {
+            // 远程（SFTP / FTP）与压缩包标签没有本机目录，不塞入本地系统菜单项
+            systemMenuHost.IsVisible = false;
+            UiLogger.Log("程序行为", "空白处右键菜单打开：当前目录=" + directoryText
+                + " 结果=远程或压缩包标签，保持本程序有限菜单，未加载本地系统菜单项");
+            return;
+        }
         if (!hasDirectory || systemContextMenuService == null || !systemContextMenuService.IsSupported)
         {
             systemMenuHost.IsVisible = false;
@@ -903,6 +959,307 @@ public partial class FileListPanel : UserControl
             count += CountMenuEntries(entry.Children);
         }
         return count;
+    }
+
+    /// <summary>
+    /// 右键请求：Windows 本地标签改弹原生外壳菜单——同一张原生菜单里先放本程序命令，
+    /// 再插入系统静态动词与全部第三方 Shell 扩展（含级联子菜单、动态动词、图标与盾牌标识）。
+    /// 非 Windows 平台、远程 / 压缩包标签、原生菜单构建失败或超时时不拦截，继续使用既有 Avalonia 菜单。
+    /// </summary>
+    private async void OnListContextRequested(object? sender, ContextRequestedEventArgs e)
+    {
+        FileTabViewModel? viewModel = this.ViewModel;
+        MainWindowViewModel? mainViewModel = this.MainViewModel;
+        ISystemContextMenuService? service = mainViewModel == null ? null : mainViewModel.SystemContextMenus;
+        if (viewModel == null || service == null || !service.SupportsNativeShellMenu)
+        {
+            // 非 Windows 平台或服务缺失：保持原有 Avalonia 菜单
+            return;
+        }
+        if (viewModel.FileSystemProvider is not DefaultFileSystemProvider)
+        {
+            UiLogger.Log("程序行为", "文件列表右键请求：当前目录=" + (viewModel.CurrentPath.Length == 0 ? "此电脑" : viewModel.CurrentPath)
+                + " 结果=远程或压缩包标签，保持本程序有限菜单，不加载本地系统菜单项");
+            return;
+        }
+        Border? rowBorder = FindRowBorder(e.Source as Visual, out _);
+        FileRow? contextRow = rowBorder != null && rowBorder.DataContext is FileRow hitRow ? hitRow : null;
+        bool isBackground = contextRow == null;
+        if (isBackground && string.IsNullOrEmpty(viewModel.CurrentPath))
+        {
+            UiLogger.Log("程序行为", "文件列表右键请求：当前目录=此电脑 结果=根视图没有具体目录，保持本程序菜单，不加载系统菜单项");
+            return;
+        }
+        List<FileRow> targets = isBackground
+            ? new List<FileRow>()
+            : CollectTargetRows(viewModel, contextRow!);
+        Point point;
+        if (!e.TryGetPosition(this, out point))
+        {
+            point = new Point(12.0, 12.0);
+        }
+        TopLevel? topLevel = TopLevel.GetTopLevel(this);
+        PixelPoint screenPoint = topLevel == null
+            ? new PixelPoint((int)point.X, (int)point.Y)
+            : topLevel.PointToScreen(point);
+        NativeContextMenuRequest request = new NativeContextMenuRequest();
+        request.IsBackground = isBackground;
+        request.ScreenX = screenPoint.X;
+        request.ScreenY = screenPoint.Y;
+        if (isBackground)
+        {
+            request.Paths.Add(viewModel.CurrentPath);
+        }
+        else
+        {
+            foreach (FileRow row in targets)
+            {
+                request.Paths.Add(row.FullPath);
+            }
+        }
+        request.Commands.AddRange(this.BuildOwnContextCommands(viewModel, isBackground, contextRow, targets));
+        this.systemMenuContextRow = contextRow;
+        // 先标记已处理，避免 Avalonia 自带的右键菜单与原生菜单同时弹出
+        e.Handled = true;
+        UiLogger.Log("程序行为", "文件列表右键请求：落点=" + (isBackground ? "列表空白处" : "列表条目")
+            + " 右键条目=" + (contextRow == null ? "无" : contextRow.FullPath)
+            + " 条目类型=" + (contextRow == null ? "无" : (contextRow.IsDirectory ? "目录" : "文件"))
+            + " 操作目标数=" + targets.Count + " 操作目标=" + (targets.Count == 0 ? "无" : string.Join("、", targets.ConvertAll(delegate (FileRow row) { return row.FullPath; })))
+            + " 本程序命令数=" + request.Commands.Count
+            + " 弹出位置=横坐标" + screenPoint.X + "、纵坐标" + screenPoint.Y
+            + " 结果=已请求原生外壳菜单（系统项与第三方扩展随外壳加载）");
+        NativeContextMenuResult result;
+        try
+        {
+            result = await service.ShowNativeShellMenuAsync(request);
+        }
+        catch (Exception error)
+        {
+            UiLogger.LogError("程序行为", "文件列表右键请求：落点=" + (isBackground ? "列表空白处" : "列表条目")
+                + " 结果=失败，请求原生外壳菜单时出错，改为弹出本程序菜单", error);
+            result = null;
+        }
+        if (result == null || !result.MenuShown)
+        {
+            UiLogger.Log("程序行为", "文件列表右键请求：落点=" + (isBackground ? "列表空白处" : "列表条目")
+                + " 结果=降级，原生外壳菜单未显示（原因：" + (result == null ? "请求出错" : result.Message)
+                + "），改为弹出本程序菜单");
+            this.OpenFallbackContextMenu(isBackground, rowBorder);
+            return;
+        }
+        if (result.OwnCommandId >= 0)
+        {
+            this.ExecuteOwnContextCommand(result.OwnCommandId, contextRow, targets, isBackground);
+        }
+        UiLogger.Log("程序行为", "文件列表右键请求结束：落点=" + (isBackground ? "列表空白处" : "列表条目")
+            + " 原生菜单已显示=True 选择的本程序命令编号=" + result.OwnCommandId
+            + " 系统或扩展命令已唤起=" + result.ShellCommandInvoked
+            + " 说明=" + result.Message);
+    }
+
+    /// <summary>弹出既有的 Avalonia 右键菜单（原生外壳菜单降级时使用）。</summary>
+    private void OpenFallbackContextMenu(bool isBackground, Border? rowBorder)
+    {
+        Control? target = isBackground ? this.ListAreaGrid : rowBorder;
+        ContextMenu? menu = target == null ? null : target.ContextMenu;
+        if (target == null || menu == null)
+        {
+            UiLogger.Log("程序行为", "弹出本程序右键菜单：落点=" + (isBackground ? "列表空白处" : "列表条目")
+                + " 结果=失败，未找到可用的右键菜单实例");
+            return;
+        }
+        menu.Open(target);
+        UiLogger.Log("程序行为", "弹出本程序右键菜单：落点=" + (isBackground ? "列表空白处" : "列表条目")
+            + " 结果=成功，已弹出本程序命令与系统菜单项子菜单");
+    }
+
+    /// <summary>按落点与多选情况生成本程序命令列表：单文件 / 文件夹 / 多选 / 空白处各有不同项。</summary>
+    private List<NativeContextMenuCommand> BuildOwnContextCommands(FileTabViewModel viewModel, bool isBackground,
+        FileRow? contextRow, List<FileRow> targets)
+    {
+        List<NativeContextMenuCommand> commands = new List<NativeContextMenuCommand>();
+        if (isBackground)
+        {
+            bool hasDirectory = viewModel.CurrentPath.Length > 0;
+            AddNativeCommand(commands, BackgroundCommandRefresh, "刷新", true, false);
+            AddNativeCommand(commands, BackgroundCommandNavigateUp, "返回上一级", hasDirectory, false);
+            AddNativeCommand(commands, BackgroundCommandPaste, "粘贴", true, false);
+            AddNativeCommand(commands, BackgroundCommandNewFolder, "新建文件夹…", hasDirectory, false);
+            AddNativeSeparator(commands);
+            AddNativeCommand(commands, BackgroundCommandSortName, "按名称排序", true, false);
+            AddNativeCommand(commands, BackgroundCommandSortModified, "按修改日期排序", true, false);
+            AddNativeCommand(commands, BackgroundCommandSortType, "按类型排序", true, false);
+            AddNativeCommand(commands, BackgroundCommandSortSize, "按大小排序", true, false);
+            return commands;
+        }
+        bool single = targets.Count == 1;
+        bool multiple = targets.Count > 1;
+        string countSuffix = multiple ? "（" + targets.Count + " 项）" : string.Empty;
+        AddNativeCommand(commands, RowCommandOpen, "打开", single, true);
+        AddNativeCommand(commands, RowCommandOpenInNewTab, "在新标签打开", single, false);
+        AddNativeSeparator(commands);
+        AddNativeCommand(commands, RowCommandCopy, "复制" + countSuffix, targets.Count > 0, false);
+        AddNativeCommand(commands, RowCommandCut, "剪切" + countSuffix, targets.Count > 0, false);
+        AddNativeCommand(commands, RowCommandCopyPath, "复制完整路径", targets.Count > 0, false);
+        AddNativeSeparator(commands);
+        AddNativeCommand(commands, RowCommandCompress, "压缩为…" + countSuffix, targets.Count > 0, false);
+        bool canExtract = single && !targets[0].IsDirectory && IsArchiveFilePath(targets[0].FullPath);
+        AddNativeCommand(commands, RowCommandExtract, "解压到…", canExtract, false);
+        AddNativeCommand(commands, RowCommandRename, "重命名", single, false);
+        AddNativeCommand(commands, RowCommandDelete, "删除" + countSuffix, targets.Count > 0, false);
+        if (single && targets[0].IsDirectory)
+        {
+            AddNativeCommand(commands, RowCommandPasteToFolder, "粘贴到该文件夹", true, false);
+        }
+        if (targets.Count == 2)
+        {
+            AddNativeCommand(commands, RowCommandCompare, "比较所选两项", true, false);
+        }
+        return commands;
+    }
+
+    /// <summary>把一条本程序命令加入原生菜单命令列表。</summary>
+    private static void AddNativeCommand(List<NativeContextMenuCommand> commands, int commandId, string displayName,
+        bool isEnabled, bool isDefault)
+    {
+        NativeContextMenuCommand command = new NativeContextMenuCommand();
+        command.CommandId = commandId;
+        command.DisplayName = displayName;
+        command.IsEnabled = isEnabled;
+        command.IsDefault = isDefault;
+        commands.Add(command);
+    }
+
+    /// <summary>在原生菜单命令列表里插入一条分隔线。</summary>
+    private static void AddNativeSeparator(List<NativeContextMenuCommand> commands)
+    {
+        NativeContextMenuCommand separator = new NativeContextMenuCommand();
+        separator.IsSeparator = true;
+        commands.Add(separator);
+    }
+
+    /// <summary>判断路径是否带常见压缩包扩展名（决定「解压到…」是否可用）。</summary>
+    private static bool IsArchiveFilePath(string path)
+    {
+        string extension = Path.GetExtension(path).ToLowerInvariant();
+        foreach (string candidate in ArchiveExtensions)
+        {
+            if (string.Equals(extension, candidate, StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>执行原生菜单里选择的本程序命令：复用既有右键菜单动作，多选时按全部操作目标处理。</summary>
+    private void ExecuteOwnContextCommand(int commandId, FileRow? contextRow, List<FileRow> targets, bool isBackground)
+    {
+        FileTabViewModel? viewModel = this.ViewModel;
+        MainWindowViewModel? mainViewModel = this.MainViewModel;
+        if (viewModel == null || mainViewModel == null)
+        {
+            UiLogger.Log("程序行为", "执行本程序右键命令：命令编号=" + commandId
+                + " 结果=失败，视图模型为空，本次命令未执行");
+            return;
+        }
+        List<string> paths = new List<string>();
+        foreach (FileRow row in targets)
+        {
+            paths.Add(row.FullPath);
+        }
+        MenuItem senderItem = new MenuItem();
+        senderItem.DataContext = contextRow;
+        RoutedEventArgs routedEventArgs = new RoutedEventArgs();
+        switch (commandId)
+        {
+            case RowCommandOpen:
+                if (contextRow != null)
+                {
+                    viewModel.OpenEntry(contextRow);
+                }
+                break;
+            case RowCommandOpenInNewTab:
+                if (contextRow != null)
+                {
+                    if (contextRow.IsDirectory)
+                    {
+                        mainViewModel.AddTab(contextRow.FullPath);
+                    }
+                    else
+                    {
+                        viewModel.OpenEntry(contextRow);
+                    }
+                }
+                break;
+            case RowCommandCopy:
+                mainViewModel.CopyPathsToClipboard(paths);
+                break;
+            case RowCommandCut:
+                mainViewModel.CutPathsToClipboard(paths);
+                break;
+            case RowCommandCopyPath:
+                _ = mainViewModel.CopyPathTextAsync(paths);
+                break;
+            case RowCommandCompress:
+                this.OnMenuCompressClick(senderItem, routedEventArgs);
+                break;
+            case RowCommandExtract:
+                this.OnMenuExtractClick(senderItem, routedEventArgs);
+                break;
+            case RowCommandRename:
+                this.OnMenuRenameClick(senderItem, routedEventArgs);
+                break;
+            case RowCommandDelete:
+                if (viewModel.GetCheckedRows().Count > 0)
+                {
+                    viewModel.DeleteChecked();
+                }
+                else if (contextRow != null)
+                {
+                    viewModel.DeleteRow(contextRow);
+                }
+                break;
+            case RowCommandPasteToFolder:
+                this.OnMenuPasteToFolderClick(senderItem, routedEventArgs);
+                break;
+            case RowCommandCompare:
+                this.OnMenuCompareSelectionClick(senderItem, routedEventArgs);
+                break;
+            case BackgroundCommandRefresh:
+                this.OnBackgroundRefreshClick(null, routedEventArgs);
+                break;
+            case BackgroundCommandNavigateUp:
+                this.OnBackgroundNavigateUpClick(null, routedEventArgs);
+                break;
+            case BackgroundCommandPaste:
+                this.OnBackgroundPasteClick(null, routedEventArgs);
+                break;
+            case BackgroundCommandNewFolder:
+                this.OnBackgroundNewFolderClick(null, routedEventArgs);
+                break;
+            case BackgroundCommandSortName:
+                viewModel.SetSortField("Name");
+                break;
+            case BackgroundCommandSortModified:
+                viewModel.SetSortField("Modified");
+                break;
+            case BackgroundCommandSortType:
+                viewModel.SetSortField("Type");
+                break;
+            case BackgroundCommandSortSize:
+                viewModel.SetSortField("Size");
+                break;
+            default:
+                UiLogger.Log("程序行为", "执行本程序右键命令：命令编号=" + commandId
+                    + " 结果=失败，未知的本程序命令编号，本次命令未执行");
+                return;
+        }
+        UiLogger.Log("程序行为", "执行本程序右键命令：命令编号=" + commandId
+            + " 落点=" + (isBackground ? "列表空白处" : "列表条目")
+            + " 右键条目=" + (contextRow == null ? "无" : contextRow.FullPath)
+            + " 操作目标数=" + targets.Count + " 操作目标=" + (targets.Count == 0 ? "无" : string.Join("、", paths))
+            + " 结果=成功，已提交该命令对应的动作");
     }
 
     /// <summary>空白处右键菜单“刷新”：重新加载当前目录。</summary>
@@ -1396,6 +1753,16 @@ public partial class FileListPanel : UserControl
         }
         this.systemMenuContextRow = row;
         ISystemContextMenuService? systemContextMenuService = this.MainViewModel?.SystemContextMenus;
+        FileTabViewModel? currentTab = this.ViewModel;
+        if (currentTab != null && currentTab.FileSystemProvider is not DefaultFileSystemProvider)
+        {
+            // 远程（SFTP / FTP）与压缩包标签的条目不是本机路径，不塞入本地系统菜单项
+            systemMenuHost.Items.Clear();
+            systemMenuHost.IsVisible = false;
+            UiLogger.Log("程序行为", "右键菜单打开：行路径=" + row.FullPath
+                + " 结果=远程或压缩包标签，保持本程序有限菜单，未加载本地系统菜单项");
+            return;
+        }
         if (systemContextMenuService == null || !systemContextMenuService.IsSupported)
         {
             systemMenuHost.Items.Clear();

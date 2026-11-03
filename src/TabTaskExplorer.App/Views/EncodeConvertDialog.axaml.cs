@@ -21,6 +21,8 @@ public partial class EncodeConvertDialog : Window
     public EncodeConvertDialog()
     {
         this.InitializeComponent();
+        // 编码转换对话框属于辅助工具窗口，不进入任务栏与 Alt+Tab
+        WindowHostStyler.MakeAuxiliary(this);
         UiLogger.AttachWindow(this);
     }
 

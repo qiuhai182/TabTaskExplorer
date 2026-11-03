@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Crect%20width='24'%20height='24'%20rx='5.4'%20fill='%232F7CF6'/%3E%3Cpath%20d='M4.2%2018.8V8.1c0-.8.6-1.4%201.4-1.4h3.6l1.6%201.7h7.6c.8%200%201.4.6%201.4%201.4v1.3H4.2z'%20fill='%23fff'%20opacity='.33'/%3E%3Crect%20x='4.2'%20y='11'%20width='15.6'%20height='8.6'%20rx='2.2'%20fill='%23fff'/%3E%3Crect%20x='6.6'%20y='13.5'%20width='8'%20height='1.4'%20rx='.7'%20fill='%232F7CF6'/%3E%3Crect%20x='6.6'%20y='16'%20width='5.2'%20height='1.4'%20rx='.7'%20fill='%232B6FE0'/%3E%3C/svg%3E">
+<title>TabTaskExplorer 网页端</title>
+<link rel="stylesheet" href="/assets/web/app.css?v=__VERSION__">
+</head>
+<body>
+  <!-- 标题栏：徽标 + 标签条 + 新建标签 + 任务看板 + 主题 + 模式切换 -->
+  <div class="titlebar">
+    <div class="logo" title="此电脑" onclick="openPathAt(0)">
+      <svg viewBox="0 0 24 24" width="21" height="21" aria-hidden="true">
+        <defs>
+          <linearGradient id="appLogoGradient" x1="0.1" y1="0" x2="0.9" y2="1">
+            <stop offset="0" stop-color="#2F7CF6"/><stop offset="1" stop-color="#12C2E9"/>
+          </linearGradient>
+        </defs>
+        <rect x="0" y="0" width="24" height="24" rx="5.4" fill="url(#appLogoGradient)"/>
+        <path d="M4.2 18.8 L4.2 8.1 Q4.2 6.7 5.6 6.7 L9.2 6.7 L10.8 8.4 L18.4 8.4 Q19.8 8.4 19.8 9.8 L19.8 11.1 L4.2 11.1 Z" fill="#FFFFFF" fill-opacity="0.33"/>
+        <rect x="4.2" y="11" width="15.6" height="8.6" rx="2.2" fill="#FFFFFF"/>
+        <rect x="6.6" y="13.5" width="8" height="1.4" rx="0.7" fill="#2F7CF6"/>
+        <rect x="6.6" y="16" width="5.2" height="1.4" rx="0.7" fill="#2B6FE0"/>
+      </svg>
+    </div>
+    <div class="tabs" id="tabs"></div>
+    <span class="iconBtn" title="新建标签" onclick="newTab()"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M12 4.6 L12 19.4 M4.6 12 L19.4 12"/></svg></span>
+    <span class="iconBtn" title="任务看板" onclick="clickBtn(null,'openboard')"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4.4 5.6 L19.6 5.6 L19.6 18.4 L4.4 18.4 Z M4.4 9.2 L19.6 9.2 M8.2 8.6 L8.2 15.4 M12 8.6 L12 12.6 M15.8 8.6 L15.8 14.4"/></svg></span>
+    <span class="iconBtn" id="ideIconBtn" title="IDE 模式 / 资源管理器模式" onclick="toggleIdeMode()"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M8.2 7.2 L3.2 12 L8.2 16.8 M15.8 7.2 L20.8 12 L15.8 16.8 M13.8 5.6 L10.2 18.4"/></svg></span>
+    <div class="spacer"></div>
+    <span class="iconBtn" title="切换深浅色主题" onclick="toggleTheme()"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8 A4 4 0 1 0 12 16 A4 4 0 1 0 12 8 M12 2.2 L12 4.2 M12 19.8 L12 21.8 M2.2 12 L4.2 12 M19.8 12 L21.8 12 M5.1 5.1 L6.5 6.5 M17.5 17.5 L18.9 18.9 M18.9 5.1 L17.5 6.5 M6.5 17.5 L5.1 18.9"/></svg></span>
+    <button class="modeBtn" id="modeBtn" title="默认使用独立新页面" onclick="toggleMode()">当前网页内容：独立新页面</button>
+  </div>
+
+  <!-- 书签栏：桌面快捷访问固定项 -->
+  <div class="bookmarkbar" id="bookmarkbar"></div>
+
+  <!-- 工具栏：与桌面工具栏同款按钮组 -->
+  <div class="toolbar" id="toolbar">
+    <span class="btn" id="btnIde" onclick="toggleIdeMode()" title="切换到 IDE 模式"><span class="ico"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M8.2 7.2 L3.2 12 L8.2 16.8 M15.8 7.2 L20.8 12 L15.8 16.8 M13.8 5.6 L10.2 18.4"/></svg></span> IDE 模式</span>
+    <div class="dd">
+      <span class="btn" onclick="toggleMenu('viewMenu')">查看</span>
+      <div class="menu hidden" id="viewMenu">
+        <div class="item" data-mode="ExtraLargeIcons" onclick="pickView('ExtraLargeIcons')"><span class="tick"></span>超大图标</div>
+        <div class="item" data-mode="LargeIcons" onclick="pickView('LargeIcons')"><span class="tick"></span>大图标</div>
+        <div class="item" data-mode="MediumIcons" onclick="pickView('MediumIcons')"><span class="tick"></span>中图标</div>
+        <div class="item" data-mode="SmallIcons" onclick="pickView('SmallIcons')"><span class="tick"></span>小图标</div>
+        <div class="item" data-mode="List" onclick="pickView('List')"><span class="tick"></span>列表</div>
+        <div class="item" data-mode="Details" onclick="pickView('Details')"><span class="tick"></span>详细信息</div>
+        <div class="item" data-mode="Tile" onclick="pickView('Tile')"><span class="tick"></span>平铺</div>
+        <div class="item" data-mode="Content" onclick="pickView('Content')"><span class="tick"></span>内容</div>
+        <div class="sep"></div>
+        <div class="item" id="itemExt" onclick="toggleExtensions()"><span class="tick" id="tickExt"></span>显示扩展名</div>
+      </div>
+    </div>
+    <div class="dd">
+      <span class="btn" onclick="toggleMenu('copyMenu')">复制</span>
+      <div class="menu hidden" id="copyMenu">
+        <div class="item" onclick="copyChecked()">复制</div>
+        <div class="item" onclick="copyText('dir')">复制文件所在路径</div>
+        <div class="item" onclick="copyText('full')">复制文件完整路径</div>
+        <div class="item" onclick="copyText('name')">复制文件名称</div>
+        <div class="item" onclick="copyText('nameext')">复制文件名称（带扩展名）</div>
+      </div>
+    </div>
+    <span class="btn" id="btnCut" onclick="clickBtn('btnCut','cut')">剪切</span>
+    <span class="btn" id="btnPaste" onclick="clickBtn('btnPaste','paste')">粘贴</span>
+    <span class="btn" id="btnFolder" onclick="createFolder()">新建文件夹</span>
+    <span class="btn" id="btnBatch" onclick="openBatch()">批量改名</span>
+    <span class="btn" id="btnEncode" onclick="openEncode()">编码转换</span>
+    <span class="btn" id="btnRecycle" onclick="deleteChecked()">回收站</span>
+    <span class="btn" id="btnHidden" onclick="clickBtn('btnHidden','togglehidden')"><span class="tick" id="tickHiddenBtn"></span>显示隐藏条目</span>
+    <span class="btn" id="btnInfoPane" onclick="toggleInfoPane()"><span class="tick" id="tickInfoBtn"></span>显示详细信息窗格</span>
+    <span class="btn" id="btnRefresh" onclick="clickBtn('btnRefresh','refresh')">刷新</span>
+  </div>
+
+  <!-- 导航与地址栏：后退 / 前进 / 上一级 + 可编辑路径 + 最近访问 + 刷新 + 收藏 + 搜索 -->
+  <div class="navrow" id="navrow">
+    <div class="navbtns">
+      <button class="tbtn" id="btnBack" title="后退" onclick="clickBtn('btnBack','back')"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20.4 12 L4.2 12 M11.2 5 L4.2 12 L11.2 19"/></svg></button>
+      <button class="tbtn" id="btnFwd" title="前进" onclick="clickBtn('btnFwd','forward')"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3.6 12 L19.8 12 M12.8 5 L19.8 12 L12.8 19"/></svg></button>
+      <button class="tbtn" id="btnUp" title="上一级" onclick="goUp()"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20.2 L12 3.8 M5 10.8 L12 3.8 L19 10.8"/></svg></button>
+    </div>
+    <div class="addr" id="addr">
+      <div class="crumb" id="crumb" title="点击空白处编辑路径"></div>
+      <input class="addrInput hidden" id="addrInput" placeholder="输入路径后按回车跳转">
+      <div class="addrBtns">
+        <button class="tbtn" id="recentBtn" title="最近访问" onclick="toggleRecent()"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12 A9 9 0 1 0 21 12 A9 9 0 1 0 3 12 M12 6.8 L12 12.4 L16 14.4"/></svg></button>
+        <button class="tbtn" title="刷新 (F5)" onclick="clickBtn(null,'refresh')"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12 A7 7 0 0 1 12 5 M8.4 2.4 L12 5 L8.4 7.6 M19 12 A7 7 0 0 1 12 19 M15.6 16.4 L12 19 L15.6 21.6"/></svg></button>
+        <button class="tbtn" id="btnPin" title="收藏当前文件夹到书签" onclick="clickBtn('btnPin','pin')"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3.4 L18 3.4 L18 20.6 L12 16.2 L6 20.6 Z"/></svg></button>
+      </div>
+      <div class="pop hidden" id="recentPop"></div>
+    </div>
+    <input class="searchBox" id="searchBox" placeholder="搜索当前目录">
+  </div>
+
+  <!-- 工作区：左侧导航 + 内容区 + 详细信息窗格 -->
+  <div class="workarea" id="workarea">
+    <div class="sidebar" id="sidebar"></div>
+    <div class="content" id="content">
+      <div id="contentMain"><div class="hint">正在加载……</div></div>
+      <!-- 瞬时提示：与桌面摘要栏同位（内容区底部），不占用状态栏 -->
+      <div class="hint flash hidden" id="flashLine"></div>
+    </div>
+    <div class="infoPane hidden" id="infoPane"></div>
+  </div>
+
+  <!-- 状态栏：项目数 / 勾选数 + 服务地址 -->
+  <div class="statusbar" id="statusbar">
+    <span id="statusLeft">准备就绪</span>
+    <span class="spacer"></span>
+    <span class="connState" id="connState" title="事件推送连接状态"><span class="connDot"></span><span id="connStateText">连接中</span></span>
+    <span id="statusRight"></span>
+  </div>
+
+  <!-- ===== IDE 模式视图（与桌面 IdeShellView 同构） ===== -->
+  <div class="ideView hidden" id="ideView">
+    <!-- 顶部：工作区路径 + 保存 / 全部保存 / 查找 / 快速打开 / 刷新 -->
+    <div class="ideTop">
+      <span class="fIco" style="width:16px;height:16px"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M2.6 19.6 L2.6 6.4 Q2.6 4.6 4.6 4.6 L9.6 4.6 L12 7 L21.2 7 L21.2 9.8 L2.6 9.8 Z" fill="#B8801F"/><path d="M2.6 9.6 L21.2 9.6 L21.2 18.4 Q21.2 20.6 19 20.6 L4.8 20.6 Q2.6 20.6 2.6 18.4 Z" fill="#F2B23E"/><rect x="4.6" y="11" width="15.6" height="1.2" rx="0.6" fill="#FFFFFF" fill-opacity="0.32"/></svg></span>
+      <span class="ideRoot" id="ideRoot" title=""></span>
+      <span class="btn" id="ideBtnSave" title="保存 (Ctrl+S)" onclick="clickIdeSave('ideBtnSave','idesave')"><span class="ico"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="#808080" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4.4 4 L16.6 4 L19.6 7 L19.6 19.6 C19.6 20.4 19 21 18.2 21 L5.8 21 C5 21 4.4 20.4 4.4 19.6 Z M8 4 L8 9 L16 9 L16 4 M7.4 13 L16.6 13 L16.6 21 L7.4 21 Z"/></svg></span> 保存</span>
+      <span class="btn" id="ideBtnSaveAll" title="全部保存 (Ctrl+Shift+S)" onclick="clickIdeSave('ideBtnSaveAll','idesaveall')"><span class="ico"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="#808080" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M8 4 L17.6 4 L20 6.4 L20 17.6 C20 18.4 19.4 19 18.6 19 L8 19 C7.2 19 6.6 18.4 6.6 17.6 L6.6 5.4 C6.6 4.6 7.2 4 8 4 Z M3.4 8 L3.4 21 L16.6 21"/></svg></span> 全部保存</span>
+      <span class="btn" id="ideBtnFind" title="查找 (Ctrl+F)" onclick="ideOpenFind()"><span class="ico"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="#808080" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3.4 10.6 A7.2 7.2 0 1 0 17.8 10.6 A7.2 7.2 0 1 0 3.4 10.6 M16 17 L20.8 21.8"/></svg></span> 查找</span>
+      <span class="btn" id="ideBtnQuick" title="快速打开 (Ctrl+P)" onclick="clickIdeBtn('ideBtnQuick','idequickopen')"><span class="ico"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="#808080" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6.4 3 L15 3 L19.4 7.4 L19.4 11.4 M6.4 3 C5.5 3 4.9 3.6 4.9 4.5 L4.9 19.5 C4.9 20.4 5.5 21 6.4 21 L11.6 21 M15 3 L15 7.4 L19.4 7.4 M10.4 17.6 A4.4 4.4 0 1 0 19.2 17.6 A4.4 4.4 0 1 0 10.4 17.6 M18.2 19.6 L21.8 23.2"/></svg></span> 快速打开</span>
+      <span class="btn" id="ideBtnRefresh" title="刷新工作区" onclick="clickIdeBtn('ideBtnRefresh','iderefresh')"><span class="ico"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="#808080" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12 A7 7 0 0 1 12 5 M8.4 2.4 L12 5 L8.4 7.6 M19 12 A7 7 0 0 1 12 19 M15.6 16.4 L12 19 L15.6 21.6"/></svg></span> 刷新</span>
+    </div>
+    <!-- 中部：资源树 + 分隔条 + 编辑区 -->
+    <div class="ideBody">
+      <div class="ideTree">
+        <div class="ideTreeHead">资源管理器</div>
+        <div class="ideTreeList" id="ideTreeList"></div>
+      </div>
+      <div class="ideSplit"></div>
+      <div class="ideEditor">
+        <div class="ideTabs" id="ideTabs"></div>
+        <div class="ideMain">
+          <div class="ideGutter" id="ideGutter">1</div>
+          <textarea id="ideText" spellcheck="false" class="ideText hidden"></textarea>
+          <div class="ideEmpty" id="ideEmpty">单击左侧资源树文件以预览方式打开，双击、编辑或保存后固定为普通标签；Ctrl+P 快速打开，Ctrl+F 查找。</div>
+        </div>
+        <div class="ideFind hidden" id="ideFind">
+          <div class="ideFindRow">
+            <span class="lbl">查找</span>
+            <input id="ideFindBox" placeholder="查找内容">
+            <input id="ideReplaceBox" placeholder="替换为">
+            <span class="btn" onclick="ideFindNext('0')">上一个</span>
+            <span class="btn" onclick="ideFindNext('1')">下一个</span>
+            <span class="btn" id="ideBtnReplace" onclick="clickIdeBtn('ideBtnReplace','idereplace')">替换</span>
+            <span class="btn" id="ideBtnReplaceAll" onclick="clickIdeBtn('ideBtnReplaceAll','idereplaceall')">全部替换</span>
+            <span class="btn" onclick="clickIdeBtn(null,'idesearchws')">在工作区搜索</span>
+          </div>
+          <div class="ideFindStatus" id="ideFindStatus"></div>
+          <div class="ideFindList" id="ideFindList"></div>
+        </div>
+      </div>
+    </div>
+    <!-- 瞬时提示：IDE 模式下的操作反馈（与资源管理器模式内容区底部提示同构） -->
+    <div class="hint flash hidden" id="ideFlashLine" style="padding:2px 10px;flex:none"></div>
+
+    <!-- 底部：IDE 状态栏 -->
+    <div class="ideStatus">
+      <span id="ideSolution"></span>
+      <span class="spacer"></span>
+      <span class="loc" id="ideLocation"></span>
+      <span id="ideCaret"></span>
+      <span id="ideEncoding"></span>
+    </div>
+    <!-- 快速打开浮层（Ctrl+P） -->
+    <div class="ideQuick hidden" id="ideQuick">
+      <input id="ideQuickInput" placeholder="输入文件名（支持模糊匹配），回车打开，Esc 关闭">
+      <div class="ideQuickList" id="ideQuickList"></div>
+    </div>
+  </div>
+
+  <!-- 关闭脏编辑器的三分支确认（保存 / 不保存 / 取消） -->
+  <div class="modal hidden" id="idePrompt">
+    <div class="panel small" style="height:auto">
+      <div class="panelHead">
+        <div class="panelTitle" id="idePromptTitle">保存更改</div>
+      </div>
+      <div class="idePromptBody" id="idePromptBody"></div>
+      <div class="panelFoot">
+        <span class="btn" onclick="idePromptChoice('save')">保存</span>
+        <span class="btn" onclick="idePromptChoice('dont')">不保存</span>
+        <div class="spacer"></div>
+        <span class="btn" onclick="idePromptChoice('cancel')">取消</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 诊断信息：网页端调试折叠项（桌面端无此视图，默认收起，不占用内容区） -->
+  <details class="diagBox">
+    <summary>诊断信息（UI 线程未处理异常，最多保留 100 条）</summary>
+    <pre class="diag" id="diag">（暂无）</pre>
+  </details>
+
+  <!-- 只读 / 可写文件编辑器 -->
+  <div class="modal hidden" id="editor">
+    <div class="panel">
+      <div class="panelHead">
+        <div class="panelTitle" id="editorTitle"></div>
+        <span class="btn" onclick="closeEditor()">关闭</span>
+      </div>
+      <textarea id="editorText" spellcheck="false"></textarea>
+      <div class="panelFoot">
+        <span class="hint" id="editorHint"></span>
+        <div class="spacer"></div>
+        <span class="btn" id="editorSave" onclick="saveFile()">保存修改</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 批量改名：对勾选条目逐行输入新名称 -->
+  <div class="modal hidden" id="batch">
+    <div class="panel small">
+      <div class="panelHead">
+        <div class="panelTitle">批量改名（共 <span id="batchCount">0</span> 项）</div>
+        <span class="btn" onclick="closeBatch()">关闭</span>
+      </div>
+      <div class="batchList" id="batchList"></div>
+      <div class="panelFoot">
+        <span class="hint">保持原名的行不会改名</span>
+        <div class="spacer"></div>
+        <span class="btn" onclick="applyBatch()">应用改名</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 编码转换：文件名 / 文件夹名的批量编码转换（源编码 → 目标编码，支持递归子项） -->
+  <div class="modal hidden" id="encode">
+    <div class="panel small">
+      <div class="panelHead">
+        <div class="panelTitle">编码转换（共 <span id="encodeCount">0</span> 项）</div>
+        <span class="btn" onclick="closeEncode()">关闭</span>
+      </div>
+      <div class="encodeCtrl">
+        <span>源编码</span>
+        <select id="encodeFrom" onchange="previewEncode()"></select>
+        <span>目标编码</span>
+        <select id="encodeTo" onchange="previewEncode()"></select>
+        <label><input type="checkbox" id="encodeRecursive" onchange="previewEncode()">递归处理子项</label>
+      </div>
+      <div class="batchList" id="encodeList"></div>
+      <div class="panelFoot">
+        <span class="hint" id="encodeFoot">源编码 = 名字当前被误解的编码</span>
+        <div class="spacer"></div>
+        <span class="btn" onclick="applyEncode()">执行转换</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 行右键菜单（与桌面列表右键菜单同构） -->
+  <div class="ctx hidden" id="ctx"></div>
+
+  <div class="main" style="display:none"></div>
+
+
+<script src="/assets/web/core.js?v=__VERSION__"></script>
+<script src="/assets/web/views.js?v=__VERSION__"></script>
+<script src="/assets/web/panels.js?v=__VERSION__"></script>
+<script src="/assets/web/actions.js?v=__VERSION__"></script>
+<script src="/assets/web/ide.js?v=__VERSION__"></script>
+<script src="/assets/web/boot.js?v=__VERSION__"></script>
+</body>
+</html>

@@ -270,6 +270,23 @@ public partial class ConnectionPanel : UserControl
         }
     }
 
+    /// <summary>查看或删除选中连接主机已信任的 SSH 主机密钥。</summary>
+    private void OnHostKeyClick(object? sender, RoutedEventArgs e)
+    {
+        ConnectionManagerViewModel? viewModel = this.ViewModel;
+        RemoteConnectionProfile? selected = viewModel?.SelectedConnection;
+        if (viewModel?.Owner == null || selected == null)
+        {
+            this.StatusText.Text = "请先在左侧选择要管理主机密钥的连接";
+            UiLogger.Log("程序行为", "按钮=主机密钥 被点击：连接管理视图模型、所属主窗口或当前选中连接为空，结果=失败，未打开主机密钥管理");
+            return;
+        }
+        viewModel.Owner.ManageKnownHosts(selected);
+        this.StatusText.Text = "已请求查看主机密钥：" + selected.Host + ":" + selected.GetEffectivePort();
+        UiLogger.Log("程序行为", "按钮=主机密钥 被点击：连接名称=" + selected.Name + " 服务器=" + selected.Host
+            + " 端口=" + selected.GetEffectivePort() + " 结果=成功，已请求主窗口打开主机密钥管理");
+    }
+
     /// <summary>导出全部连接配置到用户选择的 JSON 文件。</summary>
     private async void OnExportClick(object? sender, RoutedEventArgs e)
     {

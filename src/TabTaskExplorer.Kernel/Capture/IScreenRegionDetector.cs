@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 
 namespace TabTaskExplorer.Kernel.Capture;
 
@@ -66,4 +66,14 @@ public interface IScreenRegionDetector
     /// <param name="y">指针纵坐标（物理像素）。</param>
     /// <returns>读取成功返回 true；平台不支持或读取失败返回 false。</returns>
     bool TryGetPointerPosition(out int x, out int y);
+
+    /// <summary>
+    /// 按物理屏幕坐标实时命中光标下方的窗口及其嵌套子视图。
+    /// 返回顺序为「顶层窗口 → 逐级子视图」，不包含全屏候选；平台不支持或命中外壳窗口时返回空列表。
+    /// 框选窗口据此支持 Tab / 滚轮在窗口、控件与全屏之间切换，并在鼠标静止时持续刷新。
+    /// </summary>
+    /// <param name="x">物理屏幕横坐标。</param>
+    /// <param name="y">物理屏幕纵坐标。</param>
+    /// <returns>命中链；没有可截取窗口时为空列表。</returns>
+    IReadOnlyList<ScreenRegionCandidate> HitTest(int x, int y);
 }

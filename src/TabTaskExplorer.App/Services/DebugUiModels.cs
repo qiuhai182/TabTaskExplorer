@@ -15,6 +15,12 @@ public class DebugUiState
     /// <summary>是否跟随桌面主窗口（跟随模式下标签与桌面完全一致）。</summary>
     public bool FollowDesktop { get; set; }
 
+    /// <summary>服务端一次性提示（例如远程连接失败原因）；网页端读取后以浮动提示展示。</summary>
+    public string Notice { get; set; } = string.Empty;
+
+    /// <summary>待确认的主机密钥（首次连接或密钥变更）；为空表示没有待确认项。</summary>
+    public DebugPendingHostKey? PendingHostKey { get; set; }
+
     /// <summary>标签总数（不受行数上限影响）。</summary>
     public int TabCount { get; set; }
 
@@ -371,6 +377,37 @@ public class DebugTabState
 
     /// <summary>启动项管理：平台能力、本次开机标识与自动拉起说明。</summary>
     public string StartupEnvironmentText { get; set; } = string.Empty;
+}
+
+/// <summary>待用户确认的主机密钥信息（网页端据此展示确认对话框）。</summary>
+public class DebugPendingHostKey
+{
+    /// <summary>结构化错误码：HOST_KEY_UNKNOWN（首次连接）或 HOST_KEY_MISMATCH（密钥变更）。</summary>
+    public string ErrorCode { get; set; } = string.Empty;
+
+    /// <summary>发起连接的连接编号。</summary>
+    public string ProfileId { get; set; } = string.Empty;
+
+    /// <summary>连接名称。</summary>
+    public string ProfileName { get; set; } = string.Empty;
+
+    /// <summary>主机地址。</summary>
+    public string Host { get; set; } = string.Empty;
+
+    /// <summary>端口号。</summary>
+    public int Port { get; set; }
+
+    /// <summary>本次连接的主机密钥算法。</summary>
+    public string KeyType { get; set; } = string.Empty;
+
+    /// <summary>本次连接的 SHA256 指纹。</summary>
+    public string FingerprintSha256 { get; set; } = string.Empty;
+
+    /// <summary>密钥变更时已信任的旧指纹；首次连接为空。</summary>
+    public string ExpectedFingerprintSha256 { get; set; } = string.Empty;
+
+    /// <summary>可执行的确认动作名称。</summary>
+    public string TrustAction { get; set; } = "connhostkeytrust";
 }
 
 /// <summary>系统启动项镜像行。</summary>

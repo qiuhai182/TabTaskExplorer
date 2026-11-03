@@ -30,6 +30,8 @@ public partial class MessageDialog : Window
     public MessageDialog()
     {
         this.InitializeComponent();
+        // 临时提示 / 确认框属于辅助工具窗口，不进入任务栏与 Alt+Tab
+        WindowHostStyler.MakeAuxiliary(this);
         UiLogger.AttachWindow(this);
     }
 

@@ -12,6 +12,9 @@ namespace TabTaskExplorer.Platform.Windows;
 [SupportedOSPlatform("windows")]
 public class WindowsSecretProtector : ISecretProtector
 {
+    /// <summary>密文版本前缀：用于识别新格式并与旧版无前缀 DPAPI 密文做一次性迁移。</summary>
+    public const string FormatPrefix = "dpapi:v2:";
+
     /// <summary>附加熵：让本应用加密的数据不能被同用户下的其他程序直接解密复用。</summary>
     private static readonly byte[] additionalEntropy = Encoding.UTF8.GetBytes("TabTaskExplorer.SecretProtector.v1");
 
@@ -23,7 +26,7 @@ public class WindowsSecretProtector : ISecretProtector
         }
         byte[] plainBytes = Encoding.UTF8.GetBytes(plaintext);
         byte[] cipherBytes = ProtectedData.Protect(plainBytes, additionalEntropy, DataProtectionScope.CurrentUser);
-        return Convert.ToBase64String(cipherBytes);
+        return FormatPrefix + Convert.ToBase64String(cipherBytes);
     }
 
     public string Unprotect(string cipherText)
@@ -32,7 +35,10 @@ public class WindowsSecretProtector : ISecretProtector
         {
             return string.Empty;
         }
-        byte[] cipherBytes = Convert.FromBase64String(cipherText);
+        string payload = cipherText.StartsWith(FormatPrefix, StringComparison.Ordinal)
+            ? cipherText.Substring(FormatPrefix.Length)
+            : cipherText;
+        byte[] cipherBytes = Convert.FromBase64String(payload);
         byte[] plainBytes = ProtectedData.Unprotect(cipherBytes, additionalEntropy, DataProtectionScope.CurrentUser);
         return Encoding.UTF8.GetString(plainBytes);
     }

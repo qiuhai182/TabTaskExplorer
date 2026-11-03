@@ -2,6 +2,7 @@
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using System.Security;
+using System.Threading.Tasks;
 using Microsoft.Win32;
 using TabTaskExplorer.Kernel.Abstractions;
 using TabTaskExplorer.Kernel.Models;
@@ -183,6 +184,30 @@ public class WindowsSystemContextMenuService : ISystemContextMenuService
     public bool ExecuteShellMenuEntry(SystemContextMenuEntry entry, string targetPath, bool isBackground)
     {
         return WindowsShellContextMenuReader.Invoke(entry, targetPath, isBackground);
+    }
+
+    /// <summary>Windows 平台支持弹出系统原生外壳右键菜单。</summary>
+    public bool SupportsNativeShellMenu
+    {
+        get { return true; }
+    }
+
+    /// <summary>弹出系统原生外壳右键菜单（本程序命令 + 静态动词 + 全部第三方扩展）。</summary>
+    public Task<NativeContextMenuResult> ShowNativeShellMenuAsync(NativeContextMenuRequest request)
+    {
+        return WindowsShellMenuPopup.ShowAsync(request);
+    }
+
+    /// <summary>网页端用：枚举多选 / 空白处的系统外壳菜单层级（保留禁用项与子菜单）。</summary>
+    public IReadOnlyList<SystemContextMenuEntry> EnumerateShellMenu(IReadOnlyList<string> paths, bool isBackground)
+    {
+        return WindowsShellContextMenuReader.EnumerateMultiple(paths, isBackground);
+    }
+
+    /// <summary>网页端用：按绝对命令编号唤起系统外壳命令。</summary>
+    public bool ExecuteShellMenuCommand(int commandId, IReadOnlyList<string> paths, bool isBackground)
+    {
+        return WindowsShellContextMenuReader.InvokeByCommandId(commandId, paths, isBackground);
     }
 
     /// <summary>扫描两套根键下的全部系统右键菜单位置，生成条目列表。</summary>

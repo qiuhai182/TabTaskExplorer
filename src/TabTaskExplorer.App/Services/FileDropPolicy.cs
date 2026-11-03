@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading.Tasks;
+using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Platform.Storage;
 using TabTaskExplorer.Kernel.Abstractions;
@@ -8,11 +10,27 @@ using TabTaskExplorer.Kernel.Services;
 
 namespace TabTaskExplorer.App.Services;
 
+/// <summary>
+/// 拖拽源声明的放置语义：由发起拖拽的一方决定，落点必须据此协商，
+/// 不能在所有共用代码里假定同一种行为。
+/// </summary>
+public enum FileDragMode
+{
+    /// <summary>可移动：同卷移动、跨卷复制，Ctrl 强制复制、Shift 强制移动（目录标签页内的文件与文件夹使用）。</summary>
+    MoveOrCopy,
+
+    /// <summary>只读拷贝：无论修饰键与目标在哪，都只复制投递，源产物文件保持原样（截图与录屏产物历史使用）。</summary>
+    CopyOnly,
+}
+
 /// <summary>本程序发起拖拽时携带的进程内载荷：源路径列表（外部程序拖入时没有这个载荷）。</summary>
 public class FileDragPayload
 {
     /// <summary>被拖动条目的完整路径列表。</summary>
     public List<string> Paths { get; set; } = new List<string>();
+
+    /// <summary>发起方声明的放置语义，默认按目录标签页的移动语义处理。</summary>
+    public FileDragMode Mode { get; set; } = FileDragMode.MoveOrCopy;
 }
 
 /// <summary>
@@ -61,7 +79,22 @@ public static class FileDropPolicy
     /// <returns>可用的源路径列表（可能为空）。</returns>
     public static List<string> CollectSourcePaths(IDataTransfer dataTransfer, out bool isInternalDrag)
     {
+        return CollectSourcePaths(dataTransfer, out isInternalDrag, out FileDragMode _);
+    }
+
+    /// <summary>
+    /// 读取拖放内容中的源路径，并取出拖拽源声明的放置语义：
+    /// 外部程序拖入时没有进程内载荷，按系统规则处理（可移动或复制）。
+    /// </summary>
+    /// <param name="dataTransfer">拖放事件携带的数据。</param>
+    /// <param name="isInternalDrag">是否为本程序发起的拖拽。</param>
+    /// <param name="dragMode">拖拽源声明的放置语义。</param>
+    /// <returns>可用的源路径列表（可能为空）。</returns>
+    public static List<string> CollectSourcePaths(IDataTransfer dataTransfer, out bool isInternalDrag,
+        out FileDragMode dragMode)
+    {
         isInternalDrag = false;
+        dragMode = FileDragMode.MoveOrCopy;
         List<string> sourcePaths = new List<string>();
         if (dataTransfer == null)
         {
@@ -71,6 +104,7 @@ public static class FileDropPolicy
         if (payload != null && payload.Paths != null && payload.Paths.Count > 0)
         {
             isInternalDrag = true;
+            dragMode = payload.Mode;
             foreach (string path in payload.Paths)
             {
                 if (!string.IsNullOrWhiteSpace(path))
@@ -251,6 +285,65 @@ public static class FileDropPolicy
             return DragDropEffects.Move;
         }
         return DragDropEffects.Copy;
+    }
+
+    /// <summary>
+    /// 按拖拽源声明的语义计算拖放效果：只读拷贝源一律复制（不看修饰键、不看卷），
+    /// 其余源沿用同卷移动、跨卷复制与 Ctrl / Shift 覆盖规则。
+    /// </summary>
+    public static DragDropEffects ResolveEffects(string sourcePath, string targetDirectory, KeyModifiers modifiers,
+        FileDragMode dragMode)
+    {
+        if (dragMode == FileDragMode.CopyOnly)
+        {
+            return DragDropEffects.Copy;
+        }
+        return ResolveEffects(sourcePath, targetDirectory, modifiers);
+    }
+
+    /// <summary>把拖拽源语义转成中文说明，用于日志。</summary>
+    public static string DescribeDragMode(FileDragMode dragMode)
+    {
+        if (dragMode == FileDragMode.CopyOnly)
+        {
+            return "只读拷贝（源文件不移动、不改名、不删除）";
+        }
+        return "移动或复制";
+    }
+
+    /// <summary>把本机路径转成系统存储项（拖拽时携带文件项用，外部程序据此收到 CF_HDROP 文件列表），
+    /// 路径不存在或转换出错时记日志并返回空。</summary>
+    /// <param name="owner">所属顶层窗口，用于取系统存储提供者。</param>
+    /// <param name="path">条目的本机完整路径。</param>
+    /// <returns>系统存储项；失败时为空。</returns>
+    public static async Task<IStorageItem?> TryCreateStorageItemAsync(TopLevel owner, string path)
+    {
+        try
+        {
+            if (Directory.Exists(path))
+            {
+                return await owner.StorageProvider.TryGetFolderFromPathAsync(CreateFileUri(path));
+            }
+            if (File.Exists(path))
+            {
+                return await owner.StorageProvider.TryGetFileFromPathAsync(CreateFileUri(path));
+            }
+        }
+        catch (Exception error)
+        {
+            UiLogger.LogError("程序行为", "拖拽准备：条目路径=" + path + " 结果=失败，转换系统存储项时出错", error);
+        }
+        return null;
+    }
+
+    /// <summary>把路径转成文件协议 URI：本身不是合法绝对文件路径时补上 file:// 前缀。</summary>
+    public static Uri CreateFileUri(string path)
+    {
+        if (Uri.TryCreate(path, UriKind.Absolute, out Uri? uri) && uri.IsFile)
+        {
+            return uri;
+        }
+        return new Uri("file://" + path);
     }
 
     /// <summary>判断两个路径是否位于同一个卷（根路径相同视为同卷，取不到根时按跨卷处理）。</summary>

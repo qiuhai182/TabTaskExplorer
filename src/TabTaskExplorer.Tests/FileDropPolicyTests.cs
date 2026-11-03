@@ -116,6 +116,41 @@ public class FileDropPolicyTests : IDisposable
         Assert.Equal(DragDropEffects.Copy, FileDropPolicy.ResolveEffects(source, target, KeyModifiers.Control | KeyModifiers.Shift));
     }
 
+    /// <summary>拖拽源语义：只读拷贝源不看修饰键与卷，一律按复制协商；目录标签页语义保持原样。</summary>
+    [Fact]
+    public void ResolveEffects_只读拷贝源_始终复制()
+    {
+        string root = Path.GetPathRoot(Path.GetTempPath()) ?? Path.DirectorySeparatorChar.ToString();
+        string source = Path.Combine(root, "产物.png");
+        string target = Path.Combine(root, "目标");
+
+        Assert.Equal(DragDropEffects.Copy,
+            FileDropPolicy.ResolveEffects(source, target, KeyModifiers.None, FileDragMode.CopyOnly));
+        Assert.Equal(DragDropEffects.Copy,
+            FileDropPolicy.ResolveEffects(source, target, KeyModifiers.Shift, FileDragMode.CopyOnly));
+        Assert.Equal(DragDropEffects.Copy,
+            FileDropPolicy.ResolveEffects(source, target, KeyModifiers.Control | KeyModifiers.Shift, FileDragMode.CopyOnly));
+
+        Assert.Equal(DragDropEffects.Move,
+            FileDropPolicy.ResolveEffects(source, target, KeyModifiers.None, FileDragMode.MoveOrCopy));
+        Assert.Equal(DragDropEffects.Move,
+            FileDropPolicy.ResolveEffects(source, target, KeyModifiers.Shift, FileDragMode.MoveOrCopy));
+        Assert.Equal(DragDropEffects.Copy,
+            FileDropPolicy.ResolveEffects(source, target, KeyModifiers.Control, FileDragMode.MoveOrCopy));
+    }
+
+    /// <summary>载荷默认语义：按目录标签页构造的载荷默认为移动或复制，不会被误当作只读拷贝。</summary>
+    [Fact]
+    public void 载荷默认语义_为移动或复制()
+    {
+        FileDragPayload payload = new FileDragPayload();
+
+        Assert.Equal(FileDragMode.MoveOrCopy, payload.Mode);
+        Assert.Equal("移动或复制", FileDropPolicy.DescribeDragMode(payload.Mode));
+        Assert.Equal("只读拷贝（源文件不移动、不改名、不删除）",
+            FileDropPolicy.DescribeDragMode(FileDragMode.CopyOnly));
+    }
+
     /// <summary>参与范围：本机提供者全场景可用，远程提供者仅限标签内部，压缩包提供者全部拒绝。</summary>
     [Fact]
     public void 参与范围_按提供者类型收口()

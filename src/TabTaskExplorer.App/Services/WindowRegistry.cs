@@ -97,6 +97,9 @@ public static class WindowRegistry
         MainWindowViewModel viewModel = new MainWindowViewModel(services, sharedSettings);
         window.DataContext = viewModel;
         // 新窗口在源窗口右下方级联展开，随后钳制到屏幕内
+        // 拖出标签产生的仍是主窗口家族，但任务栏只保留首个主窗口一个按钮；
+        // 在 Show 之前关闭本窗口的任务栏入口，之后仍可通过 Alt+Tab 或窗口切换访问
+        window.ShowInTaskbar = false;
         window.WindowStartupLocation = WindowStartupLocation.Manual;
         try
         {
@@ -108,7 +111,9 @@ public static class WindowRegistry
         }
         window.Opened += OnSecondaryWindowOpened;
         window.Closed += OnSecondaryWindowClosed;
-        UiLogger.Log("程序行为", "创建新窗口：源窗口位置=" + sourceWindow.Position + " 新窗口标题=" + (viewModel.SelectedTab != null ? "已移入标签" : "空"));
+        UiLogger.Log("程序行为", "创建新窗口：源窗口位置=" + sourceWindow.Position
+            + " 新窗口标题=" + (viewModel.SelectedTab != null ? "已移入标签" : "空")
+            + " 任务栏按钮=关闭（仅保留首个主窗口图标）");
         Register(window);
         window.Show();
         window.Activate();
@@ -151,7 +156,10 @@ public static class WindowRegistry
                 desktop.MainWindow = windows.Count > 0 ? windows[0] : null;
                 if (desktop.MainWindow != null)
                 {
-                    UiLogger.Log("程序行为", "主窗口已关闭，把剩余窗口提升为生命周期主窗口：剩余窗口数=" + windows.Count);
+                    // 被提升的拖出窗口原本关闭了任务栏入口；提升后恢复为当前唯一的主窗口按钮
+                    desktop.MainWindow.ShowInTaskbar = true;
+                    UiLogger.Log("程序行为", "主窗口已关闭，把剩余窗口提升为生命周期主窗口：剩余窗口数=" + windows.Count
+                        + " 任务栏按钮=恢复");
                 }
             }
         }

@@ -141,6 +141,8 @@ public class WindowsGlobalHotkeyService : IGlobalHotkeyService, IDisposable
     private bool winDown;
     private bool winUsedInCombination;
 
+    private bool altUsedInCombination;
+
     public WindowsGlobalHotkeyService()
     {
         this.hookCallback = this.OnLowLevelKeyboardMessage;
@@ -293,6 +295,12 @@ public class WindowsGlobalHotkeyService : IGlobalHotkeyService, IDisposable
                 this.winUsedInCombination = false;
                 return (IntPtr)1;
             }
+            if (isUp && IsAltKey(virtualKey) && this.altUsedInCombination)
+            {
+                // 组合键使用过 Alt 键时吞掉 Alt 抬起事件，避免激活窗口菜单栏
+                this.altUsedInCombination = false;
+                return (IntPtr)1;
+            }
             return CallNextHookEx(this.hookHandle, code, parameterW, parameterL);
         }
 
@@ -316,6 +324,10 @@ public class WindowsGlobalHotkeyService : IGlobalHotkeyService, IDisposable
             if (matched.Win)
             {
                 this.winUsedInCombination = true;
+            }
+            if (matched.Alt)
+            {
+                this.altUsedInCombination = true;
             }
             Action? callback = matched.Callback;
             if (callback != null)
@@ -406,6 +418,13 @@ public class WindowsGlobalHotkeyService : IGlobalHotkeyService, IDisposable
     private static bool IsWinKey(int virtualKey)
     {
         return virtualKey == VirtualKeyLeftWin || virtualKey == VirtualKeyRightWin;
+    }
+
+    private static bool IsAltKey(int virtualKey)
+    {
+        return virtualKey == VirtualKeyAlt
+            || virtualKey == VirtualKeyLeftAlt
+            || virtualKey == VirtualKeyRightAlt;
     }
 
     /// <summary>把 Avalonia 按键名称转换为 Windows 虚拟键码；无法识别时返回零。</summary>

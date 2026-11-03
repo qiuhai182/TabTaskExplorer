@@ -17,6 +17,7 @@
       <Button x:Name="OpenTransfersButton" Content="传输队列" Click="OnOpenTransfersClick" ToolTip.Tip="打开上传下载队列（支持断点续传）" />
       <Button x:Name="ImportXshellButton" Content="导入 Xshell" Click="OnImportXshellClick" ToolTip.Tip="从 Xshell 会话文件（.xsh / .xfp / .xftp）导入连接" />
       <Button x:Name="ImportInstalledButton" Content="一键导入已安装配置" Click="OnImportInstalledClick" ToolTip.Tip="自动扫描本机已安装的 Xshell / Xftp 配置目录并导入全部会话" />
+      <Button x:Name="HostKeyButton" Content="主机密钥" Click="OnHostKeyClick" ToolTip.Tip="查看或删除该连接主机已信任的 SSH 主机密钥" />
     </StackPanel>
 
     <!-- 列表 + 编辑表单 -->

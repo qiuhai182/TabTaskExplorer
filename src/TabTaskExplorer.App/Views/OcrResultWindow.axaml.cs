@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using Avalonia.Controls;
 using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
@@ -15,6 +15,8 @@ public partial class OcrResultWindow : Window
     public OcrResultWindow(TextRecognitionResult recognitionResult)
     {
         this.InitializeComponent();
+        // 结果窗口作为附属工具窗口，不进入任务栏与 Alt+Tab
+        WindowHostStyler.MakeAuxiliary(this);
         this.result = recognitionResult;
         this.ResultBox.Text = recognitionResult.Text;
         this.SummaryText.Text = "引擎：" + recognitionResult.ProviderName

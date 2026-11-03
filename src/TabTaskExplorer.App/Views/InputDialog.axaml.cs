@@ -12,6 +12,8 @@ public partial class InputDialog : Window
     public InputDialog()
     {
         this.InitializeComponent();
+        // 输入框属于辅助工具窗口，不进入任务栏与 Alt+Tab
+        WindowHostStyler.MakeAuxiliary(this);
         UiLogger.AttachWindow(this);
     }
 

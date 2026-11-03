@@ -6,6 +6,7 @@ using TabTaskExplorer.Kernel.Storage;
 using TabTaskExplorer.Platform.Linux;
 using TabTaskExplorer.Platform.MacOS;
 using TabTaskExplorer.Platform.Windows;
+using TabTaskExplorer.Platform.Windows.Ocr;
 using TabTaskExplorer.Protocol.Ssh;
 
 namespace TabTaskExplorer.App;
@@ -26,6 +27,8 @@ public static class CompositionRoot
         // 连接管理：内核自带的跨平台 JSON 存储与 TCP 连通性测试
         services.AddSingleton<IConnectionStore, JsonConnectionStore>();
         services.AddSingleton<IConnectivityTester, TcpConnectivityTester>();
+        // 已知主机密钥：SSH 首次信任与后续校验共用的 known_hosts 存储
+        services.AddSingleton<KnownHostStore>();
 
         // 本机文本文件服务：IDE 模式本地文件读写与编码探测（跨平台）
         services.AddSingleton<ITextFileService, DefaultTextFileService>();
@@ -42,16 +45,20 @@ public static class CompositionRoot
         }
         services.AddSingleton<IArchiveService, ArchiveService>();
 
-        // 凭据加密：Windows 使用 DPAPI 当前用户作用域；其他平台此能力留空，降级为明文保存
+        // 凭据加密：Windows 使用 DPAPI 当前用户作用域；其他平台使用 AES-256-GCM + 用户主密钥文件
         if (OperatingSystem.IsWindows())
         {
             services.AddSingleton<ISecretProtector, WindowsSecretProtector>();
         }
         else
         {
-            services.AddSingleton<ISecretProtector, PlaintextSecretProtector>();
+            services.AddSingleton<ISecretProtector, AesGcmFileSecretProtector>();
         }
-        services.AddSingleton<ConnectionManager>();
+        services.AddSingleton<ConnectionManager>(provider => new ConnectionManager(
+            provider.GetRequiredService<IConnectionStore>(),
+            provider.GetRequiredService<ISecretProtector>(),
+            provider.GetRequiredService<IConnectivityTester>(),
+            message => UiLogger.Log("凭据迁移", message)));
 
         // 远程协议适配：按连接协议分派 SSH / SFTP 与 FTP 实现（终端、远程文件系统与传输队列）
         services.AddSingleton<IRemoteSessionFactory, CompositeRemoteSessionFactory>();
@@ -64,6 +71,17 @@ public static class CompositionRoot
         else
         {
             services.AddSingleton<IWindowCaptionHider, NullWindowCaptionHider>();
+        }
+
+        // 辅助窗口任务栏行为：Windows 附加 WS_EX_TOOLWINDOW 并设置 AppUserModelID；
+        // 其他平台不改变 Avalonia 默认窗口行为
+        if (OperatingSystem.IsWindows())
+        {
+            services.AddSingleton<IWindowHostService, WindowsWindowHostService>();
+        }
+        else
+        {
+            services.AddSingleton<IWindowHostService, NullWindowHostService>();
         }
 
         // 系统右键菜单：Windows 枚举真实系统菜单项；其他平台此能力留空
@@ -178,6 +196,18 @@ public static class CompositionRoot
         else
         {
             services.AddSingleton<Kernel.Capture.IScreenRegionDetector, Kernel.Capture.NullScreenRegionDetector>();
+        }
+
+        // 截图取消输入：Windows 轮询鼠标右键与 Esc 的全局按下状态；其他平台返回空实现
+        if (OperatingSystem.IsWindows())
+        {
+            services.AddSingleton<Kernel.Capture.ICaptureCancelInput, WindowsCaptureCancelInput>();
+            services.AddSingleton<IForegroundWindowService, WindowsForegroundWindowService>();
+        }
+        else
+        {
+            services.AddSingleton<Kernel.Capture.ICaptureCancelInput, Kernel.Capture.NullCaptureCancelInput>();
+            services.AddSingleton<IForegroundWindowService, NullForegroundWindowService>();
         }
         services.AddSingleton<Services.Capture.CaptureCoordinator>();
 

@@ -8,6 +8,12 @@ namespace TabTaskExplorer.Kernel.Abstractions;
 /// </summary>
 public interface IConnectionStore
 {
+    /// <summary>底层存储文件路径；用于凭据迁移前备份原件，无法提供时返回空字符串。</summary>
+    string StorePath
+    {
+        get { return string.Empty; }
+    }
+
     /// <summary>读取全部连接配置。</summary>
     /// <returns>全部连接配置；文件不存在时返回空列表。</returns>
     IReadOnlyList<RemoteConnectionProfile> LoadAll();

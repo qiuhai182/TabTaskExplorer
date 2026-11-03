@@ -36,9 +36,11 @@ public class DiskViewPanelViewModel : INotifyPropertyChanged, IColumnWidthViewMo
 
     private readonly IDiskUsageProvider diskUsageProvider;
     private readonly DiskScanService scanService;
+    private readonly IFileSystemProvider fileSystemProvider;
     private readonly string ownerId;
     private readonly Timer probeTimer;
     private readonly HashSet<string> pendingProbePaths = new HashSet<string>();
+    private readonly HashSet<string> restoreExpandedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
     private string summaryText = "正在加载磁盘视图……";
     private string rootPathInput = string.Empty;
@@ -57,13 +59,16 @@ public class DiskViewPanelViewModel : INotifyPropertyChanged, IColumnWidthViewMo
     private string lastTogglePath = string.Empty;
     private long lastToggleTimestamp;
 
-    /// <summary>构造函数：注入磁盘用量统计服务与共享扫描服务；构造时不做任何扫描。</summary>
+    /// <summary>构造函数：注入磁盘用量统计服务、共享扫描服务与文件系统服务；构造时不做任何扫描。</summary>
     /// <param name="diskUsageProvider">平台磁盘用量提供者。</param>
     /// <param name="scanService">共享磁盘扫描服务（单例）。</param>
-    public DiskViewPanelViewModel(IDiskUsageProvider diskUsageProvider, DiskScanService scanService)
+    /// <param name="fileSystemProvider">文件系统服务（删除走回收站）。</param>
+    public DiskViewPanelViewModel(IDiskUsageProvider diskUsageProvider, DiskScanService scanService,
+        IFileSystemProvider fileSystemProvider)
     {
         this.diskUsageProvider = diskUsageProvider;
         this.scanService = scanService;
+        this.fileSystemProvider = fileSystemProvider;
         this.ownerId = "磁盘视图-" + Guid.NewGuid().ToString("N");
         this.lastVisibleTimestamp = Stopwatch.GetTimestamp();
         this.scanService.ProgressChanged += this.OnScanProgress;
@@ -324,6 +329,7 @@ public class DiskViewPanelViewModel : INotifyPropertyChanged, IColumnWidthViewMo
         if (path != previousRoot)
         {
             this.Rows.Clear();
+            this.restoreExpandedPaths.Clear();
         }
         if (path.Length == 0)
         {
@@ -363,6 +369,421 @@ public class DiskViewPanelViewModel : INotifyPropertyChanged, IColumnWidthViewMo
         }
         this.StartRefresh(parent);
     }
+
+    /// <summary>取一行的所在目录：目录行用自己的路径，文件行用上级目录；取不到时返回空。</summary>
+    /// <param name="row">目标行；为空时用当前根目录。</param>
+    public string ResolveTargetDirectory(DiskRow? row)
+    {
+        if (row == null)
+        {
+            return this.CurrentRoot();
+        }
+        if (row.IsDirectory)
+        {
+            return row.FullPath;
+        }
+        return System.IO.Path.GetDirectoryName(row.FullPath) ?? string.Empty;
+    }
+
+    /// <summary>在指定目录下新建文件夹，成功后就地刷新该目录并保留展开状态。</summary>
+    /// <param name="directory">目标目录。</param>
+    /// <param name="folderName">新文件夹名称（不含路径）。</param>
+    /// <returns>给界面的中文结果提示。</returns>
+    public string CreateFolder(string directory, string folderName)
+    {
+        string target = this.BuildTargetPath(directory, folderName);
+        if (target.Length == 0)
+        {
+            return "新建文件夹失败：目录或名称为空";
+        }
+        try
+        {
+            Directory.CreateDirectory(target);
+        }
+        catch (Exception error)
+        {
+            string message = DescribeFileError("新建文件夹", target, error);
+            UiLogger.Log("磁盘视图", "新建文件夹失败：目标=" + target + " 原因=" + error.Message);
+            return message;
+        }
+        this.RefreshAfterChange(directory);
+        UiLogger.Log("磁盘视图", "新建文件夹：目标=" + target + " 结果=成功，已刷新该目录");
+        return "已新建文件夹：" + folderName;
+    }
+
+    /// <summary>在指定目录下新建空文件，成功后就地刷新该目录。</summary>
+    /// <param name="directory">目标目录。</param>
+    /// <param name="fileName">新文件名称（不含路径）。</param>
+    /// <returns>给界面的中文结果提示。</returns>
+    public string CreateFile(string directory, string fileName)
+    {
+        string target = this.BuildTargetPath(directory, fileName);
+        if (target.Length == 0)
+        {
+            return "新建文件失败：目录或名称为空";
+        }
+        try
+        {
+            using (File.Create(target))
+            {
+            }
+        }
+        catch (Exception error)
+        {
+            string message = DescribeFileError("新建文件", target, error);
+            UiLogger.Log("磁盘视图", "新建文件失败：目标=" + target + " 原因=" + error.Message);
+            return message;
+        }
+        this.RefreshAfterChange(directory);
+        UiLogger.Log("磁盘视图", "新建文件：目标=" + target + " 结果=成功，已刷新该目录");
+        return "已新建文件：" + fileName;
+    }
+
+    /// <summary>重命名一行：只改这一个条目（目录连同其可见子树一起改路径前缀），完成后不重建列表。</summary>
+    /// <param name="row">要重命名的行。</param>
+    /// <param name="newName">新名称（不含路径）。</param>
+    /// <returns>给界面的中文结果提示。</returns>
+    public string Rename(DiskRow row, string newName)
+    {
+        string trimmedName = newName == null ? string.Empty : newName.Trim();
+        if (trimmedName.Length == 0)
+        {
+            return "重命名失败：名称不能为空";
+        }
+        if (trimmedName.IndexOfAny(new char[] { '\\', '/', ':', '*', '?', '"', '<', '>', '|' }) >= 0)
+        {
+            return "重命名失败：名称不能包含 \\ / : * ? \" < > | 等字符";
+        }
+        string parent = System.IO.Path.GetDirectoryName(row.FullPath) ?? string.Empty;
+        if (parent.Length == 0)
+        {
+            return "重命名失败：不能在盘符根目录重命名该条目";
+        }
+        string target = System.IO.Path.Combine(parent, trimmedName);
+        if (string.Equals(target, row.FullPath, StringComparison.OrdinalIgnoreCase))
+        {
+            return "重命名未变化：" + row.Name;
+        }
+        if (File.Exists(target) || Directory.Exists(target))
+        {
+            return "重命名失败：目标名称已存在 " + trimmedName;
+        }
+        string originalPath = row.FullPath;
+        try
+        {
+            if (row.IsDirectory)
+            {
+                Directory.Move(originalPath, target);
+            }
+            else
+            {
+                File.Move(originalPath, target);
+            }
+        }
+        catch (Exception error)
+        {
+            string message = DescribeFileError("重命名", originalPath, error);
+            UiLogger.Log("磁盘视图", "重命名失败：原路径=" + originalPath + " 新名称=" + trimmedName
+                + " 原因=" + error.Message);
+            return message;
+        }
+        this.UpdateSubtreePath(row, originalPath, target);
+        row.Name = trimmedName;
+        row.EntryTypeText = row.IsDirectory ? "目录" : "文件";
+        this.OrderSiblings(row);
+        UiLogger.Log("磁盘视图", "重命名成功：原路径=" + originalPath + " 新路径=" + target
+            + " 条目类型=" + (row.IsDirectory ? "目录" : "文件") + " 结果=已就地更新行，不重建列表");
+        return "已重命名：" + trimmedName;
+    }
+
+    /// <summary>删除一行：默认移入回收站；永久删除由调用方确认后传入 permanent=true。</summary>
+    /// <param name="row">要删除的行。</param>
+    /// <param name="permanent">是否永久删除（不进入回收站）。</param>
+    /// <returns>给界面的中文结果提示。</returns>
+    public string Delete(DiskRow row, bool permanent)
+    {
+        if (row.Parent == null && string.Equals(row.EntryTypeText, "驱动器", StringComparison.Ordinal))
+        {
+            UiLogger.Log("磁盘视图", "拒绝删除驱动器：路径=" + row.FullPath + " 结果=未执行任何删除操作");
+            return "不能删除驱动器：" + row.Name;
+        }
+        string directory = System.IO.Path.GetDirectoryName(row.FullPath) ?? string.Empty;
+        string originalPath = row.FullPath;
+        try
+        {
+            if (permanent)
+            {
+                if (row.IsDirectory)
+                {
+                    Directory.Delete(originalPath, true);
+                }
+                else
+                {
+                    File.Delete(originalPath);
+                }
+            }
+            else
+            {
+                this.fileSystemProvider.Delete(originalPath);
+            }
+        }
+        catch (Exception error)
+        {
+            string message = DescribeFileError(permanent ? "永久删除" : "删除到回收站", originalPath, error);
+            UiLogger.Log("磁盘视图", (permanent ? "永久删除" : "删除到回收站") + "失败：路径=" + originalPath
+                + " 原因=" + error.Message);
+            return message;
+        }
+        this.RemoveRowWithDescendants(row);
+        if (directory.Length > 0)
+        {
+            this.RefreshAfterChange(directory);
+        }
+        UiLogger.Log("磁盘视图", (permanent ? "永久删除" : "删除到回收站") + "：路径=" + originalPath
+            + " 结果=成功，已移除该行并刷新所在目录");
+        return permanent ? "已永久删除：" + row.Name : "已删除到回收站：" + row.Name;
+    }
+
+    /// <summary>把一批路径移动或复制到指定目录，完成后刷新源目录与目标目录。</summary>
+    /// <param name="sourcePaths">源路径列表。</param>
+    /// <param name="targetDirectory">目标目录。</param>
+    /// <param name="isMove">true 为移动，false 为复制。</param>
+    /// <param name="failedCount">失败条目数。</param>
+    /// <returns>成功条目数。</returns>
+    public int TransferPaths(IReadOnlyList<string> sourcePaths, string targetDirectory, bool isMove, out int failedCount)
+    {
+        failedCount = 0;
+        int successCount = 0;
+        HashSet<string> affectedDirectories = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (string path in sourcePaths)
+        {
+            if (string.IsNullOrEmpty(path))
+            {
+                continue;
+            }
+            try
+            {
+                if (isMove)
+                {
+                    this.fileSystemProvider.Move(path, targetDirectory);
+                }
+                else
+                {
+                    this.fileSystemProvider.Copy(path, targetDirectory);
+                }
+                successCount++;
+                affectedDirectories.Add(System.IO.Path.GetDirectoryName(path) ?? string.Empty);
+            }
+            catch (Exception error)
+            {
+                failedCount++;
+                UiLogger.Log("磁盘视图", "拖放" + (isMove ? "移动" : "复制") + "失败：源=" + path
+                    + " 目标目录=" + targetDirectory + " 原因=" + error.Message);
+            }
+        }
+        affectedDirectories.Add(targetDirectory);
+        foreach (string directory in affectedDirectories)
+        {
+            if (directory.Length > 0)
+            {
+                this.RefreshAfterChange(directory);
+            }
+        }
+        return successCount;
+    }
+
+    /// <summary>
+    /// 增删改后刷新指定目录：先记住全部已展开节点，再就地重建该目录的子行，
+    /// 展开状态会在子行回填后按路径恢复，避免一次改名或粘贴让整棵树塌回顶部。
+    /// </summary>
+    /// <param name="directoryPath">发生变化的目录。</param>
+    public void RefreshAfterChange(string? directoryPath)
+    {
+        if (this.closed)
+        {
+            return;
+        }
+        string target = directoryPath == null ? string.Empty : directoryPath.Trim();
+        if (target.Length == 0)
+        {
+            return;
+        }
+        this.RememberExpandedState();
+        if (string.Equals(WebContextMenuPolicy.NormalizePath(target), this.CurrentRoot(), StringComparison.OrdinalIgnoreCase))
+        {
+            this.StartRefresh(this.rootPathInput);
+            return;
+        }
+        DiskRow? visibleDirectory = null;
+        foreach (DiskRow row in this.Rows)
+        {
+            if (row.IsDirectory
+                && string.Equals(WebContextMenuPolicy.NormalizePath(row.FullPath), WebContextMenuPolicy.NormalizePath(target),
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                visibleDirectory = row;
+                break;
+            }
+        }
+        if (visibleDirectory == null)
+        {
+            UiLogger.Log("磁盘视图", "刷新目录：目录不在当前可见树内，保持现状 路径=" + target);
+            return;
+        }
+        if (visibleDirectory.IsExpanded)
+        {
+            this.CollapseRow(visibleDirectory);
+            this.ExpandRow(visibleDirectory);
+        }
+        else
+        {
+            this.StartRowBackfill(visibleDirectory);
+        }
+    }
+
+    /// <summary>记住当前全部已展开目录路径，供刷新重建后恢复。</summary>
+    private void RememberExpandedState()
+    {
+        foreach (DiskRow row in this.Rows)
+        {
+            if (row.IsDirectory && row.IsExpanded)
+            {
+                this.restoreExpandedPaths.Add(row.FullPath);
+            }
+        }
+    }
+
+    /// <summary>按记住的路径恢复展开状态；子行尚未加载的路径保留到下一次子行应用时再试。</summary>
+    private void RestoreExpandedState()
+    {
+        if (this.restoreExpandedPaths.Count == 0)
+        {
+            return;
+        }
+        List<string> restored = new List<string>();
+        foreach (DiskRow row in this.Rows)
+        {
+            if (!row.IsDirectory || row.IsExpanded)
+            {
+                continue;
+            }
+            if (this.restoreExpandedPaths.Contains(row.FullPath))
+            {
+                restored.Add(row.FullPath);
+                this.ExpandRow(row);
+            }
+        }
+        foreach (string path in restored)
+        {
+            this.restoreExpandedPaths.Remove(path);
+        }
+    }
+
+    /// <summary>把子树内全部行的路径从旧前缀换成新前缀（重命名目录时保持子行可用）。</summary>
+    private void UpdateSubtreePath(DiskRow root, string oldPrefix, string newPrefix)
+    {
+        int rootIndex = this.Rows.IndexOf(root);
+        if (rootIndex < 0)
+        {
+            return;
+        }
+        int endIndex = rootIndex;
+        while (endIndex + 1 < this.Rows.Count && this.Rows[endIndex + 1].Level > root.Level)
+        {
+            endIndex++;
+        }
+        for (int index = rootIndex + 1; index <= endIndex; index++)
+        {
+            DiskRow row = this.Rows[index];
+            if (row.FullPath.StartsWith(oldPrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                row.FullPath = newPrefix + row.FullPath.Substring(oldPrefix.Length);
+            }
+        }
+        root.FullPath = newPrefix;
+    }
+
+    /// <summary>按当前排序规则重排一行的同级分组（有已展开子行时保持原位，避免打乱子树）。</summary>
+    private void OrderSiblings(DiskRow row)
+    {
+        this.ReorderChildrenGroup(row);
+    }
+
+    /// <summary>从可见列表中移除一行及其全部后代，并同步父行的子集合。</summary>
+    private void RemoveRowWithDescendants(DiskRow row)
+    {
+        if (row.Parent != null)
+        {
+            row.Parent.Children.Remove(row);
+        }
+        int index = this.Rows.IndexOf(row);
+        if (index < 0)
+        {
+            return;
+        }
+        int descendants = this.CountDescendants(index);
+        for (int count = 0; count < descendants; count++)
+        {
+            this.Rows.RemoveAt(index + 1);
+        }
+        this.Rows.RemoveAt(index);
+        if (row.Parent != null)
+        {
+            this.StartRowBackfill(row.Parent);
+        }
+    }
+
+    /// <summary>把目录与名称拼成完整路径；任一部分为空或名称含路径分隔符时返回空。</summary>
+    private string BuildTargetPath(string directory, string name)
+    {
+        string trimmedDirectory = directory == null ? string.Empty : directory.Trim();
+        string trimmedName = name == null ? string.Empty : name.Trim();
+        if (trimmedDirectory.Length == 0 || trimmedName.Length == 0)
+        {
+            return string.Empty;
+        }
+        if (trimmedName.IndexOfAny(new char[] { '\\', '/', ':', '*', '?', '"', '<', '>', '|' }) >= 0)
+        {
+            return string.Empty;
+        }
+        return System.IO.Path.Combine(trimmedDirectory, trimmedName);
+    }
+
+    /// <summary>把文件操作异常翻译成明确的中文提示（权限不足、文件被占用、只读介质、网络断开等）。</summary>
+    private static string DescribeFileError(string action, string path, Exception error)
+    {
+        if (error is UnauthorizedAccessException)
+        {
+            return action + "失败：权限不足或被拒绝，请以管理员身份运行或换一个有写入权限的位置（路径=" + path + "）";
+        }
+        if (error is DirectoryNotFoundException)
+        {
+            return action + "失败：目录不存在或已被移除（路径=" + path + "）";
+        }
+        if (error is FileNotFoundException)
+        {
+            return action + "失败：文件不存在或已被移除（路径=" + path + "）";
+        }
+        if (error is IOException)
+        {
+            string lower = error.Message.ToLowerInvariant();
+            if (lower.Contains("space") || lower.Contains("磁盘"))
+            {
+                return action + "失败：目标磁盘空间不足（路径=" + path + "）";
+            }
+            if (lower.Contains("read-only") || lower.Contains("只读"))
+            {
+                return action + "失败：目标为只读介质（路径=" + path + "）";
+            }
+            if (lower.Contains("network") || lower.Contains("网络"))
+            {
+                return action + "失败：网络连接已断开（路径=" + path + "）";
+            }
+            return action + "失败：文件可能正被其他程序占用，或目标名称冲突（路径=" + path + "，原因=" + error.Message + "）";
+        }
+        return action + "失败：" + error.Message + "（路径=" + path + "）";
+    }
+
 
     /// <summary>点击行：目录原地展开或收起（不进入下一级），文件忽略；400 毫秒内同路径忽略重复点击。</summary>
     /// <param name="row">被点击的行。</param>
@@ -605,6 +1026,7 @@ public class DiskViewPanelViewModel : INotifyPropertyChanged, IColumnWidthViewMo
             this.ReapplySort();
         }
         this.SummaryText = result.SummaryText;
+        this.RestoreExpandedState();
     }
 
     /// <summary>展开目录：置展开标记后在后台枚举一层子项，再回填到界面。</summary>
@@ -707,6 +1129,7 @@ public class DiskViewPanelViewModel : INotifyPropertyChanged, IColumnWidthViewMo
         {
             pending.Add(parent);
         }
+        this.RestoreExpandedState();
         if (pending.Count == 0)
         {
             return;
@@ -1326,13 +1749,22 @@ public class DiskViewPanelViewModel : INotifyPropertyChanged, IColumnWidthViewMo
 /// <summary>磁盘视图列表的一行：文件或目录的占用统计，支持树形层级展开。</summary>
 public class DiskRow : INotifyPropertyChanged
 {
+    private string name = string.Empty;
     private string sizeText = string.Empty;
     private long sizeBytes;
     private bool isExpanded;
     private int level;
 
-    /// <summary>条目显示名称。</summary>
-    public string Name { get; set; } = string.Empty;
+    /// <summary>条目显示名称（重命名后就地更新并通知界面刷新该行）。</summary>
+    public string Name
+    {
+        get { return this.name; }
+        set
+        {
+            this.name = value;
+            this.OnPropertyChanged(nameof(this.Name));
+        }
+    }
 
     /// <summary>条目完整路径。</summary>
     public string FullPath { get; set; } = string.Empty;

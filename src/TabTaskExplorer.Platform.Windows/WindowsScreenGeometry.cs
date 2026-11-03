@@ -76,7 +76,7 @@ internal static class WindowsScreenGeometry
     [DllImport("user32.dll")]
     internal static extern bool GetCursorPos(out NativePoint point);
 
-    [DllImport("user32.dll")]
+    [DllImport("user32.dll", EntryPoint = "GetCursorInfo")]
     private static extern bool GetCursorInfoNative(out CursorInformation information);
 
     /// <summary>读取当前鼠标指针信息，并按系统要求先填写结构体大小。</summary>

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using Avalonia;
 using Avalonia.Media;
@@ -76,6 +76,18 @@ public class PixelSampler
         Color color = this.GetPixel(x, y);
         string hex = "#" + color.R.ToString("X2") + color.G.ToString("X2") + color.B.ToString("X2");
         return uppercase ? hex.ToUpperInvariant() : hex.ToLowerInvariant();
+    }
+
+    /// <summary>导出连续排列的 BGRA 像素字节（去除行间填充），供条码识别使用。</summary>
+    public byte[] ToPixelBytes()
+    {
+        byte[] bytes = new byte[this.width * this.height * 4];
+        int rowLength = this.width * 4;
+        for (int y = 0; y < this.height; y++)
+        {
+            Array.Copy(this.pixels, y * this.stride, bytes, y * rowLength, rowLength);
+        }
+        return bytes;
     }
 
     /// <summary>释放内部位图。</summary>

@@ -284,6 +284,14 @@ public class CaptureTabViewModel : INotifyPropertyChanged, ITabView
         this.ApplyOutcome(outcome);
     }
 
+    /// <summary>执行贴图截图：选区后按设置保存产物并生成贴图，或只生成内存贴图。</summary>
+    public async Task CapturePinRegionAsync()
+    {
+        this.StatusText = "请选择要贴到屏幕的区域（移动鼠标预选窗口 / Tab 切换层级）……";
+        CaptureOutcome outcome = await this.coordinator.CapturePinRegionAsync(this.ResolveDelaySeconds());
+        this.ApplyOutcome(outcome);
+    }
+
     /// <summary>执行活动窗口截图（含延迟）。</summary>
     public async Task CaptureWindowAsync()
     {
@@ -325,6 +333,44 @@ public class CaptureTabViewModel : INotifyPropertyChanged, ITabView
     {
         this.coordinator.OpenOutputFolderTab(this.OutputDirectory);
         this.StatusText = "已打开产物文件夹：" + this.OutputDirectory;
+    }
+
+    /// <summary>打开全屏取色器（吸收 Snipaste 取色器）。</summary>
+    public async Task OpenScreenColorPickerAsync()
+    {
+        this.StatusText = "正在准备屏幕取色……";
+        CaptureOutcome outcome = await this.coordinator.OpenScreenColorPickerAsync();
+        this.ApplyOutcome(outcome);
+    }
+
+    /// <summary>把剪贴板图片贴到屏幕（吸收 Snipaste 贴图）。</summary>
+    public async Task PinClipboardImageAsync()
+    {
+        this.StatusText = "正在读取剪贴板图片……";
+        CaptureOutcome outcome = await this.coordinator.PinClipboardImageAsync();
+        this.ApplyOutcome(outcome);
+    }
+
+    /// <summary>把一条历史截图贴到屏幕（吸收 Snipaste：「截图区域再次贴图」）。</summary>
+    public void PinHistoryItem(CaptureHistoryItem item)
+    {
+        if (item == null)
+        {
+            return;
+        }
+        CaptureOutcome outcome = this.coordinator.PinImageFile(item.FullPath);
+        this.ApplyOutcome(outcome);
+    }
+
+    /// <summary>在标注编辑器中打开一条历史截图。</summary>
+    public void OpenHistoryItemInEditor(CaptureHistoryItem item)
+    {
+        if (item == null)
+        {
+            return;
+        }
+        this.coordinator.OpenAnnotationEditorForFile(item.FullPath);
+        this.StatusText = "已在标注编辑器打开：" + item.FullPath;
     }
 
     /// <summary>在媒体标签中打开一条产物。</summary>

@@ -194,8 +194,16 @@ public class HotkeySetting : INotifyPropertyChanged
         defaults.Add(Create("ScreenshotFull", "PrintScreen", true, false, false, false, "Global"));
         defaults.Add(Create("ScreenshotWindow", "PrintScreen", true, true, false, false, "Global"));
         defaults.Add(Create("ScreenshotLastRegion", "PrintScreen", true, false, true, false, "Global"));
+        // 贴图截图使用 Shift+PrintScreen，与普通截图、全屏、活动窗口、上次区域四组默认键互不冲突
+        defaults.Add(CreatePinShotDefault());
         defaults.Add(Create("RecordToggle", "R", true, false, true, false, "Global"));
         return defaults;
+    }
+
+    /// <summary>创建默认的「贴图截图」全局快捷键：Shift+PrintScreen。</summary>
+    public static HotkeySetting CreatePinShotDefault()
+    {
+        return Create("ScreenshotPin", "PrintScreen", false, false, true, false, "Global");
     }
 
     /// <summary>创建完整的默认快捷键清单：应用内默认项 + 系统全局默认项。</summary>

@@ -60,6 +60,7 @@ public static class ShortcutActionCatalog
             || string.Equals(actionName, "ScreenshotPrimary", StringComparison.Ordinal)
             || string.Equals(actionName, "ScreenshotWindow", StringComparison.Ordinal)
             || string.Equals(actionName, "ScreenshotLastRegion", StringComparison.Ordinal)
+            || string.Equals(actionName, "ScreenshotPin", StringComparison.Ordinal)
             || string.Equals(actionName, "RecordToggle", StringComparison.Ordinal)
             || string.Equals(actionName, "ColorPick", StringComparison.Ordinal)
             || string.Equals(actionName, "PastePin", StringComparison.Ordinal);
@@ -118,6 +119,7 @@ public static class ShortcutActionCatalog
         definitions.Add(Create("ScreenshotPrimary", "主屏截图"));
         definitions.Add(Create("ScreenshotWindow", "活动窗口截图"));
         definitions.Add(Create("ScreenshotLastRegion", "上次区域截图"));
+        definitions.Add(Create("ScreenshotPin", "贴图截图（选区后保存并贴图）"));
         definitions.Add(Create("RecordToggle", "开始 / 停止录屏"));
         definitions.Add(Create("ColorPick", "屏幕取色（复制十六进制颜色）"));
         definitions.Add(Create("PastePin", "贴图（把剪贴板图片贴到屏幕）"));

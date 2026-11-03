@@ -99,6 +99,15 @@ public class AppSettings
     /// <summary>贴图窗口是否始终置顶（默认开启，关闭后贴图可被其他窗口覆盖）。</summary>
     public bool CapturePinTopmost { get; set; } = true;
 
+    /// <summary>
+    /// 「贴图截图」是否同时按产物规则保存文件（默认开启：先保存进产物历史，再用同一份文件生成贴图）；
+    /// 关闭后仅在内存中生成贴图，不落盘、不进入产物历史。
+    /// </summary>
+    public bool CapturePinShotSaveFile { get; set; } = true;
+
+    /// <summary>是否已为既有配置补入「贴图截图」的默认快捷键；只补一次，用户删除后不再重复添加。</summary>
+    public bool PinShotShortcutSeeded { get; set; } = false;
+
     /// <summary>文字识别语言；留空表示 Windows 使用系统已安装语言，Tesseract 使用 eng+chi_sim 默认值。</summary>
     public string OcrLanguage { get; set; } = string.Empty;
 
@@ -323,6 +332,24 @@ public class AppSettingsStore
         if (validShortcuts.Count != settings.Shortcuts.Count)
         {
             settings.Shortcuts = validShortcuts;
+        }
+        // 既有配置补入「贴图截图」默认快捷键：只补一次，用户后续删除不会反复出现
+        if (!settings.PinShotShortcutSeeded)
+        {
+            bool exists = false;
+            foreach (HotkeySetting shortcut in settings.Shortcuts)
+            {
+                if (string.Equals(shortcut.ActionName, "ScreenshotPin", StringComparison.Ordinal))
+                {
+                    exists = true;
+                    break;
+                }
+            }
+            if (!exists)
+            {
+                settings.Shortcuts.Add(HotkeySetting.CreatePinShotDefault());
+            }
+            settings.PinShotShortcutSeeded = true;
         }
         // 迁移完成后清空旧字段，避免后续保存继续写入两份重复配置
         settings.Hotkeys = new List<HotkeySetting>();

@@ -19,6 +19,19 @@
     <AvaloniaResource Include="Assets\TabX-Dark\*.png" />
   </ItemGroup>
 
+  <!-- 网页端静态资源：按面板拆分的入口页、样式与脚本模块。
+       使用固定 LogicalName，运行时按 web.* 名称读取，不依赖工程根命名空间。 -->
+  <ItemGroup>
+    <EmbeddedResource Include="Assets\web\index.html" LogicalName="web.index.html" />
+    <EmbeddedResource Include="Assets\web\app.css" LogicalName="web.app.css" />
+    <EmbeddedResource Include="Assets\web\core.js" LogicalName="web.core.js" />
+    <EmbeddedResource Include="Assets\web\views.js" LogicalName="web.views.js" />
+    <EmbeddedResource Include="Assets\web\panels.js" LogicalName="web.panels.js" />
+    <EmbeddedResource Include="Assets\web\actions.js" LogicalName="web.actions.js" />
+    <EmbeddedResource Include="Assets\web\ide.js" LogicalName="web.ide.js" />
+    <EmbeddedResource Include="Assets\web\boot.js" LogicalName="web.boot.js" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\TabTaskExplorer.Kernel\TabTaskExplorer.Kernel.csproj" />
     <ProjectReference Include="..\TabTaskExplorer.Protocol.Ssh\TabTaskExplorer.Protocol.Ssh.csproj" />
@@ -35,6 +48,9 @@
     <PackageReference Include="FluentAvaloniaUI" Version="3.1.0" />
     <PackageReference Include="LibVLCSharp" Version="3.10.2" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.13" />
+    <!-- 二维码 / 条码识别：纯托管实现，跨 Windows / Linux / macOS 使用，
+         对应 Snipaste 的 BarcodeDecoder（其原实现基于 zxing-cpp） -->
+    <PackageReference Include="ZXing.Net" Version="0.16.11" />
   </ItemGroup>
 
   <!-- 音视频解码后端：Windows 随包分发 libvlc（约 110MB，build.bat 会做 plugins 裁剪）；
