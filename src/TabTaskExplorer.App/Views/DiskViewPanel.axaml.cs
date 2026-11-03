@@ -372,6 +372,7 @@ public partial class DiskViewPanel : UserControl
             UiLogger.Log("程序行为", "磁盘视图条目右键菜单打开：菜单未关联磁盘行 结果=失败，未添加系统菜单项");
             return;
         }
+        ContextMenuSingleton.PrepareOpen(menu);
         foreach (object item in menu.Items)
         {
             if (item is MenuItem menuItem && menuItem.Tag is string tag && tag == "DiskSystemMenuHost")
@@ -398,6 +399,7 @@ public partial class DiskViewPanel : UserControl
         {
             return;
         }
+        ContextMenuSingleton.PrepareOpen(menu);
         DiskViewPanelViewModel? viewModel = this.ViewModel;
         if (viewModel == null || string.IsNullOrEmpty(viewModel.RootPathInput))
         {

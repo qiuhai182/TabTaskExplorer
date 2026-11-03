@@ -825,6 +825,8 @@ public class WebServiceHost
             bool needCreateDelete = action == "cut" || action == "paste" || action == "pasteto" || action == "deletechecked"
                 || action == "batchrename" || action == "encodepreview" || action == "encodeapply"
                 || action == "connsave" || action == "conndelete" || action == "connimport"
+                // 信任首次主机密钥与删除旧记录属于连接记录的新增/删除，默认方案放行增删但关闭修改时仍可完成首次确认
+                || action == "connhostkeytrust" || action == "connhostkeyforget"
                 || action == "startupcustomsave" || action == "startupcustomdelete"
                 || action == "disknewfolder" || action == "disknewfile" || action == "diskrename"
                 || action == "diskdelete" || action == "diskpasteinto" || action == "diskcopyto"
@@ -832,8 +834,7 @@ public class WebServiceHost
             bool needModify = action == "togglehidden" || action == "toggleextensions" || action == "pin" || action == "unpin" || action == "chmod"
                 || action == "idetext" || action == "idesave" || action == "idesaveall" || action == "idereplace" || action == "idereplaceall"
                 || action == "processkill" || action == "processpriority" || action == "processaffinity"
-                || action == "startuptoggle" || action == "startupcustomtoggle" || action == "startupcustomrun"
-                || action == "connhostkeytrust" || action == "connhostkeyforget";
+                || action == "startuptoggle" || action == "startupcustomtoggle" || action == "startupcustomrun";
             if (needCreateDelete && !profile.AllowCreateDelete)
             {
                 UiLogger.Log("网页端访问", "拒绝：" + action + " 未放行新建与删除权限 端口=" + this.runtime.Port

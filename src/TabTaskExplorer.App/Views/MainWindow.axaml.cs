@@ -118,6 +118,16 @@ public partial class MainWindow : Window
             new EventHandler<DragEventArgs>(this.OnWindowDrop), RoutingStrategies.Bubble);
         this.Closing += this.OnWindowClosing;
         this.DataContextChanged += this.OnDataContextChanged;
+        // 右键菜单单例：失焦、移动窗口、最小化、点击窗口内其他位置、按 Esc 时立即关闭并释放菜单窗口
+        this.Deactivated += this.OnWindowDeactivatedForContextMenu;
+        this.PositionChanged += this.OnWindowPositionChangedForContextMenu;
+        this.WindowStateChanged += this.OnWindowStateChangedForContextMenu;
+        this.AddHandler(InputElement.PointerPressedEvent,
+            new EventHandler<PointerPressedEventArgs>(this.OnWindowPointerPressedForContextMenu),
+            RoutingStrategies.Tunnel, true);
+        this.AddHandler(InputElement.KeyDownEvent,
+            new EventHandler<KeyEventArgs>(this.OnWindowKeyDownForContextMenu),
+            RoutingStrategies.Tunnel, true);
     }
 
     /// <summary>主窗口视图模型。</summary>
@@ -194,6 +204,56 @@ public partial class MainWindow : Window
         this.Close();
     }
 
+    /// <summary>窗口失焦（切到其他应用、打开模态对话框等）：立即关闭右键菜单。</summary>
+    private void OnWindowDeactivatedForContextMenu(object? sender, EventArgs e)
+    {
+        this.CloseContextMenuFor("窗口失焦");
+    }
+
+    /// <summary>窗口被拖动或位置改变：右键菜单立即关闭，避免菜单浮在移动后的旧位置。</summary>
+    private void OnWindowPositionChangedForContextMenu(object? sender, PixelPointEventArgs e)
+    {
+        this.CloseContextMenuFor("窗口位置变化");
+    }
+
+    /// <summary>窗口最小化时关闭右键菜单。</summary>
+    private void OnWindowStateChangedForContextMenu(object? sender, EventArgs e)
+    {
+        if (this.WindowState == WindowState.Minimized)
+        {
+            this.CloseContextMenuFor("窗口最小化");
+        }
+    }
+
+    /// <summary>窗口内按下鼠标（菜单弹出层之外的任何位置）：关闭右键菜单。</summary>
+    private void OnWindowPointerPressedForContextMenu(object? sender, PointerPressedEventArgs e)
+    {
+        this.CloseContextMenuFor("点击窗口内其他位置");
+    }
+
+    /// <summary>按 Esc：关闭右键菜单并吞掉本次按键，避免同时触发其他快捷键。</summary>
+    private void OnWindowKeyDownForContextMenu(object? sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Escape || !ContextMenuSingleton.IsOpen)
+        {
+            return;
+        }
+        e.Handled = true;
+        this.CloseContextMenuFor("按 Esc");
+    }
+
+    /// <summary>按原因关闭当前右键菜单；没有菜单打开时不做任何事，避免日志与窗口操作空转。</summary>
+    private void CloseContextMenuFor(string reason)
+    {
+        if (!ContextMenuSingleton.IsOpen)
+        {
+            return;
+        }
+        UiLogger.Log("程序行为", "右键菜单关闭触发：原因=" + reason
+            + " 关闭前打开菜单数=" + ContextMenuSingleton.OpenCount + " 结果=关闭并释放菜单窗口");
+        ContextMenuSingleton.CloseCurrent();
+    }
+
     /// <summary>DataContext 就绪后订阅视图模型变化，驱动标签条高亮。</summary>
     private void OnDataContextChanged(object? sender, EventArgs e)
     {
@@ -231,6 +291,7 @@ public partial class MainWindow : Window
         }
         if (e.PropertyName == nameof(MainWindowViewModel.SelectedTab))
         {
+            this.CloseContextMenuFor("切换标签");
             // IDE 模式下点选资源管理器标签：自动切回资源管理器模式展示该标签内容
             MainWindowViewModel? viewModel = this.ViewModel;
             if (viewModel != null && viewModel.IsIdeMode && viewModel.SelectedTab != null)

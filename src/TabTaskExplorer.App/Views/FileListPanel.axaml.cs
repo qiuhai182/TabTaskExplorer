@@ -199,10 +199,9 @@ public partial class FileListPanel : UserControl
         DragDrop.AddDragOverHandler(this, this.OnListDragOver);
         DragDrop.AddDragLeaveHandler(this, this.OnListDragLeave);
         DragDrop.AddDropHandler(this, this.OnListDrop);
-        // 右键请求在隧道阶段先拦截：Windows 上用原生外壳菜单（含第三方扩展），
-        // 其他平台或原生菜单降级时再交给下方既有的 Avalonia 右键菜单
-        this.AddHandler(InputElement.ContextRequestedEvent, this.OnListContextRequested,
-            RoutingStrategies.Tunnel, handledEventsToo: true);
+        // 右键统一走下方既有的 Avalonia 自绘菜单（Option B）：不再拦截 ContextRequested 去弹原生菜单，
+        // 避免“原生菜单 + 应用内菜单”同时出现以及连续右键叠加多层窗口。
+        // 系统项与第三方扩展由 OnBackgroundMenuOpening / OnSystemMenuOpening 枚举后注入同一个菜单。
     }
 
     /// <summary>当前标签页视图模型。</summary>
@@ -856,6 +855,7 @@ public partial class FileListPanel : UserControl
             UiLogger.Log("程序行为", "空白处右键菜单打开：事件来源不是右键菜单 结果=失败，未准备菜单项");
             return;
         }
+        ContextMenuSingleton.PrepareOpen(menu);
         FileTabViewModel? viewModel = this.ViewModel;
         if (viewModel == null)
         {
@@ -1721,6 +1721,7 @@ public partial class FileListPanel : UserControl
             UiLogger.Log("程序行为", "右键菜单打开：事件来源不是右键菜单 结果=失败，未添加系统菜单项");
             return;
         }
+        ContextMenuSingleton.PrepareOpen(menu);
         if (menu.DataContext is not FileRow row)
         {
             UiLogger.Log("程序行为", "右键菜单打开：行路径=未取到 条目类型=未知 结果=失败，菜单未关联列表条目，未添加系统菜单项");
