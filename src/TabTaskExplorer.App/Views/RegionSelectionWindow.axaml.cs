@@ -107,9 +107,8 @@ public partial class RegionSelectionWindow : Window
         {
             this.Show();
         }
-        this.Activate();
-        this.Focus();
-        UiLogger.Log("截图", "区域框选窗口已显示：等待用户移动鼠标预选或拖动框选");
+        // 遮罩不激活：不抢前台焦点，不改变用户正在操作的程序
+        UiLogger.Log("截图", "区域框选窗口已显示：等待用户移动鼠标预选或拖动框选 显示方式=不激活");
         return this.completion.Task;
     }
 
@@ -123,8 +122,6 @@ public partial class RegionSelectionWindow : Window
             return;
         }
         this.ApplyInitialCandidate();
-        this.Activate();
-        this.Focus();
         this.hoverTimer.Start();
     }
 

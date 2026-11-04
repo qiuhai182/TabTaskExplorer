@@ -6,6 +6,7 @@ using System.IO;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Avalonia;
 using Avalonia.Threading;
 using TabTaskExplorer.App.Services;
 using TabTaskExplorer.Kernel.Abstractions;
@@ -51,6 +52,13 @@ public class FileTabViewModel : INotifyPropertyChanged, IColumnWidthViewModel, I
 
     private readonly IFileSystemProvider fileSystemProvider;
     private readonly AppSettings appSettings;
+    private readonly AppSettingsStore? settingsStore;
+
+    /// <summary>列标识到网格列序号的映射：0 勾选框、1 图标、2 名称、3 修改日期、4 类型、5 大小、6 属性。</summary>
+    private static readonly string[] ColumnNames = new string[] { "Select", "Icon", "Name", "Modified", "Type", "Size", "Attributes" };
+
+    /// <summary>默认列宽（像素），与界面文件中的初始列定义保持一致。</summary>
+    private static readonly double[] DefaultColumnWidths = new double[] { 30, 26, 480, 140, 130, 110, 100 };
 
     /// <summary>压缩包服务：识别压缩包文件并触发预览标签打开请求（与提供者无关，始终可用）。</summary>
     private readonly IArchiveService archiveService;
@@ -70,6 +78,8 @@ public class FileTabViewModel : INotifyPropertyChanged, IColumnWidthViewModel, I
     private bool canGoBack;
     private bool canGoForward;
     private string summaryText = "正在加载……";
+    private string failedTaskWorkspaceId = string.Empty;
+    private string failedTaskId = string.Empty;
     private FileViewMode viewMode = FileViewMode.Details;
     private bool showInfoPane;
     private IReadOnlyList<FileRow> visibleRows = new List<FileRow>();
@@ -122,6 +132,218 @@ public class FileTabViewModel : INotifyPropertyChanged, IColumnWidthViewModel, I
             this.columnWidths = value ?? string.Empty;
             this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ColumnWidths)));
         }
+    }
+
+    /// <summary>名称列是否显示。</summary>
+    public bool ShowNameColumn
+    {
+        get { return this.IsColumnVisible("Name"); }
+    }
+
+    /// <summary>修改日期列是否显示。</summary>
+    public bool ShowModifiedColumn
+    {
+        get { return this.IsColumnVisible("Modified"); }
+    }
+
+    /// <summary>类型列是否显示。</summary>
+    public bool ShowTypeColumn
+    {
+        get { return this.IsColumnVisible("Type"); }
+    }
+
+    /// <summary>大小列是否显示。</summary>
+    public bool ShowSizeColumn
+    {
+        get { return this.IsColumnVisible("Size"); }
+    }
+
+    /// <summary>属性列是否显示。</summary>
+    public bool ShowAttributesColumn
+    {
+        get { return this.IsColumnVisible("Attributes"); }
+    }
+
+    /// <summary>紧凑模式：行高与内边距压缩，同屏显示更多条目。</summary>
+    public bool IsCompactMode
+    {
+        get { return this.appSettings.FileCompactMode; }
+        set
+        {
+            if (this.appSettings.FileCompactMode == value)
+            {
+                return;
+            }
+            this.appSettings.FileCompactMode = value;
+            this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsCompactMode)));
+            this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(RowHeight)));
+            this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(RowPadding)));
+            this.settingsStore?.Save(this.appSettings);
+            UiLogger.Log("文件列表", "紧凑模式切换：新状态=" + (value ? "开启" : "关闭") + " 结果=已保存到设置");
+        }
+    }
+
+    /// <summary>行高：紧凑模式 22 像素，普通模式 28 像素。</summary>
+    public double RowHeight
+    {
+        get { return this.appSettings.FileCompactMode ? 22.0 : 28.0; }
+    }
+
+    /// <summary>行内边距：紧凑模式上下各 1 像素。</summary>
+    public Thickness RowPadding
+    {
+        get { return this.appSettings.FileCompactMode ? new Thickness(2, 1) : new Thickness(2, 3); }
+    }
+
+    /// <summary>切换指定列的显示状态；隐藏列宽置 0，显示时恢复默认列宽。</summary>
+    public void SetColumnVisible(string columnName, bool visible)
+    {
+        int columnIndex = Array.IndexOf(ColumnNames, columnName);
+        if (columnIndex < 0 || columnIndex < 2)
+        {
+            return;
+        }
+        List<string> columns = this.ReadVisibleColumns();
+        bool changed;
+        if (visible)
+        {
+            changed = columns.Contains(columnName) == false;
+            if (changed)
+            {
+                columns.Add(columnName);
+            }
+        }
+        else
+        {
+            changed = columns.Contains(columnName);
+            columns.Remove(columnName);
+        }
+        if (!changed)
+        {
+            return;
+        }
+        this.appSettings.FileVisibleColumns = string.Join(",", columns);
+        this.NormalizeColumnWidths();
+        this.ColumnWidths = this.columnWidths;
+        this.NotifyColumnLayoutChanged();
+        this.settingsStore?.Save(this.appSettings);
+        UiLogger.Log("文件列表", "列显示切换：列=" + columnName + " 新状态=" + (visible ? "显示" : "隐藏")
+            + " 可见列=" + this.appSettings.FileVisibleColumns + " 列宽=" + this.columnWidths
+            + " 结果=已保存到设置");
+    }
+
+    /// <summary>
+    /// 应用完整列配置（网页端与桌面端共用）：可见列、列宽、紧凑模式一次生效，
+    /// persist 为真时写回设置；网页端写入后桌面所有文件标签随即刷新。
+    /// </summary>
+    public void ApplyColumnConfiguration(string visibleColumns, string columnWidths, bool compactMode, bool persist)
+    {
+        if (!string.IsNullOrWhiteSpace(visibleColumns))
+        {
+            this.appSettings.FileVisibleColumns = visibleColumns;
+        }
+        if (columnWidths != null)
+        {
+            this.columnWidths = columnWidths;
+        }
+        this.appSettings.FileCompactMode = compactMode;
+        this.NormalizeColumnWidths();
+        this.appSettings.FileColumnWidths = this.columnWidths;
+        this.ColumnWidths = this.columnWidths;
+        this.NotifyColumnLayoutChanged();
+        if (persist)
+        {
+            this.settingsStore?.Save(this.appSettings);
+        }
+    }
+
+    /// <summary>应用共享排序配置：字段与方向立即生效，persist 为真时写回设置。</summary>
+    public void ApplySortConfiguration(string field, bool ascending, bool persist)
+    {
+        if (!IsSupportedSortField(field))
+        {
+            return;
+        }
+        this.sortField = field;
+        this.sortAscending = ascending;
+        this.allRows.Sort(new Comparison<FileRow>(this.CompareRows));
+        this.ApplyFilter();
+        this.appSettings.FileSortField = field;
+        this.appSettings.FileSortAscending = ascending;
+        if (persist)
+        {
+            this.settingsStore?.Save(this.appSettings);
+        }
+    }
+
+    private static bool IsSupportedSortField(string field)
+    {
+        return field == "Name" || field == "Modified" || field == "Type" || field == "Size" || field == "Attributes";
+    }
+
+    /// <summary>列显示配置变化后通知界面刷新所有列可见性与行高。</summary>
+    public void NotifyColumnLayoutChanged()
+    {
+        this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ShowNameColumn)));
+        this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ShowModifiedColumn)));
+        this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ShowTypeColumn)));
+        this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ShowSizeColumn)));
+        this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ShowAttributesColumn)));
+        this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsCompactMode)));
+        this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(RowHeight)));
+        this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(RowPadding)));
+    }
+
+    /// <summary>规范化列宽：解析已保存列宽或使用默认值，隐藏列一律置 0，显示列宽度为 0 时恢复默认。</summary>
+    private void NormalizeColumnWidths()
+    {
+        double[] widths = new double[DefaultColumnWidths.Length];
+        Array.Copy(DefaultColumnWidths, widths, widths.Length);
+        if (!string.IsNullOrEmpty(this.columnWidths))
+        {
+            string[] parts = this.columnWidths.Split(',');
+            for (int index = 0; index < widths.Length && index < parts.Length; index++)
+            {
+                double parsed;
+                if (double.TryParse(parts[index], out parsed) && parsed >= 0)
+                {
+                    widths[index] = parsed;
+                }
+            }
+        }
+        for (int index = 2; index < ColumnNames.Length; index++)
+        {
+            bool visible = this.IsColumnVisible(ColumnNames[index]);
+            if (!visible)
+            {
+                widths[index] = 0;
+            }
+            else if (widths[index] <= 0)
+            {
+                widths[index] = DefaultColumnWidths[index];
+            }
+        }
+        this.columnWidths = ColumnResize.FormatWidths(widths);
+    }
+
+    private bool IsColumnVisible(string columnName)
+    {
+        return this.ReadVisibleColumns().Contains(columnName);
+    }
+
+    private List<string> ReadVisibleColumns()
+    {
+        List<string> columns = new List<string>();
+        string[] parts = (this.appSettings.FileVisibleColumns ?? string.Empty).Split(',');
+        foreach (string part in parts)
+        {
+            string trimmed = part.Trim();
+            if (trimmed.Length > 0 && !columns.Contains(trimmed))
+            {
+                columns.Add(trimmed);
+            }
+        }
+        return columns;
     }
 
     /// <summary>当前目录完整路径，空字符串表示此电脑根视图。</summary>
@@ -347,6 +569,8 @@ public class FileTabViewModel : INotifyPropertyChanged, IColumnWidthViewModel, I
     public void ApplyColumnWidths(double[] widths)
     {
         this.ColumnWidths = ColumnResize.FormatWidths(widths);
+        this.appSettings.FileColumnWidths = this.ColumnWidths;
+        this.settingsStore?.Save(this.appSettings);
     }
 
     /// <summary>拖动结束后记录一条包含视图名与全部列宽的纯中文日志。</summary>
@@ -359,16 +583,22 @@ public class FileTabViewModel : INotifyPropertyChanged, IColumnWidthViewModel, I
         }
         string[] parts = this.columnWidths.Split(',');
         UiLogger.Log("文件列表", "表头列宽拖动完成：列数=" + parts.Length
-            + " 调整后列宽=" + this.columnWidths + "像素 列宽仅本次运行有效，重启后恢复默认列宽");
+            + " 调整后列宽=" + this.columnWidths + "像素 结果=已保存到设置");
     }
 
     public FileTabViewModel(IFileSystemProvider fileSystemProvider, AppSettings appSettings,
-        string openPath, DiskScanService? diskScanService, IArchiveService archiveService)
+        string openPath, DiskScanService? diskScanService, IArchiveService archiveService,
+        AppSettingsStore? settingsStore = null)
     {
         this.fileSystemProvider = fileSystemProvider;
         this.appSettings = appSettings;
         this.scanService = diskScanService;
         this.archiveService = archiveService;
+        this.settingsStore = settingsStore;
+        this.sortField = IsSupportedSortField(appSettings.FileSortField) ? appSettings.FileSortField : "Name";
+        this.sortAscending = appSettings.FileSortAscending;
+        this.columnWidths = appSettings.FileColumnWidths;
+        this.NormalizeColumnWidths();
         this.LoadCore(openPath, true);
     }
 
@@ -489,17 +719,8 @@ public class FileTabViewModel : INotifyPropertyChanged, IColumnWidthViewModel, I
     /// <summary>设置排序字段；重复点击同一字段时切换升序降序。</summary>
     public void SetSortField(string field)
     {
-        if (this.sortField == field)
-        {
-            this.sortAscending = !this.sortAscending;
-        }
-        else
-        {
-            this.sortField = field;
-            this.sortAscending = true;
-        }
-        this.allRows.Sort(new Comparison<FileRow>(this.CompareRows));
-        this.ApplyFilter();
+        bool ascending = this.sortField == field ? !this.sortAscending : true;
+        this.ApplySortConfiguration(field, ascending, true);
     }
 
     /// <summary>在当前目录下创建新文件夹。</summary>
@@ -1015,6 +1236,48 @@ public class FileTabViewModel : INotifyPropertyChanged, IColumnWidthViewModel, I
         this.SummaryText = message;
     }
 
+    /// <summary>任务重试回调：由所属窗口注入（工作区编号, 任务编号）。</summary>
+    public Action<string, string>? RetryTaskRequested { get; set; }
+
+    /// <summary>底部摘要旁是否显示「重试失败项」按钮。</summary>
+    public bool CanRetryFailedTask
+    {
+        get { return this.failedTaskId.Length > 0; }
+    }
+
+    /// <summary>记录最近一次失败任务，供摘要栏重试按钮使用。</summary>
+    public void SetFailedTask(string workspaceId, string taskId)
+    {
+        this.failedTaskWorkspaceId = workspaceId ?? string.Empty;
+        this.failedTaskId = taskId ?? string.Empty;
+        this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(this.CanRetryFailedTask)));
+    }
+
+    /// <summary>清除摘要栏的重试入口。</summary>
+    public void ClearFailedTask()
+    {
+        this.failedTaskWorkspaceId = string.Empty;
+        this.failedTaskId = string.Empty;
+        this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(this.CanRetryFailedTask)));
+    }
+
+    /// <summary>点击摘要栏「重试失败项」：交给所属窗口重新提交失败任务。</summary>
+    public void RetryFailedTask()
+    {
+        if (this.failedTaskId.Length == 0)
+        {
+            return;
+        }
+        string workspaceId = this.failedTaskWorkspaceId;
+        string taskId = this.failedTaskId;
+        this.ClearFailedTask();
+        Action<string, string>? handler = this.RetryTaskRequested;
+        if (handler != null)
+        {
+            handler(workspaceId, taskId);
+        }
+    }
+
     /// <summary>清空全部勾选。</summary>
     public void ClearChecked()
     {
@@ -1096,6 +1359,20 @@ public class FileTabViewModel : INotifyPropertyChanged, IColumnWidthViewModel, I
         return builder.ToString();
     }
 
+    /// <summary>按当前勾选数量刷新摘要栏文字（键盘与鼠标选择后调用）。</summary>
+    public void RefreshSelectionSummary()
+    {
+        int count = this.GetCheckedRows().Count;
+        if (count == 0)
+        {
+            this.SummaryText = this.allRows.Count + " 个项目";
+        }
+        else
+        {
+            this.SummaryText = "已选择 " + count + " 个项目（共 " + this.allRows.Count + " 项）";
+        }
+    }
+
     /// <summary>全选当前目录全部条目。</summary>
     public void SelectAll()
     {
@@ -1155,7 +1432,8 @@ public class FileTabViewModel : INotifyPropertyChanged, IColumnWidthViewModel, I
                 options.ShowHiddenFiles = this.appSettings.ShowHiddenFiles;
                 foreach (FileEntry entry in this.fileSystemProvider.ListDirectory(path, options))
                 {
-                    rows.Add(FileRow.FromEntry(entry, this.appSettings.ShowFileExtensions));
+                    rows.Add(FileRow.FromEntry(entry, this.appSettings.ShowFileExtensions,
+                        this.fileSystemProvider is DefaultFileSystemProvider));
                 }
             }
             catch (Exception error)
@@ -1275,6 +1553,10 @@ public class FileTabViewModel : INotifyPropertyChanged, IColumnWidthViewModel, I
         else if (this.sortField == "Type")
         {
             result = string.Compare(x.TypeText, y.TypeText, StringComparison.OrdinalIgnoreCase);
+        }
+        else if (this.sortField == "Attributes")
+        {
+            result = x.AttributesOrder.CompareTo(y.AttributesOrder);
         }
         else
         {
@@ -1495,8 +1777,14 @@ public class FileRow : INotifyPropertyChanged
     /// <summary>原始修改时间，供排序使用。</summary>
     public DateTime ModifiedTimeUtc { get; set; }
 
+    /// <summary>属性列显示文字：只读、隐藏、系统、存档等；无属性时为空。</summary>
+    public string AttributesText { get; set; } = string.Empty;
+
+    /// <summary>属性排序权重：按只读、隐藏、系统、存档位组合计算。</summary>
+    public int AttributesOrder { get; set; }
+
     /// <summary>从内核条目构建行数据。</summary>
-    public static FileRow FromEntry(FileEntry entry, bool showFileExtensions)
+    public static FileRow FromEntry(FileEntry entry, bool showFileExtensions, bool includeAttributes = false)
     {
         FileRow row = new FileRow();
         row.DisplayName = entry.Name;
@@ -1529,11 +1817,15 @@ public class FileRow : INotifyPropertyChanged
             row.IconCategory = category;
             row.IconColor = FileIconCatalog.GetAccent(category);
         }
+        if (includeAttributes)
+        {
+            FillAttributes(row);
+        }
         return row;
     }
 
     /// <summary>从全局搜索结果构建行数据。</summary>
-    public static FileRow FromSearchResult(FileSearchResult result, bool showFileExtensions)
+    public static FileRow FromSearchResult(FileSearchResult result, bool showFileExtensions, bool includeAttributes = true)
     {
         FileRow row = new FileRow();
         row.DisplayName = result.Name;
@@ -1566,7 +1858,49 @@ public class FileRow : INotifyPropertyChanged
             row.IconCategory = category;
             row.IconColor = FileIconCatalog.GetAccent(category);
         }
+        if (includeAttributes)
+        {
+            FillAttributes(row);
+        }
         return row;
+    }
+
+    /// <summary>读取本机文件属性；远程/压缩包路径无法访问时保持空属性。</summary>
+    private static void FillAttributes(FileRow row)
+    {
+        try
+        {
+            FileAttributes attributes = File.GetAttributes(row.FullPath);
+            List<string> names = new List<string>();
+            int order = 0;
+            if ((attributes & FileAttributes.ReadOnly) != 0)
+            {
+                names.Add("只读");
+                order |= 1;
+            }
+            if ((attributes & FileAttributes.Hidden) != 0)
+            {
+                names.Add("隐藏");
+                order |= 2;
+            }
+            if ((attributes & FileAttributes.System) != 0)
+            {
+                names.Add("系统");
+                order |= 4;
+            }
+            if ((attributes & FileAttributes.Archive) != 0)
+            {
+                names.Add("存档");
+                order |= 8;
+            }
+            row.AttributesText = string.Join("、", names);
+            row.AttributesOrder = order;
+        }
+        catch (Exception)
+        {
+            row.AttributesText = string.Empty;
+            row.AttributesOrder = 0;
+        }
     }
 
     /// <summary>从磁盘分区构建行数据（用于此电脑视图）。</summary>

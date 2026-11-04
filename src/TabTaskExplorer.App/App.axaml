@@ -121,6 +121,19 @@
     <styling:FluentAvaloniaTheme />
 
     <!-- ======== TabX 风格交互：悬停 / 选中随主题字典切换 ======== -->
+    <!-- 右键菜单统一跟随应用深 / 浅主题：不再使用系统原生菜单，背景、文字、边框、悬停与分隔线全部走主题字典 -->
+    <Style Selector="ContextMenu">
+      <Setter Property="Background" Value="{DynamicResource ChromeBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource SubtleBorderBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+    </Style>
+    <Style Selector="MenuItem">
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+    </Style>
+    <Style Selector="MenuItem:pointerover">
+      <Setter Property="Background" Value="{DynamicResource RowHoverBrush}" />
+    </Style>
     <!-- 行与磁贴的常驻透明底色必须写成基础样式并放在各动态样式之前：若直接写在元素上（本地值），会压过下面的悬停、选中与拖放高亮样式 -->
     <Style Selector="Border.row">
       <Setter Property="Background" Value="Transparent"/>

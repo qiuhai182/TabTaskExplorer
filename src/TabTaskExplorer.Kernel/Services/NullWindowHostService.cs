@@ -15,6 +15,11 @@ public class NullWindowHostService : IWindowHostService
     }
 
     /// <inheritdoc />
+    public void ApplyNoActivateWindow(IntPtr windowHandle)
+    {
+    }
+
+    /// <inheritdoc />
     public void SetAppUserModelId(string appUserModelId)
     {
     }

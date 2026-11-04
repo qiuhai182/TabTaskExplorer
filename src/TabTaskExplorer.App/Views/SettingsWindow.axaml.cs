@@ -4,6 +4,7 @@ using System.Collections.ObjectModel;
 using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
+using Avalonia.Platform;
 using Avalonia.Platform.Storage;
 using TabTaskExplorer.App.Services;
 using TabTaskExplorer.Kernel.Abstractions;
@@ -68,6 +69,10 @@ public partial class SettingsWindow : Window
     private bool suppressSystemMenuToggle;
     // 主窗口注入的启动项管理标签打开回调：设置窗口内不重复实现启动项列表，只做统一入口跳转
     private readonly Action? openStartupManager;
+    // 日志查看器窗口：同一时间只保留一个，重复点击时激活既有窗口
+    private LogViewerWindow? logViewerWindow;
+    // 诊断包是否正在后台生成，避免重复点击造成并发打包
+    private bool diagnosticsExporting;
 
     /// <summary>「基本设置」分页在左侧分页列表中的序号。</summary>
     public const int BasicSectionIndex = 0;
@@ -105,6 +110,8 @@ public partial class SettingsWindow : Window
         this.systemContextMenus = systemContextMenus;
         this.openStartupManager = openStartupManager;
         this.DataContext = settings;
+        this.LogLevelBox.SelectedIndex = (int)UiLogger.ParseLevel(settings.LogLevel, LogLevel.Info);
+        this.LogDirectoryText.Text = "日志目录=" + UiLogger.LogDirectory;
         this.EditorFontSizeBox.Text = settings.EditorFontSize.ToString();
         this.EditorTabWidthBox.Text = settings.EditorTabWidth.ToString();
         this.DefaultOpenModeBox.SelectedIndex = settings.DefaultOpenMode == "Ide" ? 1 : 0;
@@ -321,10 +328,12 @@ public partial class SettingsWindow : Window
         this.CommitOpenRules();
         this.CommitMediaSettings();
         this.CommitCaptureSettings();
+        this.CommitLogSettings();
         AppSettings? settings = this.DataContext as AppSettings;
         if (settings != null)
         {
-            UiLogger.Log("配置更改", "设置窗口确定：网页端端口数=" + settings.WebPorts.Count
+            UiLogger.Log("配置更改", "设置窗口确定：日志最低级别=" + settings.LogLevel
+                + " 网页端端口数=" + settings.WebPorts.Count
                 + " 网页端权限方案数=" + settings.WebAccessProfiles.Count
                 + " 编辑器字号=" + settings.EditorFontSize
                 + " 编辑器Tab宽度=" + settings.EditorTabWidth
@@ -1529,6 +1538,152 @@ public partial class SettingsWindow : Window
         this.StartupOpenStatusText.Text = "已打开启动项管理标签页（若已存在则直接切换到该标签），关闭本窗口后即可操作。";
         this.StartupOpenStatusText.IsVisible = true;
         UiLogger.Log("设置窗口", "点击打开启动项管理标签页：结果=成功，已请求主窗口复用或新建启动项管理标签");
+    }
+
+    /// <summary>提交日志分页的级别设置：写入共享设置对象，点击确定后由主窗口统一保存与应用。</summary>
+    private void CommitLogSettings()
+    {
+        AppSettings? settings = this.DataContext as AppSettings;
+        if (settings == null)
+        {
+            return;
+        }
+        int index = this.LogLevelBox.SelectedIndex;
+        if (index < 0 || index > (int)LogLevel.Error)
+        {
+            index = (int)LogLevel.Info;
+        }
+        LogLevel level = (LogLevel)index;
+        settings.LogLevel = level.ToString();
+        UiLogger.Log("配置更改", "日志最低级别：" + UiLogger.DescribeLevel(level));
+    }
+
+    /// <summary>打开日志查看器：已存在可见窗口时激活，否则新建一个归属本窗口的查看器。</summary>
+    private void OnOpenLogViewerClick(object? sender, RoutedEventArgs e)
+    {
+        if (this.logViewerWindow != null && this.logViewerWindow.IsVisible)
+        {
+            this.logViewerWindow.Activate();
+            UiLogger.LogInfo(LogCategories.Diagnostics, "打开日志查看器", "结果=激活已打开的查看器窗口");
+            return;
+        }
+        LogViewerWindow window = new LogViewerWindow();
+        this.logViewerWindow = window;
+        window.Closed += this.OnLogViewerWindowClosed;
+        window.Show(this);
+        UiLogger.LogInfo(LogCategories.Diagnostics, "打开日志查看器",
+            "结果=新建查看器窗口 日志目录=" + UiLogger.LogDirectory);
+    }
+
+    /// <summary>日志查看器关闭后清空引用，下次点击可重新创建。</summary>
+    private void OnLogViewerWindowClosed(object? sender, EventArgs e)
+    {
+        this.logViewerWindow = null;
+    }
+
+    /// <summary>
+    /// 导出诊断包：在后台收集系统信息、脱敏配置、最近日志、崩溃记录、Shell 扩展与
+    /// known_hosts 指纹，压缩为 zip 后把保存路径显示在设置窗口内。
+    /// </summary>
+    private async void OnExportDiagnosticsClick(object? sender, RoutedEventArgs e)
+    {
+        if (this.diagnosticsExporting)
+        {
+            UiLogger.LogWarn(LogCategories.Diagnostics, "导出诊断包", "结果=已有导出任务在进行，已忽略本次点击");
+            return;
+        }
+        this.diagnosticsExporting = true;
+        this.ExportDiagnosticsButton.IsEnabled = false;
+        this.DiagnosticsStatusText.IsVisible = true;
+        this.DiagnosticsStatusText.Text = "正在准备诊断包…";
+        try
+        {
+            DiagnosticsBundleOptions options = new DiagnosticsBundleOptions();
+            options.Settings = this.DataContext as AppSettings;
+            options.SystemContextMenus = this.systemContextMenus;
+            options.ScreenDescriptions = this.DescribeScreens();
+            Progress<string> progress = new Progress<string>(this.OnDiagnosticsProgress);
+            options.Progress = progress;
+            DiagnosticsBundleResult result = await DiagnosticsBundle.CreateAsync(options);
+            if (!result.Success)
+            {
+                this.DiagnosticsStatusText.Text = "诊断包生成失败：" + result.ErrorMessage;
+                MessageDialog.Show(this, "诊断包生成失败",
+                    "无法生成诊断包：" + result.ErrorMessage);
+                return;
+            }
+            this.DiagnosticsStatusText.Text = "诊断包已生成：" + result.ZipPath
+                + "（条目数=" + result.Entries.Count + "）";
+            MessageDialog.Show(this, "诊断包已生成",
+                "保存路径：\n" + result.ZipPath + "\n\n条目数：" + result.Entries.Count
+                + "\n\n可直接把这个 zip 文件提供给开发者排查问题。");
+        }
+        catch (Exception error)
+        {
+            this.DiagnosticsStatusText.Text = "诊断包生成异常：" + error.Message;
+            UiLogger.LogError(LogCategories.Diagnostics, "导出诊断包", "结果=未捕获异常", error);
+            MessageDialog.Show(this, "诊断包生成失败", "发生异常：" + error.Message);
+        }
+        finally
+        {
+            this.diagnosticsExporting = false;
+            this.ExportDiagnosticsButton.IsEnabled = true;
+        }
+    }
+
+    /// <summary>诊断包进度回调：在界面线程更新状态文字。</summary>
+    private void OnDiagnosticsProgress(string message)
+    {
+        this.DiagnosticsStatusText.IsVisible = true;
+        this.DiagnosticsStatusText.Text = message;
+    }
+
+    /// <summary>采集显示器描述：序号、主屏标记、边界、工作区与缩放比例。</summary>
+    private List<string> DescribeScreens()
+    {
+        List<string> lines = new List<string>();
+        TopLevel? topLevel = TopLevel.GetTopLevel(this);
+        if (topLevel == null)
+        {
+            return lines;
+        }
+        var screens = topLevel.Screens;
+        if (screens == null)
+        {
+            return lines;
+        }
+        int index = 0;
+        foreach (Screen screen in screens.All)
+        {
+            index = index + 1;
+            lines.Add("显示器序号=" + index
+                + " 主显示器=" + screen.IsPrimary
+                + " 边界=左上角横坐标" + screen.Bounds.X + " 左上角纵坐标" + screen.Bounds.Y
+                + " 宽度" + screen.Bounds.Width + " 高度" + screen.Bounds.Height
+                + " 工作区=左上角横坐标" + screen.WorkingArea.X + " 左上角纵坐标" + screen.WorkingArea.Y
+                + " 宽度" + screen.WorkingArea.Width + " 高度" + screen.WorkingArea.Height
+                + " 缩放比例=" + screen.Scaling);
+        }
+        return lines;
+    }
+
+    /// <summary>用系统文件管理器打开日志目录。</summary>
+    private void OnOpenLogDirectoryClick(object? sender, RoutedEventArgs e)
+    {
+        string directory = UiLogger.LogDirectory;
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(directory)
+            {
+                UseShellExecute = true,
+            });
+            UiLogger.LogInfo(LogCategories.Diagnostics, "打开日志目录", "目录=" + directory + " 结果=成功");
+        }
+        catch (Exception error)
+        {
+            UiLogger.LogError(LogCategories.Diagnostics, "打开日志目录", "目录=" + directory, error);
+            MessageDialog.Show(this, "打开失败", "无法打开日志目录：" + error.Message);
+        }
     }
 
     private void OnCancelClick(object? sender, RoutedEventArgs e)

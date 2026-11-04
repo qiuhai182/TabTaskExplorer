@@ -4,6 +4,7 @@
         x:Class="TabTaskExplorer.App.Views.RegionSelectionWindow"
         Title="选择截图区域" WindowDecorations="None" CanResize="False"
         WindowStartupLocation="Manual" Topmost="True" ShowInTaskbar="False"
+        ShowActivated="False"
         Background="Black"
         PointerPressed="OnWindowPointerPressed"
         PointerMoved="OnWindowPointerMoved"

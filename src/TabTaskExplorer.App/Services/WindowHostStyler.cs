@@ -59,6 +59,61 @@ public static class WindowHostStyler
         ApplyToolWindow(window);
     }
 
+    /// <summary>
+    /// 把窗口标记为「可见但不打扰」的无焦点提示窗：不占任务栏、不进 Alt+Tab、点击不夺焦点。
+    /// </summary>
+    /// <param name="window">目标窗口。</param>
+    public static void MakeNoActivate(Window window)
+    {
+        if (window == null)
+        {
+            return;
+        }
+        window.ShowInTaskbar = false;
+        window.ShowActivated = false;
+        window.Opened += OnNoActivateWindowOpened;
+        if (window.IsVisible)
+        {
+            ApplyNoActivate(window);
+        }
+    }
+
+    private static void OnNoActivateWindowOpened(object? sender, EventArgs e)
+    {
+        Window? window = sender as Window;
+        if (window == null)
+        {
+            return;
+        }
+        ApplyNoActivate(window);
+    }
+
+    /// <summary>对已创建的无焦点提示窗应用工具窗口与 WS_EX_NOACTIVATE 扩展样式。</summary>
+    private static void ApplyNoActivate(Window window)
+    {
+        IWindowHostService? service = hostService;
+        if (service == null)
+        {
+            return;
+        }
+        IntPtr? handle = window.TryGetPlatformHandle()?.Handle;
+        if (handle == null || handle.Value == IntPtr.Zero)
+        {
+            UiLogger.Log("窗口任务栏", "无焦点提示窗句柄尚未就绪，等待 Opened 后重试：类型=" + window.GetType().Name);
+            return;
+        }
+        try
+        {
+            service.ApplyNoActivateWindow(handle.Value);
+            UiLogger.Log("窗口任务栏", "无焦点提示窗样式已应用：类型=" + window.GetType().Name
+                + " 任务栏=隐藏 Alt加Tab=不进入 激活=不夺取焦点");
+        }
+        catch (Exception error)
+        {
+            UiLogger.LogError("窗口任务栏", "无焦点提示窗设置扩展样式失败：类型=" + window.GetType().Name, error);
+        }
+    }
+
     /// <summary>对已创建的窗口立即应用工具窗口扩展样式，并记录显示状态。</summary>
     private static void ApplyToolWindow(Window window)
     {

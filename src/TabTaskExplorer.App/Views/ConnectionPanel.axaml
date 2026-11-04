@@ -84,6 +84,51 @@
           <TextBlock Text="保活间隔（秒，0 关闭）" FontSize="12" />
           <TextBox x:Name="KeepAliveBox" Margin="0,2,0,8" PlaceholderText="15" />
 
+          <CheckBox x:Name="JumpEnabledBox" Content="经跳板连接（ProxyJump，最多 3 跳）" Margin="0,2,0,6"
+                    IsChecked="False" IsCheckedChanged="OnJumpEnabledChanged" />
+
+          <StackPanel x:Name="JumpSection" IsVisible="False" Margin="0,0,0,8">
+            <TextBlock Text="跳板链（按顺序逐跳连接）" FontSize="12" />
+            <ListBox x:Name="HopList" Height="78" Margin="0,2,0,4" SelectionChanged="OnHopSelectedChanged" />
+            <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,0,0,6">
+              <Button Content="添加" Click="OnHopAddClick" />
+              <Button Content="更新" Click="OnHopUpdateClick" />
+              <Button Content="删除" Click="OnHopRemoveClick" />
+              <Button Content="上移" Click="OnHopMoveUpClick" />
+              <Button Content="下移" Click="OnHopMoveDownClick" />
+            </StackPanel>
+
+            <Grid ColumnDefinitions="*,8,*" Margin="0,0,0,6">
+              <StackPanel Grid.Column="0">
+                <TextBlock Text="跳板主机" FontSize="12" />
+                <TextBox x:Name="HopHostBox" Margin="0,2,0,0" PlaceholderText="例如 10.0.0.1" />
+              </StackPanel>
+              <StackPanel Grid.Column="2">
+                <TextBlock Text="端口（留空 22）" FontSize="12" />
+                <TextBox x:Name="HopPortBox" Margin="0,2,0,0" PlaceholderText="22" />
+              </StackPanel>
+            </Grid>
+
+            <TextBlock Text="跳板用户名" FontSize="12" />
+            <TextBox x:Name="HopUserBox" Margin="0,2,0,6" />
+
+            <TextBlock Text="跳板认证方式" FontSize="12" />
+            <ComboBox x:Name="HopAuthBox" Margin="0,2,0,6" MinWidth="160" SelectionChanged="OnHopAuthChanged">
+              <ComboBoxItem Content="密码" />
+              <ComboBoxItem Content="私钥文件" />
+            </ComboBox>
+
+            <StackPanel x:Name="HopSecretSection">
+              <TextBlock Text="跳板密码或私钥口令（留空保持已保存值）" FontSize="12" />
+              <TextBox x:Name="HopSecretBox" Margin="0,2,0,6" PasswordChar="?" />
+            </StackPanel>
+
+            <StackPanel x:Name="HopKeySection" IsVisible="False">
+              <TextBlock Text="跳板私钥文件路径" FontSize="12" />
+              <TextBox x:Name="HopKeyBox" Margin="0,2,0,6" PlaceholderText="例如 C:\Users\you\.ssh\id_rsa" />
+            </StackPanel>
+          </StackPanel>
+
           <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
             <Button x:Name="SaveButton" Content="保存" Click="OnSaveClick" />
             <Button x:Name="CancelButton" Content="取消编辑" Click="OnCancelClick" />

@@ -143,6 +143,8 @@ public static class TabSnapshotFiller
             debugRow.Type = row.TypeText;
             debugRow.Size = row.SizeText;
             debugRow.Modified = row.ModifiedText;
+            debugRow.Attributes = row.AttributesText;
+            debugRow.PreviewKind = FilePreviewClassifier.Detect(row.FullPath).ToString().ToLowerInvariant();
             debugRow.IsSelected = row.IsSelected;
             debugRow.IconCategory = row.IconCategory;
             debugRow.IconColor = row.IconColor;
@@ -241,6 +243,8 @@ public static class TabSnapshotFiller
             debugRow.Type = row.TypeText;
             debugRow.Size = row.SizeText;
             debugRow.Modified = row.ModifiedText;
+            debugRow.Attributes = row.AttributesText;
+            debugRow.PreviewKind = FilePreviewClassifier.Detect(row.FullPath).ToString().ToLowerInvariant();
             debugRow.IsSelected = row.IsSelected;
             debugRow.IconCategory = row.IconCategory;
             debugRow.IconColor = row.IconColor;
@@ -371,6 +375,23 @@ public static class TabSnapshotFiller
             mirror.PrivateKeyPath = profile.PrivateKeyPath;
             mirror.KeepAliveSeconds = profile.KeepAliveSeconds;
             mirror.Summary = profile.Summary;
+            mirror.JumpSummary = profile.JumpSummary;
+            if (profile.JumpHops != null)
+            {
+                for (int hopIndex = 0; hopIndex < profile.JumpHops.Count; hopIndex++)
+                {
+                    RemoteJumpHop hop = profile.JumpHops[hopIndex];
+                    DebugJumpHop hopMirror = new DebugJumpHop();
+                    hopMirror.Host = hop.Host;
+                    hopMirror.Port = hop.Port;
+                    hopMirror.Username = hop.Username;
+                    hopMirror.AuthType = hop.AuthType == RemoteAuthType.PrivateKey ? "PrivateKey" : "Password";
+                    hopMirror.PrivateKeyPath = hop.PrivateKeyPath;
+                    hopMirror.HasSecret = !string.IsNullOrEmpty(hop.ProtectedSecret);
+                    hopMirror.IndexText = "第 " + (hopIndex + 1) + " 跳";
+                    mirror.JumpHops.Add(hopMirror);
+                }
+            }
             mirror.Selected = selected != null && selected.Id == profile.Id;
             tabState.Connections.Add(mirror);
         }

@@ -109,7 +109,7 @@ function onContentCheck(event) {
 function onTableColResizeDown(event) {
   if (event.button !== 0) { return; }
   const headerCell = event.target.closest('th');
-  if (!headerCell) { return; }
+  if (!headerCell || headerCell.hasAttribute('data-fixed')) { return; }
   const table = headerCell.closest('table');
   if (!table || !table.hasAttribute('data-colkey')) { return; }
   const headRow = table.rows[0];
@@ -210,9 +210,326 @@ function onTableColResizeUp(event) {
   }
   // 拖动结束后的这次点击不再冒泡，防止误触表头排序
   suppressClickUntil = performance.now() + 250;
+  if (key === 'file:Details') {
+    persistFileTableWidths(widths);
+    return;
+  }
   let widthText = '';
   for (let i = 0; i < widths.length; i++) { widthText += (i === 0 ? '' : ',') + widths[i]; }
   doAction('colresize', key + '=' + widthText);
+}
+
+// 把网页表头拖出的列宽映射回桌面 7 段列宽：勾选框/图标固定，其余按当前可见列写回。
+function persistFileTableWidths(webWidths) {
+  const widths = parseFileWidths(state.fileColumnWidths);
+  if (webWidths.length >= 2) {
+    widths[0] = webWidths[0];
+    widths[1] = webWidths[1];
+  }
+  const visible = parseFileColumns(state.fileVisibleColumns);
+  let index = 2;
+  for (const def of FILE_COLUMN_DEFS) {
+    if (visible.indexOf(def.id) < 0) { continue; }
+    if (index < webWidths.length) { widths[def.widthIndex] = webWidths[index]; }
+    index++;
+  }
+  saveFileColumns({ columnWidths: widths.join(',') });
+}
+
+function toggleFileColumn(name) {
+  if (!state) { return; }
+  const columns = parseFileColumns(state.fileVisibleColumns);
+  const position = columns.indexOf(name);
+  if (position >= 0) { columns.splice(position, 1); } else { columns.push(name); }
+  const ordered = FILE_COLUMN_DEFS.map(function (def) { return def.id; })
+    .filter(function (id) { return columns.indexOf(id) >= 0; });
+  closeMenus();
+  saveFileColumns({ visibleColumns: ordered.join(',') });
+}
+
+function toggleCompactMode() {
+  if (!state) { return; }
+  closeMenus();
+  saveFileColumns({ compactMode: !state.fileCompactMode });
+}
+
+// 列配置写回服务端（与桌面共用 AppSettings）；先乐观刷新，再由状态快照校正。
+function saveFileColumns(patch) {
+  const tab = currentTab;
+  const config = {
+    visibleColumns: patch.visibleColumns !== undefined ? patch.visibleColumns : (state.fileVisibleColumns || ''),
+    columnWidths: patch.columnWidths !== undefined ? patch.columnWidths : (state.fileColumnWidths || ''),
+    compactMode: patch.compactMode !== undefined ? patch.compactMode : !!state.fileCompactMode,
+    sortField: tab && tab.sortField ? tab.sortField : (state.fileSortField || 'Name'),
+    sortAscending: tab ? tab.sortAscending : (state.fileSortAscending !== false)
+  };
+  state.fileVisibleColumns = config.visibleColumns;
+  state.fileColumnWidths = config.columnWidths;
+  state.fileCompactMode = config.compactMode;
+  lastContentSignature = '';
+  render();
+  return apiFetch(url('/api/filecolumns'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(config)
+  }).then(async function (response) {
+    const text = await response.text();
+    if (!response.ok) { flash(text || ('列配置保存失败，状态码=' + response.status)); }
+    await refresh();
+  }).catch(function (error) {
+    flash('列配置保存失败：' + error);
+  });
+}
+
+// ======== 快速预览（复用服务端公共分类器） ========
+
+function previewChecked() {
+  let row = (focusIndex >= 0) ? currentRows[focusIndex] : null;
+  if (!row && checked.size === 1) {
+    row = currentRows.find(function (item) { return checked.has(item.fullPath); }) || null;
+  }
+  if (!row) { flash('请先选择一个文件再预览'); return; }
+  previewPath(row.fullPath);
+}
+
+async function previewPath(path) {
+  const pane = document.getElementById('previewPane');
+  if (!pane || !path) { return; }
+  pane.classList.remove('hidden');
+  document.getElementById('previewTitle').textContent = path.split(/[\\/]/).pop() || path;
+  document.getElementById('previewBody').innerHTML = '<div class="hint">正在读取预览……</div>';
+  document.getElementById('previewMeta').textContent = path;
+  try {
+    const response = await apiFetch(url('/api/preview', { path: path }));
+    if (!response.ok) {
+      document.getElementById('previewBody').innerHTML = '<div class="hint">' + esc(await response.text()) + '</div>';
+      return;
+    }
+    const data = await response.json();
+    renderPreview(data, path);
+  } catch (error) {
+    document.getElementById('previewBody').innerHTML = '<div class="hint">预览读取失败：' + esc('' + error) + '</div>';
+  }
+}
+
+function renderPreview(data, path) {
+  const body = document.getElementById('previewBody');
+  const title = document.getElementById('previewTitle');
+  title.textContent = data.name || path;
+  const metaParts = [];
+  if (data.sizeText) { metaParts.push(data.sizeText); }
+  if (data.modifiedText) { metaParts.push(data.modifiedText); }
+  metaParts.push(data.local ? '本机文件' : '远程 / 压缩包');
+  metaParts.push('Esc 关闭');
+  document.getElementById('previewMeta').textContent = metaParts.join(' · ');
+  let html = '';
+  if (data.kind === 'image' && data.supportsThumbnail) {
+    html = '<div class="previewImageBox">'
+      + thumbBoxHtml({ fullPath: path, iconCategory: 'image', iconColor: '#3B82F6', isDirectory: false }, 384, 'previewThumb')
+      + '</div>';
+  } else if (data.kind === 'text') {
+    html = '<pre class="previewText">' + esc(data.text || data.hint || '') + '</pre>';
+  } else if (data.kind === 'pdf') {
+    html = '<div class="previewPlaceholder">' + fileIcon('pdf', '#D9534F', 64)
+      + '<div class="previewHint">' + esc(data.hint || 'PDF 预览暂不可用') + '</div></div>';
+  } else if (data.kind === 'audio' || data.kind === 'video') {
+    html = '<div class="previewPlaceholder">' + fileIcon(data.kind === 'video' ? 'video' : 'audio', '#8E44AD', 64)
+      + '<div class="previewHint">' + esc(data.hint || '音视频占位') + '</div></div>';
+  } else if (data.kind === 'image') {
+    html = '<div class="previewPlaceholder">' + fileIcon('image', '#3B82F6', 64)
+      + '<div class="previewHint">' + esc(data.hint || '图片预览不可用') + '</div></div>';
+  } else {
+    html = '<div class="previewPlaceholder">' + fileIcon('file', '#8A94A6', 64)
+      + '<div class="previewHint">' + esc(data.hint || '该类型暂不支持快速预览') + '</div></div>';
+  }
+  body.innerHTML = html;
+  hydrateThumbnails(body);
+}
+
+function closePreview() {
+  const pane = document.getElementById('previewPane');
+  if (!pane) { return; }
+  pane.classList.add('hidden');
+  document.getElementById('previewBody').innerHTML = '';
+  document.getElementById('previewMeta').textContent = '';
+}
+
+// ======== 统一任务中心（本地 + 远程共用同一快照） ========
+
+let taskPollTimer = null;
+let taskApplyAll = false;
+let lastActiveTaskCount = 0;
+const taskConflictNotified = new Set();
+
+function toggleTaskPanel(force) {
+  const panel = document.getElementById('taskPanel');
+  if (!panel) { return; }
+  const willOpen = force === true ? true : panel.classList.contains('hidden');
+  if (willOpen) {
+    panel.classList.remove('hidden');
+    refreshTasks();
+    if (!taskPollTimer) { taskPollTimer = setInterval(refreshTasks, 1000); }
+  } else {
+    panel.classList.add('hidden');
+    if (taskPollTimer) { clearInterval(taskPollTimer); taskPollTimer = null; }
+  }
+}
+
+async function refreshTasks() {
+  try {
+    const response = await apiFetch(url('/api/tasks'));
+    if (!response.ok) { return; }
+    const data = await response.json();
+    const tasks = data.tasks || [];
+    if (state) { state.tasks = tasks; }
+    renderTasks();
+    let active = 0;
+    for (const task of tasks) {
+      if (['queued', 'running', 'waitingConflict', 'paused'].indexOf(task.state) >= 0) { active++; }
+    }
+    if (lastActiveTaskCount > 0 && active === 0) {
+      // 任务全部结束：拉取一次全量状态，让文件列表、摘要与任务面板同步
+      lastActiveTaskCount = 0;
+      refresh();
+    } else {
+      lastActiveTaskCount = active;
+    }
+  } catch (error) { /* 面板轮询失败由下一次重试 */ }
+}
+
+function taskStateLabel(value) {
+  if (value === 'queued') { return '排队中'; }
+  if (value === 'running') { return '进行中'; }
+  if (value === 'waitingConflict') { return '等待处理（不会自动跳过）'; }
+  if (value === 'paused') { return '已暂停'; }
+  if (value === 'completed') { return '已完成'; }
+  if (value === 'failed') { return '失败'; }
+  if (value === 'canceled') { return '已取消'; }
+  return value || '未知';
+}
+
+function taskKindLabel(task) {
+  if (task.isRemote) { return task.kind === 'download' ? '远程下载' : '远程上传'; }
+  if (task.kind === 'move') { return '移动'; }
+  if (task.kind === 'delete') { return '删除'; }
+  return '复制';
+}
+
+function renderTasks() {
+  const badge = document.getElementById('taskCount');
+  const list = document.getElementById('taskList');
+  if (!list) { return; }
+  const tasks = (state && state.tasks) ? state.tasks : [];
+  let active = 0;
+  let html = '';
+  if (tasks.length === 0) {
+    html = '<div class="hint">暂无任务。复制/移动/删除会在这里显示进度与冲突选择。</div>';
+  }
+  for (let index = tasks.length - 1; index >= 0; index--) {
+    const task = tasks[index];
+    if (['queued', 'running', 'waitingConflict', 'paused'].indexOf(task.state) >= 0) { active++; }
+    if (task.state === 'waitingConflict' && !taskConflictNotified.has(task.id)) {
+      taskConflictNotified.add(task.id);
+      flash('任务等待冲突处理：' + (task.conflictName || task.conflictPath || '')
+        + (task.conflictIsDirectory ? '（同名文件夹：合并/替换/逐项处理/改名共存）' : '（同名文件：替换/改名共存）')
+        + '。请打开任务中心选择，不会自动跳过。');
+      toggleTaskPanel(true);
+    }
+    const progress = Math.max(0, Math.min(100, Number(task.progress) || 0));
+    html += '<div class="taskRow task-' + escAttr(task.state) + '">'
+      + '<div class="taskRowHead"><span class="taskKind">' + esc(taskKindLabel(task)) + '</span>'
+      + (task.isRemote ? '<span class="taskTag">远程</span>' : '')
+      + '<span class="taskState">' + esc(taskStateLabel(task.state)) + '</span></div>'
+      + '<div class="taskPaths"><span title="' + escAttr(task.sourceText || '') + '">' + esc(task.sourceText || '') + '</span>'
+      + (task.destinationText ? ' → ' + esc(task.destinationText) : '') + '</div>'
+      + '<div class="taskBar"><div class="taskBarFill" style="width:' + progress + '%"></div></div>'
+      + '<div class="taskMeta">' + progress + '% · ' + esc(task.message || '') + '</div>';
+    if (task.state === 'waitingConflict' && task.conflictPath) {
+      const conflictId = escAttr(task.id);
+      let conflictButtons = '';
+      if (task.conflictIsDirectory) {
+        conflictButtons = '<span class="btn" onclick="resolveTaskConflict(\'' + conflictId + '\',\'merge\')">合并</span>'
+          + '<span class="btn" onclick="resolveTaskConflict(\'' + conflictId + '\',\'overwrite\')">替换</span>'
+          + '<span class="btn" onclick="resolveTaskConflict(\'' + conflictId + '\',\'perItem\')">逐项处理</span>'
+          + '<span class="btn" onclick="resolveTaskConflict(\'' + conflictId + '\',\'rename\')">改名共存</span>';
+      } else {
+        conflictButtons = '<span class="btn" onclick="resolveTaskConflict(\'' + conflictId + '\',\'overwrite\')">替换</span>'
+          + '<span class="btn" onclick="resolveTaskConflict(\'' + conflictId + '\',\'rename\')">改名共存</span>';
+      }
+      html += '<div class="taskConflict">'
+        + '<div class="taskConflictPath">目标已存在' + (task.conflictIsDirectory ? '同名文件夹' : '同名文件')
+        + '：' + esc(task.conflictName || task.conflictPath) + '</div>'
+        + (task.conflictIsDirectory
+          ? '<div class="hint">替换=清空目标后写入源内容（删除走回收站）；逐项处理会逐个询问文件夹内同名项。</div>'
+          : '<div class="hint">替换会删除目标文件（走回收站）后写入源文件；改名共存保留两边内容。</div>')
+        + '<label class="taskAll"><input type="checkbox"' + (taskApplyAll ? ' checked' : '')
+        + ' onchange="taskApplyAll=this.checked">本批统一</label>'
+        + '<div class="taskConflictBtns">' + conflictButtons + '</div></div>';
+    }
+    html += '<div class="taskActions">';
+    if (task.canCancel) {
+      html += '<span class="btn" onclick="cancelTask(\'' + escAttr(task.id) + '\')">取消</span>';
+    }
+    if (task.canRetry) {
+      html += '<span class="btn" onclick="retryTask(\'' + escAttr(task.id) + '\')">重试失败项</span>';
+    }
+    html += '</div></div>';
+  }
+  list.innerHTML = html;
+  if (badge) { badge.textContent = active > 0 ? ' ' + active : ''; }
+}
+
+async function submitFileTask(kind, sources, destination, policy) {
+  try {
+    const response = await apiFetch(url('/api/tasks'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ kind: kind, sources: sources, destination: destination, policy: policy })
+    });
+    const text = await response.text();
+    if (!response.ok) { flash(text || ('任务提交失败，状态码=' + response.status)); return null; }
+    let data = null;
+    try { data = JSON.parse(text); } catch (error) { data = null; }
+    flash('任务已提交，可在任务中心查看进度');
+    toggleTaskPanel(true);
+    return data ? data.id : null;
+  } catch (error) {
+    flash('任务提交失败：' + error);
+    return null;
+  }
+}
+
+async function cancelTask(id) {
+  try {
+    const response = await apiFetch(url('/api/tasks/' + encodeURIComponent(id) + '/cancel'), { method: 'POST' });
+    const text = await response.text();
+    flash(response.ok ? '已请求取消任务' : (text || '取消失败'));
+    await refreshTasks();
+  } catch (error) { flash('取消失败：' + error); }
+}
+
+async function retryTask(id) {
+  try {
+    const response = await apiFetch(url('/api/tasks/' + encodeURIComponent(id) + '/retry'), { method: 'POST' });
+    const text = await response.text();
+    flash(response.ok ? '已提交重试任务' : (text || '重试失败'));
+    await refreshTasks();
+  } catch (error) { flash('重试失败：' + error); }
+}
+
+async function resolveTaskConflict(id, action) {
+  const applyToAll = taskApplyAll;
+  try {
+    const response = await apiFetch(url('/api/tasks/' + encodeURIComponent(id) + '/conflict'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: action, applyToAll: applyToAll })
+    });
+    const text = await response.text();
+    if (!response.ok) { flash(text || '冲突处理失败'); }
+    taskApplyAll = false;
+    await refreshTasks();
+  } catch (error) { flash('冲突处理失败：' + error); }
 }
 
 function suppressResizeClick(event) {
@@ -367,6 +684,9 @@ function buildOwnContextItems(tab, row, background, targetPaths, shiftKey) {
     return items;
   }
   items.push({ title: '打开', action: 'open', enabled: true });
+  if (targetPaths.length === 1 && !isDisk && row && !row.isDirectory) {
+    items.push({ title: '预览', action: 'preview', enabled: true });
+  }
   items.push({ title: '在新标签打开', action: 'newtab', enabled: targetPaths.length === 1 });
   items.push({ sep: true });
   items.push({ title: '复制' + suffix, action: 'copy', enabled: targetPaths.length > 0 && !(isDisk && row && row.type === '驱动器') });
@@ -586,6 +906,10 @@ function runOwnContextAction(action, arg, state) {
   if (action === 'newtab') {
     if (row && row.isDirectory) { post('/api/tabs/new', { p: row.fullPath }); }
     else if (row) { openFile(row.fullPath); }
+    return;
+  }
+  if (action === 'preview') {
+    previewPath(row ? row.fullPath : (paths[0] || ''));
     return;
   }
   if (action === 'copy') {
@@ -881,14 +1205,14 @@ function changePermissions(target) {
 function deleteEntry(target) {
   if (!permissions.canCreateDelete) { flash('该端口未放行新建与删除权限'); return; }
   if (!window.confirm('确认删除：' + target + '？')) { return; }
-  post('/api/delete', { p: target });
+  submitFileTask('delete', [target], '', 'skip');
 }
 
 function deleteChecked() {
   if (!permissions.canCreateDelete) { flash('该端口未放行新建与删除权限'); return; }
   if (checked.size === 0) { flash('请先勾选要删除的条目'); return; }
   if (!window.confirm('确认把勾选的 ' + checked.size + ' 项移入回收站？')) { return; }
-  doAction('deletechecked');
+  submitFileTask('delete', checkedPaths(), '', 'skip');
 }
 
 function openBatch() {

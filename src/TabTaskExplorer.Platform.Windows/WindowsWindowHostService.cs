@@ -13,6 +13,7 @@ public class WindowsWindowHostService : IWindowHostService
     private const int ExtendedStyleIndex = -20;
     private const long ExtendedStyleToolWindow = 0x00000080;
     private const long ExtendedStyleAppWindow = 0x00040000;
+    private const long ExtendedStyleNoActivate = 0x08000000;
     private const uint SwpNoSize = 0x0001;
     private const uint SwpNoMove = 0x0002;
     private const uint SwpNoZOrder = 0x0004;
@@ -55,6 +56,20 @@ public class WindowsWindowHostService : IWindowHostService
         SetWindowLongPtrNative(windowHandle, ExtendedStyleIndex, new IntPtr(style));
         // 仅改扩展样式位不会让资源管理器立即重算任务栏/Alt+Tab 条目；
         // 必须发送 SWP_FRAMECHANGED，让已存在的旧任务栏按钮被移除。
+        SetWindowPos(windowHandle, IntPtr.Zero, 0, 0, 0, 0,
+            SwpNoSize | SwpNoMove | SwpNoZOrder | SwpNoActivate | SwpNoOwnerZOrder | SwpFrameChanged);
+    }
+
+    /// <inheritdoc />
+    public void ApplyNoActivateWindow(IntPtr windowHandle)
+    {
+        if (windowHandle == IntPtr.Zero)
+        {
+            return;
+        }
+        long style = GetWindowLongPtrNative(windowHandle, ExtendedStyleIndex).ToInt64();
+        style = (style | ExtendedStyleToolWindow | ExtendedStyleNoActivate) & ~ExtendedStyleAppWindow;
+        SetWindowLongPtrNative(windowHandle, ExtendedStyleIndex, new IntPtr(style));
         SetWindowPos(windowHandle, IntPtr.Zero, 0, 0, 0, 0,
             SwpNoSize | SwpNoMove | SwpNoZOrder | SwpNoActivate | SwpNoOwnerZOrder | SwpFrameChanged);
     }

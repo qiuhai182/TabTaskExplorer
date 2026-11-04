@@ -91,4 +91,3 @@ public static class ContextMenuSingleton
         get { return IsOpen ? 1 : 0; }
     }
 }
-</content>

@@ -43,7 +43,7 @@ internal static class WindowsShellContextMenuReader
         {
             return result;
         }
-        int initResult = CoInitializeEx(IntPtr.Zero, 2);
+        int initResult = OleInitialize(IntPtr.Zero);
         bool initialized = initResult >= 0;
         IntPtr pidl = IntPtr.Zero;
         IntPtr menuHandle = IntPtr.Zero;
@@ -89,7 +89,7 @@ internal static class WindowsShellContextMenuReader
                 return result;
             }
             menuHandle = CreatePopupMenu();
-            uint flags = isBackground ? (ContextMenuNormal | ContextMenuExplore) : ContextMenuNormal;
+            uint flags = ContextMenuNormal | ContextMenuExplore;
             int queryResult = contextMenu.QueryContextMenu(menuHandle, 0, CommandFirst, CommandLast, flags);
             if (queryResult < 0)
             {
@@ -119,7 +119,7 @@ internal static class WindowsShellContextMenuReader
             }
             if (initialized)
             {
-                CoUninitialize();
+                OleUninitialize();
             }
         }
         return result;
@@ -132,7 +132,7 @@ internal static class WindowsShellContextMenuReader
         {
             return false;
         }
-        int initResult = CoInitializeEx(IntPtr.Zero, 2);
+        int initResult = OleInitialize(IntPtr.Zero);
         bool initialized = initResult >= 0;
         IntPtr pidl = IntPtr.Zero;
         IntPtr menuHandle = IntPtr.Zero;
@@ -178,7 +178,7 @@ internal static class WindowsShellContextMenuReader
                 return false;
             }
             menuHandle = CreatePopupMenu();
-            uint flags = isBackground ? (ContextMenuNormal | ContextMenuExplore) : ContextMenuNormal;
+            uint flags = ContextMenuNormal | ContextMenuExplore;
             if (contextMenu.QueryContextMenu(menuHandle, 0, CommandFirst, CommandLast, flags) < 0)
             {
                 return false;
@@ -212,7 +212,7 @@ internal static class WindowsShellContextMenuReader
             }
             if (initialized)
             {
-                CoUninitialize();
+                OleUninitialize();
             }
         }
     }
@@ -228,7 +228,7 @@ internal static class WindowsShellContextMenuReader
         {
             return result;
         }
-        int initResult = CoInitializeEx(IntPtr.Zero, 2);
+        int initResult = OleInitialize(IntPtr.Zero);
         bool initialized = initResult >= 0;
         IntPtr menuHandle = IntPtr.Zero;
         IntPtr contextPointer = IntPtr.Zero;
@@ -250,15 +250,17 @@ internal static class WindowsShellContextMenuReader
                 }
                 IntPtr childPidl = IntPtr.Zero;
                 SHBindToParentPtr(directoryPidl, ref shellFolderIid, out IntPtr parentFolderPointer, out childPidl);
-                Marshal.FreeCoTaskMem(directoryPidl);
                 parentPointer = parentFolderPointer;
                 IShellFolder? parentFolder = ComInterfaceFromPointer<IShellFolder>(parentFolderPointer);
                 if (parentFolder == null)
                 {
+                    Marshal.FreeCoTaskMem(directoryPidl);
                     return result;
                 }
                 IntPtr folderPointer = IntPtr.Zero;
                 parentFolder.BindToObject(childPidl, IntPtr.Zero, ref shellFolderIid, out folderPointer);
+                // childPidl 指向 directoryPidl 内部，必须在 BindToObject 之后才能释放父 PIDL
+                Marshal.FreeCoTaskMem(directoryPidl);
                 shellFolder = ComInterfaceFromPointer<IShellFolder>(folderPointer);
                 if (shellFolder == null)
                 {
@@ -339,7 +341,7 @@ internal static class WindowsShellContextMenuReader
             }
             IContextMenu2? contextMenu2 = QueryInterface<IContextMenu2>(contextPointer);
             menuHandle = CreatePopupMenu();
-            uint flags = isBackground ? (ContextMenuNormal | ContextMenuExplore) : ContextMenuNormal;
+            uint flags = ContextMenuNormal | ContextMenuExplore;
             if (contextMenu.QueryContextMenu(menuHandle, 0, CommandFirst, CommandLast, flags) < 0)
             {
                 return result;
@@ -370,7 +372,7 @@ internal static class WindowsShellContextMenuReader
             }
             if (initialized)
             {
-                CoUninitialize();
+                OleUninitialize();
             }
         }
         return result;
@@ -383,7 +385,7 @@ internal static class WindowsShellContextMenuReader
         {
             return false;
         }
-        int initResult = CoInitializeEx(IntPtr.Zero, 2);
+        int initResult = OleInitialize(IntPtr.Zero);
         bool initialized = initResult >= 0;
         IntPtr contextPointer = IntPtr.Zero;
         IntPtr parentPointer = IntPtr.Zero;
@@ -405,15 +407,17 @@ internal static class WindowsShellContextMenuReader
                 }
                 IntPtr childPidl = IntPtr.Zero;
                 SHBindToParentPtr(directoryPidl, ref shellFolderIid, out IntPtr parentFolderPointer, out childPidl);
-                Marshal.FreeCoTaskMem(directoryPidl);
                 parentPointer = parentFolderPointer;
                 IShellFolder? parentFolder = ComInterfaceFromPointer<IShellFolder>(parentFolderPointer);
                 if (parentFolder == null)
                 {
+                    Marshal.FreeCoTaskMem(directoryPidl);
                     return false;
                 }
                 IntPtr folderPointer = IntPtr.Zero;
                 parentFolder.BindToObject(childPidl, IntPtr.Zero, ref shellFolderIid, out folderPointer);
+                // childPidl 指向 directoryPidl 内部，必须在 BindToObject 之后才能释放父 PIDL
+                Marshal.FreeCoTaskMem(directoryPidl);
                 shellFolder = ComInterfaceFromPointer<IShellFolder>(folderPointer);
                 if (shellFolder == null)
                 {
@@ -493,7 +497,7 @@ internal static class WindowsShellContextMenuReader
                 return false;
             }
             menuHandle = CreatePopupMenu();
-            uint flags = isBackground ? (ContextMenuNormal | ContextMenuExplore) : ContextMenuNormal;
+            uint flags = ContextMenuNormal | ContextMenuExplore;
             if (contextMenu.QueryContextMenu(menuHandle, 0, CommandFirst, CommandLast, flags) < 0)
             {
                 return false;
@@ -531,7 +535,7 @@ internal static class WindowsShellContextMenuReader
             }
             if (initialized)
             {
-                CoUninitialize();
+                OleUninitialize();
             }
         }
     }
@@ -1097,6 +1101,12 @@ internal static class WindowsShellContextMenuReader
         public int X;
         public int Y;
     }
+
+    [DllImport("ole32.dll")]
+    private static extern int OleInitialize(IntPtr reserved);
+
+    [DllImport("ole32.dll")]
+    private static extern void OleUninitialize();
 
     [DllImport("ole32.dll")]
     private static extern int CoInitializeEx(IntPtr reserved, int apartmentType);

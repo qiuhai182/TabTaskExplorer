@@ -13,6 +13,13 @@ public interface IWindowHostService
     /// <param name="windowHandle">窗口原生句柄。</param>
     void ApplyToolWindow(IntPtr windowHandle);
 
+    /// <summary>
+    /// 给窗口附加 WS_EX_TOOLWINDOW 与 WS_EX_NOACTIVATE：不进入任务栏 / Alt+Tab，点击不夺取前台焦点。
+    /// 用于截图失败气泡等「可见但不打扰」的提示窗口。
+    /// </summary>
+    /// <param name="windowHandle">窗口原生句柄。</param>
+    void ApplyNoActivateWindow(IntPtr windowHandle);
+
     /// <summary>为当前进程设置显式 AppUserModelID；空值或平台不支持时静默忽略。</summary>
     /// <param name="appUserModelId">应用分组标识。</param>
     void SetAppUserModelId(string appUserModelId);

@@ -16,41 +16,55 @@ public class SftpTransferService : RemoteTransferServiceBase
     private readonly RemoteConnectionProfile profile;
     private readonly string credential;
     private readonly KnownHostStore? knownHosts;
+    private readonly Func<SshJumpChain?>? jumpChainFactory;
 
     /// <summary>使用连接配置与明文凭据创建传输服务；连接延迟到任务执行时建立。</summary>
     public SftpTransferService(RemoteConnectionProfile profile, string credential)
-        : this(profile, credential, null)
+        : this(profile, credential, null, null)
     {
     }
 
     /// <summary>创建传输服务并指定已知主机存储；传入后每次传输连接都会校验主机密钥。</summary>
     public SftpTransferService(RemoteConnectionProfile profile, string credential, KnownHostStore? knownHosts)
+        : this(profile, credential, knownHosts, null)
+    {
+    }
+
+    /// <summary>创建传输服务并指定跳板链工厂；传输连接与终端、远程文件夹走同一套逐跳链路。</summary>
+    public SftpTransferService(RemoteConnectionProfile profile, string credential, KnownHostStore? knownHosts,
+        Func<SshJumpChain?>? jumpChainFactory)
     {
         this.profile = profile;
         this.credential = credential;
         this.knownHosts = knownHosts;
+        this.jumpChainFactory = jumpChainFactory;
     }
 
     /// <summary>建立本次任务专用的 SFTP 连接。</summary>
     protected override IRemoteTransferConnection OpenConnection()
     {
-        return new SftpTransferConnection(this.profile, this.credential, this.knownHosts);
+        return new SftpTransferConnection(this.profile, this.credential, this.knownHosts, this.jumpChainFactory);
     }
 
     /// <summary>单任务 SFTP 连接：任务结束即释放。</summary>
     private class SftpTransferConnection : IRemoteTransferConnection
     {
         private readonly SftpClient client;
+        private readonly SshJumpChain? chain;
 
         /// <summary>建立并校验 SFTP 连接。</summary>
-        public SftpTransferConnection(RemoteConnectionProfile profile, string credential, KnownHostStore? knownHosts)
+        public SftpTransferConnection(RemoteConnectionProfile profile, string credential, KnownHostStore? knownHosts,
+            Func<SshJumpChain?>? jumpChainFactory)
         {
             string keyType = string.Empty;
             string actualFingerprint = string.Empty;
             string expectedFingerprint = string.Empty;
             bool unknown = false;
             bool mismatch = false;
-            ConnectionInfo info = SshSessionFactory.BuildConnectionInfo(profile, credential);
+            this.chain = jumpChainFactory == null ? null : jumpChainFactory();
+            ConnectionInfo info = this.chain == null
+                ? SshSessionFactory.BuildConnectionInfo(profile, credential)
+                : this.chain.TargetInfo;
             this.client = new SftpClient(info);
             this.client.KeepAliveInterval = TimeSpan.FromSeconds(Math.Max(profile.KeepAliveSeconds, 5));
             if (knownHosts != null)
@@ -83,6 +97,10 @@ public class SftpTransferService : RemoteTransferServiceBase
             catch (Exception error)
             {
                 this.client.Dispose();
+                if (this.chain != null)
+                {
+                    this.chain.Dispose();
+                }
                 if (unknown)
                 {
                     throw new HostKeyUnknownException(profile.Host, profile.GetEffectivePort(), keyType,
@@ -98,6 +116,10 @@ public class SftpTransferService : RemoteTransferServiceBase
             if (!this.client.IsConnected)
             {
                 this.client.Dispose();
+                if (this.chain != null)
+                {
+                    this.chain.Dispose();
+                }
                 throw new InvalidOperationException("SFTP 连接失败：服务器无响应");
             }
         }
@@ -182,6 +204,10 @@ public class SftpTransferService : RemoteTransferServiceBase
                 // 忽略断开异常
             }
             this.client.Dispose();
+            if (this.chain != null)
+            {
+                this.chain.Dispose();
+            }
         }
     }
 }

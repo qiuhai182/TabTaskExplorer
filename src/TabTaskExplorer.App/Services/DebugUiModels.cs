@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using TabTaskExplorer.App.Services.Tasks;
 
 namespace TabTaskExplorer.App.Services;
 
@@ -32,6 +33,24 @@ public class DebugUiState
 
     /// <summary>是否显示文件扩展名（与桌面设置同步）。</summary>
     public bool ShowFileExtensions { get; set; }
+
+    /// <summary>文件列表可见列（与桌面共用 AppSettings）。</summary>
+    public string FileVisibleColumns { get; set; } = "Name,Modified,Type,Size,Attributes";
+
+    /// <summary>文件列表列宽（含勾选框与图标列，逗号分隔像素）。</summary>
+    public string FileColumnWidths { get; set; } = string.Empty;
+
+    /// <summary>文件列表紧凑模式。</summary>
+    public bool FileCompactMode { get; set; }
+
+    /// <summary>文件列表共享排序字段。</summary>
+    public string FileSortField { get; set; } = "Name";
+
+    /// <summary>文件列表共享排序方向。</summary>
+    public bool FileSortAscending { get; set; } = true;
+
+    /// <summary>统一任务中心快照（本地任务在前，远程传输映射在后）。</summary>
+    public List<FileTaskSnapshot> Tasks { get; } = new List<FileTaskSnapshot>();
 
     /// <summary>全部标签页（与桌面标签条同序）。</summary>
     public List<DebugTabState> Tabs { get; } = new List<DebugTabState>();
@@ -379,6 +398,25 @@ public class DebugTabState
     public string StartupEnvironmentText { get; set; } = string.Empty;
 }
 
+/// <summary>文件列表列配置：网页端读写，桌面端应用后共享同一份 AppSettings。</summary>
+public class FileColumnConfig
+{
+    /// <summary>可见列标识（Name/Modified/Type/Size/Attributes）。</summary>
+    public string VisibleColumns { get; set; } = "Name,Modified,Type,Size,Attributes";
+
+    /// <summary>列宽（逗号分隔像素，含勾选框与图标列）。</summary>
+    public string ColumnWidths { get; set; } = string.Empty;
+
+    /// <summary>紧凑模式。</summary>
+    public bool CompactMode { get; set; }
+
+    /// <summary>排序字段。</summary>
+    public string SortField { get; set; } = "Name";
+
+    /// <summary>排序是否升序。</summary>
+    public bool SortAscending { get; set; } = true;
+}
+
 /// <summary>待用户确认的主机密钥信息（网页端据此展示确认对话框）。</summary>
 public class DebugPendingHostKey
 {
@@ -408,6 +446,9 @@ public class DebugPendingHostKey
 
     /// <summary>可执行的确认动作名称。</summary>
     public string TrustAction { get; set; } = "connhostkeytrust";
+
+    /// <summary>跳板序号：0 表示目标主机，1..3 表示第几跳跳板机。</summary>
+    public int HopIndex { get; set; }
 }
 
 /// <summary>系统启动项镜像行。</summary>
@@ -526,8 +567,39 @@ public class DebugConnection
     /// <summary>列表展示摘要：协议 用户名@主机:端口。</summary>
     public string Summary { get; set; } = string.Empty;
 
+    /// <summary>跳板链摘要：跳板1 → 跳板2 → 目标；直连为空字符串。</summary>
+    public string JumpSummary { get; set; } = string.Empty;
+
+    /// <summary>跳板链（仅包含非敏感字段与“是否已保存凭据”，供网页端编辑表单回填）。</summary>
+    public List<DebugJumpHop> JumpHops { get; } = new List<DebugJumpHop>();
+
     /// <summary>是否为当前选中的连接。</summary>
     public bool Selected { get; set; }
+}
+
+/// <summary>跳板节点镜像：不含明文或密文凭据，只暴露是否已保存密码。</summary>
+public class DebugJumpHop
+{
+    /// <summary>跳板主机地址。</summary>
+    public string Host { get; set; } = string.Empty;
+
+    /// <summary>跳板端口；0 表示 22。</summary>
+    public int Port { get; set; }
+
+    /// <summary>跳板登录用户名。</summary>
+    public string Username { get; set; } = string.Empty;
+
+    /// <summary>认证方式：Password / PrivateKey。</summary>
+    public string AuthType { get; set; } = "Password";
+
+    /// <summary>私钥路径。</summary>
+    public string PrivateKeyPath { get; set; } = string.Empty;
+
+    /// <summary>是否已保存凭据（网页端据此提示“留空保持”）。</summary>
+    public bool HasSecret { get; set; }
+
+    /// <summary>跳序展示文字，例如“第 1 跳”。</summary>
+    public string IndexText { get; set; } = string.Empty;
 }
 
 /// <summary>进程监控镜像行。</summary>
@@ -675,6 +747,12 @@ public class DebugFileRow
 
     /// <summary>修改日期。</summary>
     public string Modified { get; set; } = string.Empty;
+
+    /// <summary>属性列文字（只读/隐藏/系统/存档，逗号分隔）。</summary>
+    public string Attributes { get; set; } = string.Empty;
+
+    /// <summary>预览分类：image/text/pdf/audio/video/other（桌面与网页共用判定）。</summary>
+    public string PreviewKind { get; set; } = "other";
 
     /// <summary>是否被勾选（与桌面复选框同构）。</summary>
     public bool IsSelected { get; set; }

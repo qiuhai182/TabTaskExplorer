@@ -143,6 +143,11 @@ public class ConnectionManager
         {
             throw new ArgumentNullException(nameof(profile));
         }
+        string? jumpError = profile.ValidateJumpChain();
+        if (jumpError != null)
+        {
+            throw new ArgumentException(jumpError, nameof(profile));
+        }
         profile.Id = Guid.NewGuid().ToString("N");
         DateTime now = DateTime.Now;
         profile.CreatedTime = now;
@@ -160,6 +165,11 @@ public class ConnectionManager
         if (profile == null)
         {
             throw new ArgumentNullException(nameof(profile));
+        }
+        string? jumpError = profile.ValidateJumpChain();
+        if (jumpError != null)
+        {
+            throw new ArgumentException(jumpError, nameof(profile));
         }
         List<RemoteConnectionProfile> all = new List<RemoteConnectionProfile>(this.store.LoadAll());
         for (int index = 0; index < all.Count; index++)
@@ -210,6 +220,35 @@ public class ConnectionManager
             return string.Empty;
         }
         return this.protector.Unprotect(profile.ProtectedSecret);
+    }
+
+    /// <summary>加密写入指定跳板的凭据；只更新内存字段，调用方保存连接配置后才会落盘。</summary>
+    public void SetJumpSecret(RemoteConnectionProfile profile, int hopIndex, string plaintextSecret)
+    {
+        if (profile == null)
+        {
+            throw new ArgumentNullException(nameof(profile));
+        }
+        if (profile.JumpHops == null || hopIndex < 0 || hopIndex >= profile.JumpHops.Count)
+        {
+            throw new ArgumentOutOfRangeException(nameof(hopIndex));
+        }
+        profile.JumpHops[hopIndex].ProtectedSecret = this.protector.Protect(plaintextSecret ?? string.Empty);
+    }
+
+    /// <summary>读取指定跳板的明文凭据；未配置时返回空字符串。</summary>
+    public string GetJumpSecret(RemoteConnectionProfile profile, int hopIndex)
+    {
+        if (profile == null || profile.JumpHops == null || hopIndex < 0 || hopIndex >= profile.JumpHops.Count)
+        {
+            return string.Empty;
+        }
+        string protectedSecret = profile.JumpHops[hopIndex].ProtectedSecret;
+        if (string.IsNullOrEmpty(protectedSecret))
+        {
+            return string.Empty;
+        }
+        return this.protector.Unprotect(protectedSecret);
     }
 
     /// <summary>测试连接可达性。</summary>
@@ -316,6 +355,10 @@ public class ConnectionManager
         foreach (RemoteConnectionProfile profile in incoming)
         {
             if (profile == null || string.IsNullOrEmpty(profile.Id))
+            {
+                continue;
+            }
+            if (profile.ValidateJumpChain() != null)
             {
                 continue;
             }

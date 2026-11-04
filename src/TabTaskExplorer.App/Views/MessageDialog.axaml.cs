@@ -2,6 +2,7 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using TabTaskExplorer.App.Services;
+using TabTaskExplorer.App.Services.Tasks;
 
 namespace TabTaskExplorer.App.Views;
 
@@ -26,6 +27,18 @@ public partial class MessageDialog : Window
     /// <summary>是否为「确认 / 取消」二选一模式（此时确定按钮代表确认）。</summary>
     private bool confirmMode;
 
+    /// <summary>是否为任务冲突处理模式（同名文件二选一 / 同名文件夹四选一）。</summary>
+    private bool conflictMode;
+
+    /// <summary>冲突模式下的选择；默认取消任务，关闭窗口也按取消处理。</summary>
+    private FileConflictAction conflictAction = FileConflictAction.Cancel;
+
+    /// <summary>冲突模式下四个按钮分别写回的动作。</summary>
+    private FileConflictAction okAction = FileConflictAction.Skip;
+    private FileConflictAction saveAction = FileConflictAction.Skip;
+    private FileConflictAction dontSaveAction = FileConflictAction.Skip;
+    private FileConflictAction cancelAction = FileConflictAction.Cancel;
+
     /// <summary>构造消息窗。</summary>
     public MessageDialog()
     {
@@ -38,6 +51,11 @@ public partial class MessageDialog : Window
     /// <summary>弹出消息提示并等待用户确认。</summary>
     public static void Show(Window? owner, string title, string message)
     {
+        if (!Avalonia.Threading.Dispatcher.UIThread.CheckAccess())
+        {
+            Avalonia.Threading.Dispatcher.UIThread.Post(() => Show(owner, title, message));
+            return;
+        }
         MessageDialog dialog = new MessageDialog();
         dialog.Title = title;
         dialog.MessageText.Text = message;
@@ -54,6 +72,12 @@ public partial class MessageDialog : Window
     /// <summary>弹出「保存 / 不保存 / 取消」确认框（用于关闭含有未保存更改的编辑器）。</summary>
     public static async Task<SavePromptChoice> ConfirmSaveAsync(Window? owner, string fileName)
     {
+        if (!Avalonia.Threading.Dispatcher.UIThread.CheckAccess())
+        {
+            Task<SavePromptChoice> inner = Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(
+                new Func<Task<SavePromptChoice>>(() => ConfirmSaveAsync(owner, fileName)));
+            return await inner;
+        }
         MessageDialog dialog = new MessageDialog();
         dialog.Title = "未保存的更改";
         dialog.MessageText.Text = "文件「" + fileName + "」有未保存的更改，是否保存？";
@@ -79,6 +103,12 @@ public partial class MessageDialog : Window
     public static async Task<bool> ConfirmAsync(Window? owner, string title, string message,
         string confirmText, string cancelText)
     {
+        if (!Avalonia.Threading.Dispatcher.UIThread.CheckAccess())
+        {
+            Task<bool> inner = Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(
+                new Func<Task<bool>>(() => ConfirmAsync(owner, title, message, confirmText, cancelText)));
+            return await inner;
+        }
         MessageDialog dialog = new MessageDialog();
         dialog.confirmMode = true;
         dialog.Title = title;
@@ -97,9 +127,84 @@ public partial class MessageDialog : Window
         return dialog.choice == SavePromptChoice.Save;
     }
 
+    /// <summary>
+    /// 任务冲突询问：同名文件二选一（替换 / 改名共存），同名文件夹四选一（合并 / 替换 / 逐项处理 / 改名共存），
+    /// 可勾选「本批统一按此处理」；文件夹对话框关闭窗口按取消任务处理。
+    /// </summary>
+    public static async Task<(FileConflictAction Action, bool ApplyToAll)> AskTaskConflictAsync(
+        Window? owner, string title, string message, bool isDirectory)
+    {
+        // 必须从界面线程发起：后台线程调用时先投递到 UI 线程再弹窗
+        if (!Avalonia.Threading.Dispatcher.UIThread.CheckAccess())
+        {
+            Task<(FileConflictAction Action, bool ApplyToAll)> inner =
+                Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(
+                    new Func<Task<(FileConflictAction Action, bool ApplyToAll)>>(
+                        () => AskTaskConflictAsync(owner, title, message, isDirectory)));
+            return await inner;
+        }
+        MessageDialog dialog = new MessageDialog();
+        dialog.conflictMode = true;
+        dialog.Title = title;
+        dialog.MessageText.Text = message;
+        dialog.ApplyAllCheck.IsVisible = true;
+        if (isDirectory)
+        {
+            dialog.okAction = FileConflictAction.Merge;
+            dialog.saveAction = FileConflictAction.Overwrite;
+            dialog.dontSaveAction = FileConflictAction.PerItem;
+            dialog.cancelAction = FileConflictAction.Rename;
+            dialog.OkButton.Content = "合并";
+            dialog.SaveButton.Content = "替换";
+            dialog.DontSaveButton.Content = "逐项处理";
+            dialog.CancelChoiceButton.Content = "改名共存";
+        }
+        else
+        {
+            dialog.okAction = FileConflictAction.Overwrite;
+            dialog.saveAction = FileConflictAction.Rename;
+            dialog.cancelAction = FileConflictAction.Cancel;
+            dialog.OkButton.Content = "替换";
+            dialog.SaveButton.Content = "改名共存";
+            dialog.CancelChoiceButton.Content = "取消任务";
+            dialog.DontSaveButton.IsVisible = false;
+        }
+        dialog.SaveButton.IsVisible = true;
+        dialog.DontSaveButton.IsVisible = isDirectory;
+        dialog.CancelChoiceButton.IsVisible = true;
+        dialog.Opened += delegate
+        {
+            // 默认聚焦更安全的「改名共存」
+            if (isDirectory)
+            {
+                dialog.CancelChoiceButton.Focus();
+            }
+            else
+            {
+                dialog.SaveButton.Focus();
+            }
+        };
+        TaskCompletionSource<bool> closed = new TaskCompletionSource<bool>();
+        dialog.Closed += delegate { closed.TrySetResult(true); };
+        if (owner != null)
+        {
+            dialog.ShowDialog(owner);
+        }
+        else
+        {
+            dialog.Show();
+        }
+        await closed.Task;
+        return (dialog.conflictAction, dialog.ApplyAllCheck.IsChecked == true);
+    }
+
     /// <summary>点击确定关闭。</summary>
     private void OnOkClick(object? sender, RoutedEventArgs e)
     {
+        if (this.conflictMode)
+        {
+            this.conflictAction = this.okAction;
+        }
         if (this.confirmMode)
         {
             this.choice = SavePromptChoice.Save;
@@ -111,6 +216,10 @@ public partial class MessageDialog : Window
 
     private void OnSaveChoiceClick(object? sender, RoutedEventArgs e)
     {
+        if (this.conflictMode)
+        {
+            this.conflictAction = this.saveAction;
+        }
         this.choice = SavePromptChoice.Save;
         UiLogger.Log("程序行为", "未保存更改处理点击保存：标题=" + this.Title
             + " 结果=成功，选择保存后关闭，未保存的更改将写入文件");
@@ -119,6 +228,10 @@ public partial class MessageDialog : Window
 
     private void OnDontSaveChoiceClick(object? sender, RoutedEventArgs e)
     {
+        if (this.conflictMode)
+        {
+            this.conflictAction = this.dontSaveAction;
+        }
         this.choice = SavePromptChoice.DontSave;
         UiLogger.Log("程序行为", "未保存更改处理点击不保存：标题=" + this.Title
             + " 结果=成功，选择不保存直接关闭，未保存的更改被丢弃");
@@ -127,6 +240,10 @@ public partial class MessageDialog : Window
 
     private void OnCancelChoiceClick(object? sender, RoutedEventArgs e)
     {
+        if (this.conflictMode)
+        {
+            this.conflictAction = this.cancelAction;
+        }
         this.choice = SavePromptChoice.Cancel;
         UiLogger.Log("程序行为", "未保存更改处理点击取消：标题=" + this.Title
             + " 结果=成功，已取消关闭操作，未保存的更改保持原样");

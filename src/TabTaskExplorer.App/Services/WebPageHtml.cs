@@ -1038,7 +1038,7 @@ function navOpen(target, selected) {
   return openPath(target);
 }
 function openPathAt(index) { return post('/api/open', { p: crumbPaths[index] || '' }); }
-function selectTab(index) { return post('/api/select', { i: index }); }
+function selectTab(index) { hideContextMenu(); return post('/api/select', { i: index }); }
 function closeTab(index) { return post('/api/tabs/close', { i: index }); }
 function newTab() { return post('/api/tabs/new', { p: '' }); }
 function goUp() { closeMenus(); return post('/api/up', {}); }
@@ -4102,6 +4102,14 @@ document.getElementById('ideText').addEventListener('keydown', function (event) 
 loadSession(false).then(loadPermissions).then(initMode).then(function () {
   connectEvents();
   return refresh();
+}).catch(function (error) {
+  // 本页仅在静态资源缺失时作为回退：初始化失败也要退化成一个可读提示，不产生未处理异常
+  try {
+    const notice = document.createElement('div');
+    notice.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:9;padding:6px 10px;background:#FFF4CE;color:#6B5200;font:12px "Microsoft YaHei",sans-serif;border-top:1px solid #E8D48B;';
+    notice.textContent = '内置回退页面：静态资源缺失，部分新功能不可用（' + (error && error.message ? error.message : error) + '）';
+    document.body.appendChild(notice);
+  } catch (ignored) { /* 提示失败不影响页面 */ }
 });
 // 事件推送为主；低频兜底刷新只在连接不可用时执行，避免空闲时反复拉取全量状态
 pollTimer = setInterval(function () {

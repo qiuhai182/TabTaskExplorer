@@ -106,6 +106,8 @@ public class App : Application
                 + " 网页端服务端口=" + mainViewModel.Settings.WebServicePort + " 界面主题=" + mainViewModel.Settings.Theme);
             Services.UiLogger.Log("程序启动", "日志文件路径=" + Services.UiLogger.FilePath);
 
+            // UI 线程看门狗：定位未来的界面阻塞（只写日志，不参与业务）
+            Services.UiWatchdog.Start();
             this.CreateTrayIcon();
             // 托盘菜单在创建后才存在，此处再同步一次开机自启的真实状态文字
             this.SyncTrayAutoStartState();
@@ -580,14 +582,39 @@ public class App : Application
         this.SyncTrayAutoStartState();
     }
 
-    /// <summary>托盘菜单：真正退出并保存会话（多窗口时逐个强制关闭）。</summary>
+    /// <summary>
+    /// 托盘菜单：真正退出并保存会话（多窗口时逐个强制关闭）。
+    /// 同时启动独立线程看门狗：若界面线程 1.5 秒内仍未完成退出，直接 Environment.Exit，避免界面卡死时无法退出。
+    /// </summary>
     public void OnTrayExitClick(object? sender, EventArgs e)
     {
         List<MainWindow> openWindows = new List<MainWindow>(WindowRegistry.GetAllWindows());
         Services.UiLogger.Log("程序退出", "托盘菜单选择退出：保存会话后关闭全部窗口 窗口总数=" + openWindows.Count);
-        foreach (MainWindow window in openWindows)
+        System.Threading.Thread watchdog = new System.Threading.Thread(delegate
         {
-            window.ForceClose();
+            System.Threading.Thread.Sleep(1500);
+            Services.UiLogger.Log("程序退出", "托盘退出看门狗：界面线程 1.5 秒内未完成退出 结果=执行强制结束进程");
+            Environment.Exit(0);
+        });
+        watchdog.IsBackground = true;
+        watchdog.Name = "托盘退出看门狗";
+        watchdog.Start();
+        if (Avalonia.Threading.Dispatcher.UIThread.CheckAccess())
+        {
+            foreach (MainWindow window in openWindows)
+            {
+                window.ForceClose();
+            }
+        }
+        else
+        {
+            Avalonia.Threading.Dispatcher.UIThread.Post(delegate
+            {
+                foreach (MainWindow window in openWindows)
+                {
+                    window.ForceClose();
+                }
+            });
         }
     }
 

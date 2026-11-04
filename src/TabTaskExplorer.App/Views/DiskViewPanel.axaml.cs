@@ -441,7 +441,16 @@ public partial class DiskViewPanel : UserControl
             host.IsVisible = false;
             return;
         }
-        IReadOnlyList<SystemContextMenuEntry> entries = service.EnumerateShellMenu(targetPath, isBackground);
+        IReadOnlyList<SystemContextMenuEntry> entries;
+        UiWatchdog.EnterStage("Shell 菜单枚举");
+        try
+        {
+            entries = service.EnumerateShellMenu(targetPath, isBackground);
+        }
+        finally
+        {
+            UiWatchdog.LeaveStage("Shell 菜单枚举");
+        }
         if (entries.Count == 0)
         {
             host.IsVisible = false;
@@ -454,30 +463,10 @@ public partial class DiskViewPanel : UserControl
             + " 顶层条目数=" + entries.Count + " 结果=成功，已加载系统项与第三方扩展");
     }
 
-    /// <summary>递归把系统条目（含子菜单与分隔线）加入菜单集合。</summary>
+    /// <summary>递归把系统条目（含子菜单与分隔线）加入菜单集合；复用统一的菜单项构建器保留图标、勾选、快捷键与盾牌。</summary>
     private void AppendShellEntries(ItemCollection target, IReadOnlyList<SystemContextMenuEntry> entries)
     {
-        foreach (SystemContextMenuEntry entry in entries)
-        {
-            if (entry.IsSeparator)
-            {
-                target.Add(new Separator());
-                continue;
-            }
-            MenuItem item = new MenuItem();
-            item.Header = entry.DisplayName;
-            item.IsEnabled = entry.IsEnabled;
-            if (entry.Children.Count > 0)
-            {
-                this.AppendShellEntries(item.Items, entry.Children);
-            }
-            else
-            {
-                item.DataContext = entry;
-                item.Click += this.OnDiskSystemMenuEntryClick;
-            }
-            target.Add(item);
-        }
+        SystemMenuUiBuilder.Append(target, entries, this.OnDiskSystemMenuEntryClick);
     }
 
     /// <summary>点击注入的系统菜单项：以当前菜单的目标路径唤起对应外壳命令。</summary>

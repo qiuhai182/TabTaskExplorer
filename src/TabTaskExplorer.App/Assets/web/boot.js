@@ -24,6 +24,11 @@ function moveFocus(step, extend) {
 function handleKeyDown(event) {
   const target = event.target;
   if (event.key === 'Escape') {
+    // 预览层优先关闭，再处理 IDE 浮层与菜单
+    const previewPane = document.getElementById('previewPane');
+    if (previewPane && !previewPane.classList.contains('hidden')) { closePreview(); return; }
+    const taskPanel = document.getElementById('taskPanel');
+    if (taskPanel && !taskPanel.classList.contains('hidden')) { toggleTaskPanel(false); return; }
     // IDE 模式浮层优先关闭：确认弹窗 → 快速打开 → 查找面板
     if (!document.getElementById('idePrompt').classList.contains('hidden')) { idePromptChoice('cancel'); return; }
     if (state && state.isIdeMode) {
@@ -81,12 +86,7 @@ function handleKeyDown(event) {
   else if (event.key === ' ' && focusIndex >= 0) {
     event.preventDefault();
     const row = currentRows[focusIndex];
-    if (row) {
-      if (checked.has(row.fullPath)) { checked.delete(row.fullPath); } else { checked.add(row.fullPath); }
-      anchorIndex = focusIndex;
-      refreshSelectionDom();
-      sendCheck();
-    }
+    if (row) { previewPath(row.fullPath); }
   } else if (event.key === 'Enter' && focusIndex >= 0) {
     event.preventDefault();
     openTarget(currentRows[focusIndex]);

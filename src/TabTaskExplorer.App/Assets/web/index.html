@@ -52,6 +52,13 @@
         <div class="item" data-mode="Content" onclick="pickView('Content')"><span class="tick"></span>内容</div>
         <div class="sep"></div>
         <div class="item" id="itemExt" onclick="toggleExtensions()"><span class="tick" id="tickExt"></span>显示扩展名</div>
+        <div class="item" id="itemCompact" onclick="toggleCompactMode()"><span class="tick" id="tickCompact"></span>紧凑模式</div>
+        <div class="sep"></div>
+        <div class="item" data-filecol="Name" onclick="toggleFileColumn('Name')"><span class="tick" id="tickColName"></span>名称列</div>
+        <div class="item" data-filecol="Modified" onclick="toggleFileColumn('Modified')"><span class="tick" id="tickColModified"></span>修改日期列</div>
+        <div class="item" data-filecol="Type" onclick="toggleFileColumn('Type')"><span class="tick" id="tickColType"></span>类型列</div>
+        <div class="item" data-filecol="Size" onclick="toggleFileColumn('Size')"><span class="tick" id="tickColSize"></span>大小列</div>
+        <div class="item" data-filecol="Attributes" onclick="toggleFileColumn('Attributes')"><span class="tick" id="tickColAttributes"></span>属性列</div>
       </div>
     </div>
     <div class="dd">
@@ -72,6 +79,8 @@
     <span class="btn" id="btnRecycle" onclick="deleteChecked()">回收站</span>
     <span class="btn" id="btnHidden" onclick="clickBtn('btnHidden','togglehidden')"><span class="tick" id="tickHiddenBtn"></span>显示隐藏条目</span>
     <span class="btn" id="btnInfoPane" onclick="toggleInfoPane()"><span class="tick" id="tickInfoBtn"></span>显示详细信息窗格</span>
+    <span class="btn" id="btnPreview" onclick="previewChecked()">预览</span>
+    <span class="btn" id="btnTasks" onclick="toggleTaskPanel()">任务中心<span class="taskBadge" id="taskCount"></span></span>
     <span class="btn" id="btnRefresh" onclick="clickBtn('btnRefresh','refresh')">刷新</span>
   </div>
 
@@ -249,6 +258,26 @@
         <span class="btn" onclick="applyEncode()">执行转换</span>
       </div>
     </div>
+  </div>
+
+  <!-- 快速预览层：图片 / 文本 / PDF 提示 / 音视频占位，Esc 关闭 -->
+  <div class="previewPane hidden" id="previewPane">
+    <div class="previewHead">
+      <span class="previewTitle" id="previewTitle">快速预览</span>
+      <span class="previewClose" title="关闭 (Esc)" onclick="closePreview()">&times;</span>
+    </div>
+    <div class="previewBody" id="previewBody"></div>
+    <div class="previewMeta" id="previewMeta"></div>
+  </div>
+
+  <!-- 统一任务中心：本地复制/移动/删除与远程传输共用同一任务模型 -->
+  <div class="taskPanel hidden" id="taskPanel">
+    <div class="taskHead">
+      <span class="taskTitle">统一任务中心</span>
+      <span class="previewClose" title="关闭" onclick="toggleTaskPanel()">&times;</span>
+    </div>
+    <div class="taskList" id="taskList"></div>
+    <div class="taskFoot" id="taskFoot">本地复制 / 移动 / 删除与远程传输共用同一任务模型</div>
   </div>
 
   <!-- 行右键菜单（与桌面列表右键菜单同构） -->

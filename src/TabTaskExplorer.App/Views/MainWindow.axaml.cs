@@ -121,7 +121,7 @@ public partial class MainWindow : Window
         // 右键菜单单例：失焦、移动窗口、最小化、点击窗口内其他位置、按 Esc 时立即关闭并释放菜单窗口
         this.Deactivated += this.OnWindowDeactivatedForContextMenu;
         this.PositionChanged += this.OnWindowPositionChangedForContextMenu;
-        this.WindowStateChanged += this.OnWindowStateChangedForContextMenu;
+        this.PropertyChanged += this.OnWindowPropertyChangedForContextMenu;
         this.AddHandler(InputElement.PointerPressedEvent,
             new EventHandler<PointerPressedEventArgs>(this.OnWindowPointerPressedForContextMenu),
             RoutingStrategies.Tunnel, true);
@@ -216,10 +216,10 @@ public partial class MainWindow : Window
         this.CloseContextMenuFor("窗口位置变化");
     }
 
-    /// <summary>窗口最小化时关闭右键菜单。</summary>
-    private void OnWindowStateChangedForContextMenu(object? sender, EventArgs e)
+    /// <summary>窗口最小化时关闭右键菜单（Avalonia 12 没有 WindowStateChanged 事件，改为监听 WindowState 属性变化）。</summary>
+    private void OnWindowPropertyChangedForContextMenu(object? sender, AvaloniaPropertyChangedEventArgs e)
     {
-        if (this.WindowState == WindowState.Minimized)
+        if (e.Property == WindowStateProperty && this.WindowState == WindowState.Minimized)
         {
             this.CloseContextMenuFor("窗口最小化");
         }
@@ -2088,6 +2088,37 @@ public partial class MainWindow : Window
         await viewModel.PasteFromClipboardAsync(item.Path);
         UiLogger.Log("程序行为", "点击导航栏粘贴到该文件夹：导航条目=" + item.Name + " 目标目录=" + item.Path
             + " 结果=已请求把剪贴板条目粘贴到该目录（剪贴板为空或目录不可写时由界面提示）");
+    }
+
+    /// <summary>书签栏条目右键菜单「粘贴到该文件夹」：书签必须是文件夹。</summary>
+    private async void OnBookmarkMenuPasteClick(object? sender, RoutedEventArgs e)
+    {
+        MainWindowViewModel? viewModel = this.ViewModel;
+        if (viewModel == null)
+        {
+            UiLogger.Log("程序行为", "点击书签栏粘贴到该文件夹：主窗口视图模型=未取到 结果=失败，未粘贴");
+            return;
+        }
+        if (sender is not MenuItem menuItem || menuItem.DataContext is not QuickAccessItem item)
+        {
+            UiLogger.Log("程序行为", "点击书签栏粘贴到该文件夹：菜单项未关联书签 结果=失败，未粘贴");
+            return;
+        }
+        if (string.IsNullOrEmpty(item.Path))
+        {
+            UiLogger.Log("程序行为", "点击书签栏粘贴到该文件夹：书签=" + item.Name + " 目标=空 结果=失败，未粘贴");
+            return;
+        }
+        if (!Directory.Exists(item.Path))
+        {
+            viewModel.SelectedFileTab?.ShowMessage("该书签不是文件夹，无法作为粘贴目标：" + item.Name);
+            UiLogger.Log("程序行为", "点击书签栏粘贴到该文件夹：书签=" + item.Name + " 目标=" + item.Path
+                + " 结果=不是文件夹，已提示不可用");
+            return;
+        }
+        await viewModel.PasteFromClipboardAsync(item.Path);
+        UiLogger.Log("程序行为", "点击书签栏粘贴到该文件夹：书签=" + item.Name + " 目标=" + item.Path
+            + " 结果=已请求粘贴");
     }
 
     /// <summary>标签右键菜单：新建标签。</summary>

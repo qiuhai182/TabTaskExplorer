@@ -37,12 +37,25 @@
                    VerticalAlignment="Center" FontSize="11" Opacity="0.7" />
       </StackPanel>
       <StackPanel Orientation="Horizontal" Spacing="18">
-        <CheckBox Content="截图后复制到剪贴板" IsChecked="{Binding Settings.CaptureCopyToClipboard, Mode=TwoWay}"
-                  Click="OnCaptureOptionChanged" />
+        <CheckBox Content="截图后自动复制到剪贴板（已停用，复制请用产物历史按钮）"
+                  IsChecked="{Binding Settings.CaptureCopyToClipboard, Mode=TwoWay}"
+                  Click="OnCaptureOptionChanged"
+                  ToolTip.Tip="截图不再自动写剪贴板；需要复制时点击产物历史的「复制选中到剪贴板」或「复制最近一张」" />
         <CheckBox Content="完成后自动打开产物文件夹" IsChecked="{Binding Settings.CaptureOpenFolderAfter, Mode=TwoWay}"
                   Click="OnCaptureOptionChanged" />
-        <CheckBox Content="截图后打开标注编辑器" IsChecked="{Binding Settings.CaptureOpenEditorAfter, Mode=TwoWay}"
-                  Click="OnCaptureOptionChanged" />
+        <CheckBox Content="截图后自动打开标注编辑器（默认关闭）" IsChecked="{Binding Settings.CaptureOpenEditorAfter, Mode=TwoWay}"
+                  Click="OnCaptureOptionChanged"
+                  ToolTip.Tip="开启后截图完成会立即弹出编辑器窗口，可能盖住刚截取的内容；默认关闭，需要时在产物历史点「标注此图」" />
+        <CheckBox Content="截图时隐藏主窗口" IsChecked="{Binding Settings.CaptureHideMainWindow, Mode=TwoWay}"
+                  Click="OnCaptureOptionChanged"
+                  ToolTip.Tip="截图前临时隐藏本程序窗口，避免遮挡目标内容；截图后按原状态恢复且不激活" />
+        <CheckBox Content="贴图避开原截图区域" IsChecked="{Binding Settings.CapturePinAvoidSource, Mode=TwoWay}"
+                  Click="OnCaptureOptionChanged"
+                  ToolTip.Tip="贴图优先出现在选区右侧或下方，放不下才翻转；关闭后复用上次贴图位置" />
+        <CheckBox Content="截图完成后切到截图页并激活主窗口（默认开启）"
+                  IsChecked="{Binding Settings.CaptureActivateAfterCapture, Mode=TwoWay}"
+                  Click="OnCaptureOptionChanged"
+                  ToolTip.Tip="关闭后截图完成不激活主窗口，也不切换标签，仅保留系统托盘" />
         <CheckBox Content="包含鼠标指针" IsChecked="{Binding Settings.CaptureIncludeCursor, Mode=TwoWay}"
                   Click="OnCaptureOptionChanged" />
       </StackPanel>
@@ -80,6 +93,10 @@
       <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,6">
         <TextBlock Grid.Column="0" Text="产物历史" FontWeight="Medium" VerticalAlignment="Center" />
         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
+          <Button Content="复制选中到剪贴板" Click="OnCopySelectedClick"
+                  ToolTip.Tip="按 Ctrl / Shift 多选后批量复制：同时写入 PNG、CF_DIBV5、CF_DIB 位图与全部文件路径" />
+          <Button Content="复制最近一张" Click="OnCopyLatestClick"
+                  ToolTip.Tip="复制最新一条截图产物，不会自动复制" />
           <Button Content="打开产物文件夹" Click="OnOpenOutputFolderClick" />
           <Button Content="刷新" Click="OnRefreshHistoryClick" />
         </StackPanel>
@@ -95,6 +112,7 @@
                   <MenuItem Header="标注此图" Click="OnHistoryEditClick" />
                   <MenuItem Header="贴到屏幕" Click="OnHistoryPinClick" />
                   <MenuItem Header="打开产物文件夹" Click="OnHistoryOpenFolderClick" />
+                  <MenuItem Header="复制到剪贴板（图片+文件）" Click="OnHistoryCopyImageClick" />
                   <MenuItem Header="复制完整路径" Click="OnHistoryCopyPathClick" />
                   <MenuItem Header="删除" Click="OnHistoryDeleteClick" />
                 </ContextMenu>

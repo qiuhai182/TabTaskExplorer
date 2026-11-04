@@ -1,0 +1,39 @@
+﻿<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="TabTaskExplorer.App.Views.LogViewerWindow"
+        Title="TabTaskExplorer 日志查看器" Width="1120" Height="720" ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner">
+  <Grid RowDefinitions="Auto,*,Auto">
+    <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="8" Margin="12,10">
+      <TextBlock Text="最低级别" VerticalAlignment="Center" />
+      <ComboBox x:Name="LevelBox" Width="110" SelectionChanged="OnFilterChanged">
+        <ComboBoxItem Content="错误" />
+        <ComboBoxItem Content="警告" />
+        <ComboBoxItem Content="信息" />
+        <ComboBoxItem Content="调试" />
+        <ComboBoxItem Content="跟踪" />
+      </ComboBox>
+      <TextBlock Text="分类" VerticalAlignment="Center" />
+      <ComboBox x:Name="CategoryBox" Width="120" SelectionChanged="OnFilterChanged" />
+      <TextBox x:Name="KeywordBox" Width="240" PlaceholderText="关键字搜索" TextChanged="OnKeywordChanged" />
+      <CheckBox x:Name="FollowToggle" Content="跟随最新" IsChecked="True" VerticalAlignment="Center" />
+      <Button Content="刷新" Click="OnRefreshClick" />
+      <Button Content="复制选中" Click="OnCopySelectedClick" />
+      <Button Content="导出当前视图" Click="OnExportClick" />
+      <Button Content="打开日志目录" Click="OnOpenDirectoryClick" />
+    </StackPanel>
+
+    <ListBox Grid.Row="1" x:Name="LogList" Margin="12,0" SelectionMode="Multiple"
+             ScrollViewer.HorizontalScrollBarVisibility="Auto"
+             ScrollViewer.VerticalScrollBarVisibility="Auto">
+      <ListBox.ItemTemplate>
+        <DataTemplate>
+          <TextBlock Text="{Binding Text}" Foreground="{Binding Foreground}"
+                     FontFamily="Cascadia Code, Consolas, DejaVu Sans Mono, monospace" FontSize="12" />
+        </DataTemplate>
+      </ListBox.ItemTemplate>
+    </ListBox>
+
+    <TextBlock x:Name="StatusText" Grid.Row="2" Margin="12,8,12,10" Opacity="0.7" TextWrapping="Wrap" />
+  </Grid>
+</Window>

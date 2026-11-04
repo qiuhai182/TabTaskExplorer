@@ -11,6 +11,7 @@ function render() {
   document.body.className = (state.theme === 'Light') ? '' : 'dark';
   updateModeButton(state.followDesktop);
   renderTabs();
+  renderTasks();
   applyIdeLayout(!!state.isIdeMode);
   if (state.isIdeMode) {
     // IDE 模式：隐藏资源管理器布局，渲染 IDE 外壳（与桌面 IdeShellView 同构）
@@ -147,7 +148,120 @@ function renderToolbarState() {
   document.getElementById('tickExt').innerHTML = state.showFileExtensions ? '&#10003;' : '';
   document.getElementById('tickHiddenBtn').innerHTML = state.showHiddenFiles ? '&#10003;' : '';
   document.getElementById('tickInfoBtn').innerHTML = (currentTab && currentTab.showInfoPane) ? '&#10003;' : '';
+  document.getElementById('tickCompact').innerHTML = state.fileCompactMode ? '&#10003;' : '';
+  const visibleColumns = parseFileColumns(state.fileVisibleColumns);
+  const tickMap = {
+    Name: 'tickColName', Modified: 'tickColModified', Type: 'tickColType',
+    Size: 'tickColSize', Attributes: 'tickColAttributes'
+  };
+  for (const name in tickMap) {
+    const tick = document.getElementById(tickMap[name]);
+    if (tick) { tick.innerHTML = visibleColumns.indexOf(name) >= 0 ? '&#10003;' : ''; }
+  }
   document.getElementById('btnHidden').classList.toggle('disabled', !permissions.canModify);
+}
+
+// ======== 共享列配置与缩略图 ========
+
+const FILE_COLUMN_DEFS = [
+  { id: 'Name', label: '名称', widthIndex: 2, defaultWidth: 480, sortable: true },
+  { id: 'Modified', label: '修改日期', widthIndex: 3, defaultWidth: 140, sortable: true },
+  { id: 'Type', label: '类型', widthIndex: 4, defaultWidth: 130, sortable: true },
+  { id: 'Size', label: '大小', widthIndex: 5, defaultWidth: 110, sortable: true },
+  { id: 'Attributes', label: '属性', widthIndex: 6, defaultWidth: 100, sortable: true }
+];
+
+const DEFAULT_FILE_WIDTHS = [30, 26, 480, 140, 130, 110, 100];
+
+function parseFileColumns(text) {
+  const names = [];
+  for (const part of (text || '').split(',')) {
+    const name = part.trim();
+    if (['Name', 'Modified', 'Type', 'Size', 'Attributes'].indexOf(name) >= 0 && names.indexOf(name) < 0) {
+      names.push(name);
+    }
+  }
+  return names;
+}
+
+function parseFileWidths(text) {
+  const widths = DEFAULT_FILE_WIDTHS.slice();
+  const parts = (text || '').split(',');
+  for (let i = 0; i < widths.length && i < parts.length; i++) {
+    const value = Number(parts[i]);
+    if (isFinite(value) && value >= 0 && value <= 4000) { widths[i] = value; }
+  }
+  return widths;
+}
+
+function thumbSupported(row) {
+  return row && !row.isDirectory && ['image', 'video', 'font'].indexOf(row.iconCategory) >= 0;
+}
+
+function thumbBoxHtml(row, size, extraClass, iconSize) {
+  const pixels = iconSize || 16;
+  if (!thumbSupported(row)) {
+    return '<span class="fIco">' + fileIcon(row.iconCategory, row.iconColor, pixels) + '</span>';
+  }
+  return '<span class="thumbBox ' + (extraClass || '') + '" data-thumb-path="' + escAttr(row.fullPath)
+    + '" data-thumb-size="' + size + '" title="' + escAttr(row.fullPath) + '">'
+    + fileIcon(row.iconCategory, row.iconColor, pixels) + '</span>';
+}
+
+const thumbObjectUrls = new Map();
+const thumbFailed = new Set();
+let thumbObserver = null;
+
+function hydrateThumbnails(root) {
+  const scope = root || document;
+  const boxes = Array.prototype.slice.call(scope.querySelectorAll('.thumbBox[data-thumb-path]'));
+  for (const box of boxes) {
+    if (box.__thumbStarted) { continue; }
+    box.__thumbStarted = true;
+    if (!('IntersectionObserver' in window)) { loadThumbnail(box); continue; }
+    if (!thumbObserver) {
+      thumbObserver = new IntersectionObserver(function (entries) {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            thumbObserver.unobserve(entry.target);
+            loadThumbnail(entry.target);
+          }
+        }
+      }, { rootMargin: '120px' });
+    }
+    thumbObserver.observe(box);
+  }
+}
+
+async function loadThumbnail(box) {
+  const path = box.getAttribute('data-thumb-path');
+  const size = Number(box.getAttribute('data-thumb-size')) || 96;
+  const key = size + '|' + path;
+  if (thumbFailed.has(key)) { box.classList.add('thumbFailed'); return; }
+  let objectUrl = thumbObjectUrls.get(key);
+  if (!objectUrl) {
+    const params = new URLSearchParams({ path: path, size: String(size) });
+    if (workspaceId) { params.set('w', workspaceId); }
+    try {
+      const response = await apiFetch('/api/thumb?' + params.toString());
+      if (!response.ok) { throw new Error('thumb ' + response.status); }
+      const blob = await response.blob();
+      objectUrl = URL.createObjectURL(blob);
+      thumbObjectUrls.set(key, objectUrl);
+    } catch (error) {
+      thumbFailed.add(key);
+      box.classList.add('thumbFailed');
+      return;
+    }
+  }
+  if (!document.contains(box)) { return; }
+  const image = document.createElement('img');
+  image.className = 'rowThumbImg';
+  image.alt = '';
+  image.onload = function () { box.classList.add('thumbLoaded'); };
+  image.onerror = function () { box.classList.add('thumbFailed'); };
+  image.src = objectUrl;
+  box.appendChild(image);
 }
 
 function syncCheckedFromState() {
@@ -164,6 +278,7 @@ function syncCheckedFromState() {
 
 function renderContent(tab) {
   const signature = tab.index + '|' + tab.tabType + '|' + tab.viewMode + '|' + tab.showInfoPane
+    + '|' + (state.fileVisibleColumns || '') + '|' + (state.fileColumnWidths || '') + '|' + (state.fileCompactMode ? '1' : '0')
     + '|' + permissions.canCreateDelete + '|' + permissions.canModify + '|' + JSON.stringify(tab.rows)
     + '|' + JSON.stringify(Array.from(checked)) + '|' + tab.todo + '|' + tab.inProgress + '|' + tab.done
     + '|' + JSON.stringify(tab.connections) + '|' + tab.selectedConnectionId + '|' + tab.summaryText
@@ -218,10 +333,16 @@ function renderContent(tab) {
     procFocusValue = activeElement.value;
   }
   document.getElementById('contentMain').innerHTML = html;
+  if (state.fileCompactMode && (tab.tabType === 'file' || tab.tabType === 'search')) {
+    document.getElementById('contentMain').classList.add('compact');
+  } else {
+    document.getElementById('contentMain').classList.remove('compact');
+  }
   if (tab.tabType === 'process') {
     syncProcessControls(tab, procFocusId, procFocusValue);
     drawProcessTrend(tab);
   }
+  hydrateThumbnails(document.getElementById('contentMain'));
   applyFocusHighlight();
 }
 
@@ -252,6 +373,9 @@ function tableOpenHtml(key, defaults) {
 function renderTable(tab) {
   const isSearch = tab.tabType === 'search';
   const mode = tab.viewMode || 'Details';
+  if (!isSearch && mode === 'Details') {
+    return renderFileDetailsTable(tab);
+  }
   const colKey = (isSearch ? 'search' : 'file') + ':' + mode;
   let defaults;
   let columns = '';
@@ -285,14 +409,68 @@ function renderTable(tab) {
     const selected = checked.has(path);
     html += '<tr class="row' + (selected ? ' checked' : '') + '" data-i="' + rowIndex + '">'
       + '<td><input type="checkbox" data-check="' + rowIndex + '"' + (selected ? ' checked' : '') + '></td>'
-      + '<td class="name"><span class="fIco" style="width:16px;height:16px">' + fileIcon(row.iconCategory, row.iconColor, 16) + '</span>'
+      + '<td class="name"><span class="rowThumbSlot">' + thumbBoxHtml(row, 96) + '</span>'
       + '<span class="text ' + (row.isDirectory ? 'dir' : 'file') + '" title="' + esc(path) + '">' + esc(row.name) + '</span></td>';
-    if (mode === 'Details') {
-      html += '<td>' + esc(row.modified) + '</td>';
-      if (!isSearch) { html += '<td>' + esc(row.type) + '</td>'; }
-      html += '<td>' + esc(row.size) + '</td>';
-    } else if (mode === 'Content') {
+    if (mode === 'Content') {
       html += '<td>' + esc(row.type) + '</td>';
+    }
+    html += '</tr>';
+    rowIndex++;
+  }
+  html += '</table>';
+  return html;
+}
+
+// 详细信息：列可见性与列宽直接使用桌面共享设置；勾选框与图标列固定，其余列可拖动。
+function renderFileDetailsTable(tab) {
+  const widths = parseFileWidths(state.fileColumnWidths);
+  const visible = parseFileColumns(state.fileVisibleColumns);
+  const webWidths = [widths[0], widths[1]];
+  let columns = '<th data-fixed style="width:' + widths[0] + 'px"></th>'
+    + '<th data-fixed style="width:' + widths[1] + 'px"></th>';
+  for (const def of FILE_COLUMN_DEFS) {
+    if (visible.indexOf(def.id) < 0) { continue; }
+    const width = Math.max(40, widths[def.widthIndex] || def.defaultWidth);
+    webWidths.push(width);
+    if (def.sortable) {
+      columns += '<th class="sortable" onclick="clickBtn(null,\'sort\',\'' + def.id + '\')">' + def.label
+        + sortArrow(tab, def.id) + '</th>';
+    } else {
+      columns += '<th>' + def.label + '</th>';
+    }
+  }
+  let total = 0;
+  let colGroup = '';
+  for (const width of webWidths) {
+    total += width;
+    colGroup += '<col style="width:' + width + 'px">';
+  }
+  let html = '<table data-colkey="file:Details" style="width:' + total + 'px;max-width:100%"><colgroup>'
+    + colGroup + '</colgroup><tr>' + columns + '</tr>';
+  if (!tab.rows || tab.rows.length === 0) {
+    html += '<tr><td class="hint" colspan="' + (2 + visible.length) + '">空目录</td></tr>';
+  }
+  let rowIndex = 0;
+  for (const row of tab.rows) {
+    const path = row.fullPath;
+    const selected = checked.has(path);
+    html += '<tr class="row' + (selected ? ' checked' : '') + '" data-i="' + rowIndex + '">'
+      + '<td><input type="checkbox" data-check="' + rowIndex + '"' + (selected ? ' checked' : '') + '></td>'
+      + '<td class="iconCell">' + thumbBoxHtml(row, 96) + '</td>';
+    for (const def of FILE_COLUMN_DEFS) {
+      if (visible.indexOf(def.id) < 0) { continue; }
+      if (def.id === 'Name') {
+        html += '<td class="name"><span class="text ' + (row.isDirectory ? 'dir' : 'file')
+          + '" title="' + esc(path) + '">' + esc(row.name) + '</span></td>';
+      } else if (def.id === 'Modified') {
+        html += '<td>' + esc(row.modified) + '</td>';
+      } else if (def.id === 'Type') {
+        html += '<td>' + esc(row.type) + '</td>';
+      } else if (def.id === 'Size') {
+        html += '<td>' + esc(row.size) + '</td>';
+      } else if (def.id === 'Attributes') {
+        html += '<td class="attrs">' + esc(row.attributes || '') + '</td>';
+      }
     }
     html += '</tr>';
     rowIndex++;
@@ -315,7 +493,9 @@ function renderTiles(tab) {
     const selected = checked.has(row.fullPath);
     html += '<div class="tile' + (selected ? ' checked' : '') + '" data-i="' + rowIndex + '" style="width:' + width + 'px">'
       + '<input type="checkbox" class="ttick" data-check="' + rowIndex + '"' + (selected ? ' checked' : '') + '>'
-      + '<div class="ticon" style="width:' + iconSize + 'px;height:' + iconSize + 'px;margin:0 auto 2px">' + fileIcon(row.iconCategory, row.iconColor, iconSize) + '</div>'
+      + '<div class="ticon" style="width:' + iconSize + 'px;height:' + iconSize + 'px;margin:0 auto 2px">'
+      + thumbBoxHtml(row, mode === 'ExtraLargeIcons' ? 384 : (mode === 'LargeIcons' ? 192 : 96), 'tileThumb', iconSize)
+      + '</div>'
       + '<div class="tname" title="' + esc(row.fullPath) + '">' + esc(row.name) + '</div>';
     if (mode === 'Tile') { html += '<div class="ttype">' + esc(row.type) + '</div>'; }
     html += '</div>';

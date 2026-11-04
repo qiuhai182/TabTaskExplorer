@@ -292,15 +292,25 @@
               <Button Content="自动查找" Click="OnClearFfmpegPathClick" />
             </StackPanel>
             <StackPanel Orientation="Horizontal" Spacing="18" Margin="0,6,0,0">
-              <CheckBox Content="截图后复制到剪贴板" IsChecked="{Binding CaptureCopyToClipboard, Mode=TwoWay}" />
+              <CheckBox Content="允许快捷复制到剪贴板（不会自动复制）" IsChecked="{Binding CaptureCopyToClipboard, Mode=TwoWay}"
+                        ToolTip.Tip="截图不再自动写剪贴板；复制请使用截图录屏页产物历史的「复制选中到剪贴板」或「复制最近一张」" />
               <CheckBox Content="完成后自动打开产物文件夹标签" IsChecked="{Binding CaptureOpenFolderAfter, Mode=TwoWay}" />
-              <CheckBox Content="截图后打开标注编辑器" IsChecked="{Binding CaptureOpenEditorAfter, Mode=TwoWay}" />
+              <CheckBox Content="截图后自动打开标注编辑器（默认关闭）" IsChecked="{Binding CaptureOpenEditorAfter, Mode=TwoWay}" />
               <CheckBox Content="截图与录屏包含鼠标指针" IsChecked="{Binding CaptureIncludeCursor, Mode=TwoWay}" />
               <CheckBox Content="贴图窗口始终置顶" IsChecked="{Binding CapturePinTopmost, Mode=TwoWay}" />
             </StackPanel>
             <StackPanel Orientation="Horizontal" Spacing="18" Margin="0,6,0,0">
               <CheckBox Content="贴图截图保存产物（关闭后只贴图不落盘）"
                         IsChecked="{Binding CapturePinShotSaveFile, Mode=TwoWay}" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,6,0,0">
+              <TextBlock Text="截图失败提示" VerticalAlignment="Center" />
+              <ComboBox Width="200" SelectedIndex="{Binding CaptureFailureNoticeIndex, Mode=TwoWay}"
+                        ToolTip.Tip="托盘气泡为不抢焦点的无焦点浮层；仅日志没有任何界面提示；弹窗会激活主窗口并抢走前台焦点">
+                <ComboBoxItem Content="托盘气泡（默认，不抢焦点）" />
+                <ComboBoxItem Content="仅日志" />
+                <ComboBoxItem Content="弹窗（会抢焦点）" />
+              </ComboBox>
             </StackPanel>
             <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,6,0,0">
               <TextBlock Text="截图延迟" VerticalAlignment="Center" />
@@ -351,6 +361,27 @@
             <TextBlock Text="TabTaskExplorer v0.1" FontWeight="Medium" />
             <TextBlock TextWrapping="Wrap" Opacity="0.8"
                        Text="跨平台的 Windows 风格资源管理器 + 任务管理器二合一开源项目。当前为骨架版本，功能持续完善中。" />
+            <TextBlock Text="日志与诊断" FontWeight="Medium" Margin="0,8,0,0" />
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <TextBlock Text="日志最低级别" VerticalAlignment="Center" />
+              <ComboBox x:Name="LogLevelBox" Width="140">
+                <ComboBoxItem Content="跟踪" />
+                <ComboBoxItem Content="调试" />
+                <ComboBoxItem Content="信息" />
+                <ComboBoxItem Content="警告" />
+                <ComboBoxItem Content="错误" />
+              </ComboBox>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Button x:Name="OpenLogViewerButton" Content="打开日志查看器" Click="OnOpenLogViewerClick" />
+              <Button Content="打开日志目录" Click="OnOpenLogDirectoryClick" />
+              <Button x:Name="ExportDiagnosticsButton" Content="导出诊断包" Click="OnExportDiagnosticsClick" />
+            </StackPanel>
+            <TextBlock x:Name="LogDirectoryText" TextWrapping="Wrap" Opacity="0.7" />
+            <TextBlock x:Name="DiagnosticsStatusText" TextWrapping="Wrap" IsVisible="False"
+                       Foreground="{DynamicResource AccentGlyphBrush}" />
+            <TextBlock TextWrapping="Wrap" Opacity="0.7"
+                       Text="说明：日志按日期分文件写入，默认保留最近 7 份；级别设为警告或错误后，调试与信息级记录不再写入。修改级别后点击「确定」生效。" />
           </StackPanel>
         </Panel>
       </ScrollViewer>

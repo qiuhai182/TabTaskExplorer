@@ -180,6 +180,11 @@
             <DataTemplate>
               <Panel Margin="0,0,2,0">
                 <Button Classes="nav" Click="OnBookmarkItemClick">
+                  <Button.ContextMenu>
+                    <ContextMenu>
+                      <MenuItem Header="粘贴到该文件夹" Click="OnBookmarkMenuPasteClick" />
+                    </ContextMenu>
+                  </Button.ContextMenu>
                   <StackPanel Orientation="Horizontal" Spacing="5">
                     <views:FileTypeIcon Width="14" Height="14" Category="{Binding IconCategory}"
                                        AccentColor="{Binding IconColor}" VerticalAlignment="Center" />
@@ -253,7 +258,8 @@
           <TextBlock Text="剪切" VerticalAlignment="Center" Foreground="{DynamicResource ToolbarTextBrush}" />
         </StackPanel>
       </Button>
-      <Button Classes="nav tool" Click="OnToolbarPasteClick" ToolTip.Tip="粘贴到当前目录">
+      <Button Classes="nav tool" Click="OnToolbarPasteClick" ToolTip.Tip="粘贴到当前目录（剪贴板无文件时不可用）"
+              IsEnabled="{Binding CanPasteFromClipboard}">
         <StackPanel Orientation="Horizontal" Spacing="5">
           <views:VectorIcon Kind="paste" Width="14" Height="14" Thickness="1.6"
                             IconBrush="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />

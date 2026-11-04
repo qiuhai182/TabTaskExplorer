@@ -186,12 +186,20 @@ public partial class FileListPanel : UserControl
     /// <summary>上次实测到的纵向滚动条宽度，用于按实测值调整表头右边距并避免重复刷日志。</summary>
     private double lastScrollBarWidth = -1.0;
 
+    /// <summary>多选锚点：Shift 连选从此行开始。</summary>
+    private int selectionAnchorIndex = -1;
+
+    /// <summary>键盘焦点行：方向键、F2、Delete 以此为起点。</summary>
+    private int selectionFocusIndex = -1;
+
     public FileListPanel()
     {
         this.InitializeComponent();
         // 列表模板里的滚动条要等布局完成后才存在；图标视图的滚动条要等切换到图标视图后才创建，
         // 因此持续监听布局更新，把新出现的滚动条逐个改为常驻占位
         this.ListHost.LayoutUpdated += this.OnListHostLayoutUpdated;
+        this.Focusable = true;
+        this.AddHandler(InputElement.KeyDownEvent, this.OnFileViewKeyDown, RoutingStrategies.Tunnel, handledEventsToo: true);
         this.AddHandler(InputElement.PointerPressedEvent, this.OnPointerPressedForDrag, RoutingStrategies.Bubble, handledEventsToo: true);
         this.AddHandler(InputElement.PointerMovedEvent, this.OnPointerMovedForDrag, RoutingStrategies.Bubble, handledEventsToo: true);
         this.AddHandler(InputElement.PointerReleasedEvent, this.OnPointerReleasedForDrag, RoutingStrategies.Bubble, handledEventsToo: true);
@@ -202,6 +210,309 @@ public partial class FileListPanel : UserControl
         // 右键统一走下方既有的 Avalonia 自绘菜单（Option B）：不再拦截 ContextRequested 去弹原生菜单，
         // 避免“原生菜单 + 应用内菜单”同时出现以及连续右键叠加多层窗口。
         // 系统项与第三方扩展由 OnBackgroundMenuOpening / OnSystemMenuOpening 枚举后注入同一个菜单。
+    }
+
+    /// <summary>文件视图键盘入口：快速预览、方向键、Home/End、F2、Delete、Ctrl+C/X/V/A；输入框内的按键不拦截。</summary>
+    private void OnFileViewKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Source is TextBox)
+        {
+            return;
+        }
+        FileTabViewModel? viewModel = this.ViewModel;
+        if (viewModel == null)
+        {
+            return;
+        }
+        if (e.Key == Key.Escape)
+        {
+            if (QuickLookWindow.IsOpen)
+            {
+                QuickLookWindow.CloseCurrent();
+                e.Handled = true;
+                UiLogger.Log("程序行为", "快速预览关闭：触发方式=Esc 结果=已关闭预览窗");
+            }
+            return;
+        }
+        if (e.Key == Key.Space)
+        {
+            if (QuickLookWindow.IsOpen)
+            {
+                QuickLookWindow.CloseCurrent();
+                e.Handled = true;
+                UiLogger.Log("程序行为", "快速预览关闭：触发方式=空格 结果=已关闭预览窗");
+                return;
+            }
+            FileRow? selected = this.FirstSelectedRow();
+            if (selected == null)
+            {
+                return;
+            }
+            Window? owner = TopLevel.GetTopLevel(this) as Window;
+            QuickLookWindow.ShowFor(owner, selected.FullPath);
+            e.Handled = true;
+            UiLogger.Log("程序行为", "快速预览打开：文件=" + selected.FullPath + " 条目标识=文件路径 结果=已打开预览窗");
+            return;
+        }
+        bool control = e.KeyModifiers.HasFlag(KeyModifiers.Control);
+        bool shift = e.KeyModifiers.HasFlag(KeyModifiers.Shift);
+        if (control && e.Key == Key.C)
+        {
+            MainWindowViewModel? main = this.MainViewModel;
+            if (main != null)
+            {
+                main.CopyCheckedToClipboard();
+                e.Handled = true;
+                UiLogger.Log("程序行为", "键盘复制：组合键=Ctrl+C 结果=已把勾选条目放入剪贴板");
+            }
+            return;
+        }
+        if (control && e.Key == Key.X)
+        {
+            MainWindowViewModel? main = this.MainViewModel;
+            if (main != null)
+            {
+                main.CutCheckedToClipboard();
+                e.Handled = true;
+                UiLogger.Log("程序行为", "键盘剪切：组合键=Ctrl+X 结果=已把勾选条目放入剪贴板并标记剪切");
+            }
+            return;
+        }
+        if (control && e.Key == Key.V)
+        {
+            this.PasteFromKeyboard();
+            e.Handled = true;
+            return;
+        }
+        if (control && e.Key == Key.A)
+        {
+            viewModel.SelectAll();
+            viewModel.RefreshSelectionSummary();
+            this.UpdateInfoPane();
+            e.Handled = true;
+            UiLogger.Log("程序行为", "键盘全选：组合键=Ctrl+A 结果=已选中当前目录全部条目");
+            return;
+        }
+        if (e.Key == Key.F2)
+        {
+            this.RenameFocusedRow();
+            e.Handled = true;
+            return;
+        }
+        if (e.Key == Key.Delete)
+        {
+            viewModel.DeleteChecked();
+            viewModel.RefreshSelectionSummary();
+            this.UpdateInfoPane();
+            e.Handled = true;
+            UiLogger.Log("程序行为", "键盘删除：按键=Delete 结果=已提交删除勾选条目");
+            return;
+        }
+        if (e.Key == Key.Up || e.Key == Key.Down || e.Key == Key.Home || e.Key == Key.End)
+        {
+            int count = viewModel.VisibleRows.Count;
+            if (count <= 0)
+            {
+                return;
+            }
+            int current = this.selectionFocusIndex;
+            if (current < 0 || current >= count)
+            {
+                current = this.FirstSelectedIndex();
+            }
+            int target;
+            if (e.Key == Key.Home)
+            {
+                target = 0;
+            }
+            else if (e.Key == Key.End)
+            {
+                target = count - 1;
+            }
+            else if (e.Key == Key.Up)
+            {
+                target = current < 0 ? 0 : Math.Max(0, current - 1);
+            }
+            else
+            {
+                target = current < 0 ? 0 : Math.Min(count - 1, current + 1);
+            }
+            this.SelectRowAt(target, control, shift);
+            e.Handled = true;
+            UiLogger.Log("程序行为", "键盘移动选择：按键=" + e.Key + " 目标行序号=" + target + " 结果=已更新选择");
+        }
+    }
+
+    /// <summary>鼠标按下条目时按资源管理器习惯更新选择：普通单击单选、Ctrl 切换、Shift 连选。</summary>
+    private void SelectRowOnPointer(FileRow row, KeyModifiers modifiers)
+    {
+        FileTabViewModel? viewModel = this.ViewModel;
+        if (viewModel == null)
+        {
+            return;
+        }
+        IReadOnlyList<FileRow> rows = viewModel.VisibleRows;
+        int index = -1;
+        for (int i = 0; i < rows.Count; i++)
+        {
+            if (object.ReferenceEquals(rows[i], row))
+            {
+                index = i;
+                break;
+            }
+        }
+        if (index < 0)
+        {
+            return;
+        }
+        bool control = modifiers.HasFlag(KeyModifiers.Control);
+        bool shift = modifiers.HasFlag(KeyModifiers.Shift);
+        this.SelectRowAt(index, control, shift);
+    }
+
+    /// <summary>按 Ctrl/Shift 语义选择指定行并刷新摘要、信息窗格与滚动位置。</summary>
+    private void SelectRowAt(int index, bool control, bool shift)
+    {
+        FileTabViewModel? viewModel = this.ViewModel;
+        if (viewModel == null)
+        {
+            return;
+        }
+        IReadOnlyList<FileRow> rows = viewModel.VisibleRows;
+        if (index < 0 || index >= rows.Count)
+        {
+            return;
+        }
+        if (shift && this.selectionAnchorIndex >= 0 && this.selectionAnchorIndex < rows.Count)
+        {
+            int start = Math.Min(this.selectionAnchorIndex, index);
+            int end = Math.Max(this.selectionAnchorIndex, index);
+            for (int i = 0; i < rows.Count; i++)
+            {
+                rows[i].IsSelected = i >= start && i <= end;
+            }
+        }
+        else if (control)
+        {
+            rows[index].IsSelected = !rows[index].IsSelected;
+            this.selectionAnchorIndex = index;
+        }
+        else
+        {
+            for (int i = 0; i < rows.Count; i++)
+            {
+                rows[i].IsSelected = i == index;
+            }
+            this.selectionAnchorIndex = index;
+        }
+        this.selectionFocusIndex = index;
+        viewModel.RefreshSelectionSummary();
+        this.UpdateInfoPane();
+        this.ScrollRowIntoView(viewModel, index);
+    }
+
+    private void ScrollRowIntoView(FileTabViewModel viewModel, int index)
+    {
+        try
+        {
+            ListBox list = viewModel.IsRowStyleLayout ? this.RowList : this.TileList;
+            list.ScrollIntoView(index);
+        }
+        catch (Exception)
+        {
+            // 虚拟化列表尚未创建容器时滚动请求失败可忽略，下次选择会重试
+        }
+    }
+
+    private int FirstSelectedIndex()
+    {
+        FileTabViewModel? viewModel = this.ViewModel;
+        if (viewModel == null)
+        {
+            return -1;
+        }
+        IReadOnlyList<FileRow> rows = viewModel.VisibleRows;
+        for (int i = 0; i < rows.Count; i++)
+        {
+            if (rows[i].IsSelected)
+            {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private FileRow? FocusedRow()
+    {
+        FileTabViewModel? viewModel = this.ViewModel;
+        if (viewModel == null)
+        {
+            return null;
+        }
+        IReadOnlyList<FileRow> rows = viewModel.VisibleRows;
+        int index = this.selectionFocusIndex;
+        if (index < 0 || index >= rows.Count)
+        {
+            int selected = this.FirstSelectedIndex();
+            if (selected < 0)
+            {
+                return null;
+            }
+            index = selected;
+        }
+        return rows[index];
+    }
+
+    private async void RenameFocusedRow()
+    {
+        Window? owner = TopLevel.GetTopLevel(this) as Window;
+        FileTabViewModel? viewModel = this.ViewModel;
+        FileRow? row = this.FocusedRow();
+        if (owner == null || viewModel == null || row == null)
+        {
+            UiLogger.Log("程序行为", "键盘重命名：缺少窗口、标签或选中行 结果=失败，本次重命名取消");
+            return;
+        }
+        string? newName = await InputDialog.Show(owner, "重命名", "请输入新的名称：", row.DisplayName);
+        if (!string.IsNullOrWhiteSpace(newName) && newName != row.DisplayName)
+        {
+            viewModel.RenameRow(row, newName);
+            UiLogger.Log("程序行为", "键盘重命名：按键=F2 行路径=" + row.FullPath + " 新名称=" + newName + " 结果=已提交重命名请求");
+        }
+    }
+
+    private async void PasteFromKeyboard()
+    {
+        MainWindowViewModel? main = this.MainViewModel;
+        if (main == null)
+        {
+            return;
+        }
+        await main.PasteFromClipboardAsync(null);
+        FileTabViewModel? viewModel = this.ViewModel;
+        if (viewModel != null)
+        {
+            viewModel.RefreshSelectionSummary();
+        }
+        UiLogger.Log("程序行为", "键盘粘贴：组合键=Ctrl+V 结果=已把剪贴板条目粘贴到当前目录");
+    }
+
+    /// <summary>取第一个勾选的条目；没有勾选返回空。</summary>
+    private FileRow? FirstSelectedRow()
+    {
+        FileTabViewModel? viewModel = this.ViewModel;
+        if (viewModel == null)
+        {
+            return null;
+        }
+        foreach (FileRow row in viewModel.VisibleRows)
+        {
+            if (row.IsSelected)
+            {
+                return row;
+            }
+        }
+        return null;
     }
 
     /// <summary>当前标签页视图模型。</summary>
@@ -283,6 +594,7 @@ public partial class FileListPanel : UserControl
         }
         else if (border.DataContext is FileRow pressedRow)
         {
+            this.SelectRowOnPointer(pressedRow, e.KeyModifiers);
             this.dragRow = pressedRow;
             this.dragPressEvent = e;
             this.dragPressPoint = e.GetPosition(this);
@@ -898,12 +1210,21 @@ public partial class FileListPanel : UserControl
                 + (hasDirectory ? "当前系统不支持系统右键菜单管理，未添加系统菜单项" : "此电脑根视图没有具体目录，未添加系统菜单项"));
             return;
         }
-        IReadOnlyList<SystemContextMenuEntry> entries = systemContextMenuService.EnumerateShellMenu(currentPath, true);
+        IReadOnlyList<SystemContextMenuEntry> entries;
         string menuSourceText = "系统外壳实时菜单";
-        if (entries.Count == 0)
+        UiWatchdog.EnterStage("Shell 菜单枚举");
+        try
         {
-            entries = SystemContextMenuPolicy.SelectForBackground(systemContextMenuService.Enumerate(), currentPath);
-            menuSourceText = "注册表静态菜单（外壳实时菜单不可用时回退）";
+            entries = systemContextMenuService.EnumerateShellMenu(currentPath, true);
+            if (entries.Count == 0)
+            {
+                entries = SystemContextMenuPolicy.SelectForBackground(systemContextMenuService.Enumerate(), currentPath);
+                menuSourceText = "注册表静态菜单（外壳实时菜单不可用时回退）";
+            }
+        }
+        finally
+        {
+            UiWatchdog.LeaveStage("Shell 菜单枚举");
         }
         if (entries.Count == 0)
         {
@@ -922,28 +1243,7 @@ public partial class FileListPanel : UserControl
     private static void AppendSystemMenuItems(ItemCollection target, IReadOnlyList<SystemContextMenuEntry> entries,
         EventHandler<RoutedEventArgs> clickHandler)
     {
-        foreach (SystemContextMenuEntry entry in entries)
-        {
-            if (entry.IsSeparator)
-            {
-                target.Add(new Separator());
-                continue;
-            }
-            MenuItem item = new MenuItem();
-            item.Header = entry.DisplayName;
-            ToolTip.SetTip(item, entry.RegistryPath);
-            if (entry.Children.Count > 0)
-            {
-                AppendSystemMenuItems(item.Items, entry.Children, clickHandler);
-            }
-            else
-            {
-                item.DataContext = entry;
-                item.Click += clickHandler;
-            }
-            item.IsEnabled = entry.CanExecute;
-            target.Add(item);
-        }
+        SystemMenuUiBuilder.Append(target, entries, clickHandler);
     }
 
     /// <summary>统计菜单项总数（不含分隔线，含子菜单）。</summary>
@@ -1029,6 +1329,7 @@ public partial class FileListPanel : UserControl
             + " 弹出位置=横坐标" + screenPoint.X + "、纵坐标" + screenPoint.Y
             + " 结果=已请求原生外壳菜单（系统项与第三方扩展随外壳加载）");
         NativeContextMenuResult result;
+        UiWatchdog.EnterStage("Shell 原生菜单");
         try
         {
             result = await service.ShowNativeShellMenuAsync(request);
@@ -1038,6 +1339,10 @@ public partial class FileListPanel : UserControl
             UiLogger.LogError("程序行为", "文件列表右键请求：落点=" + (isBackground ? "列表空白处" : "列表条目")
                 + " 结果=失败，请求原生外壳菜单时出错，改为弹出本程序菜单", error);
             result = null;
+        }
+        finally
+        {
+            UiWatchdog.LeaveStage("Shell 原生菜单");
         }
         if (result == null || !result.MenuShown)
         {
@@ -1772,12 +2077,21 @@ public partial class FileListPanel : UserControl
                 + " 适用条目数=0 结果=当前系统不支持系统右键菜单管理，未添加系统菜单项");
             return;
         }
-        IReadOnlyList<SystemContextMenuEntry> entries = systemContextMenuService.EnumerateShellMenu(row.FullPath, false);
+        IReadOnlyList<SystemContextMenuEntry> entries;
         string menuSourceText = "系统外壳实时菜单";
-        if (entries.Count == 0)
+        UiWatchdog.EnterStage("Shell 菜单枚举");
+        try
         {
-            entries = SystemContextMenuPolicy.SelectForTarget(systemContextMenuService.Enumerate(), row.FullPath, row.IsDirectory);
-            menuSourceText = "注册表静态菜单（外壳实时菜单不可用时回退）";
+            entries = systemContextMenuService.EnumerateShellMenu(row.FullPath, false);
+            if (entries.Count == 0)
+            {
+                entries = SystemContextMenuPolicy.SelectForTarget(systemContextMenuService.Enumerate(), row.FullPath, row.IsDirectory);
+                menuSourceText = "注册表静态菜单（外壳实时菜单不可用时回退）";
+            }
+        }
+        finally
+        {
+            UiWatchdog.LeaveStage("Shell 菜单枚举");
         }
         systemMenuHost.Items.Clear();
         if (entries.Count == 0)
@@ -1873,10 +2187,77 @@ public partial class FileListPanel : UserControl
             + " 结果=成功，已按该字段重排列表并刷新表头箭头");
     }
 
+    /// <summary>列设置菜单点击：按列标识切换显示状态并持久化。</summary>
+    private void OnToggleColumnClick(object? sender, RoutedEventArgs e)
+    {
+        FileTabViewModel? viewModel = this.ViewModel;
+        if (viewModel == null || sender is not MenuItem item || item.Tag is not string columnName)
+        {
+            UiLogger.Log("程序行为", "列设置切换：视图模型或列标识缺失 结果=失败，本次未切换");
+            return;
+        }
+        bool current;
+        if (columnName == "Name")
+        {
+            current = viewModel.ShowNameColumn;
+        }
+        else if (columnName == "Modified")
+        {
+            current = viewModel.ShowModifiedColumn;
+        }
+        else if (columnName == "Type")
+        {
+            current = viewModel.ShowTypeColumn;
+        }
+        else if (columnName == "Size")
+        {
+            current = viewModel.ShowSizeColumn;
+        }
+        else if (columnName == "Attributes")
+        {
+            current = viewModel.ShowAttributesColumn;
+        }
+        else
+        {
+            return;
+        }
+        viewModel.SetColumnVisible(columnName, !current);
+        item.IsChecked = !current;
+        UiLogger.Log("程序行为", "列设置切换：列=" + columnName + " 目标状态=" + (current ? "隐藏" : "显示") + " 结果=已切换");
+    }
+
+    /// <summary>列设置按钮点击：在弹出菜单前按当前配置刷新勾选态（Flyout 不继承按钮的数据上下文）。</summary>
+    private void OnColumnMenuButtonClick(object? sender, RoutedEventArgs e)
+    {
+        this.RefreshColumnMenuChecks();
+    }
+
+    /// <summary>摘要栏「重试失败项」：交给标签所属窗口重新提交失败任务。</summary>
+    private void OnRetryFailedTaskClick(object? sender, RoutedEventArgs e)
+    {
+        this.ViewModel?.RetryFailedTask();
+    }
+
+    /// <summary>把当前列的显示状态写入列设置菜单的勾选态。</summary>
+    private void RefreshColumnMenuChecks()
+    {
+        FileTabViewModel? viewModel = this.ViewModel;
+        if (viewModel == null)
+        {
+            return;
+        }
+        this.ColumnNameItem.IsChecked = viewModel.ShowNameColumn;
+        this.ColumnModifiedItem.IsChecked = viewModel.ShowModifiedColumn;
+        this.ColumnTypeItem.IsChecked = viewModel.ShowTypeColumn;
+        this.ColumnSizeItem.IsChecked = viewModel.ShowSizeColumn;
+        this.ColumnAttributesItem.IsChecked = viewModel.ShowAttributesColumn;
+    }
+
     /// <summary>面板加载后按默认排序状态刷新表头箭头（默认按名称升序）。</summary>
     private void OnPanelLoaded(object? sender, RoutedEventArgs e)
     {
         this.UpdateSortArrows();
+        this.RefreshColumnMenuChecks();
     }
 
     /// <summary>布局更新时把列表内部的滚动条改为常驻占位，并按实测滚动条宽度对齐表头右边距：
@@ -1963,6 +2344,7 @@ public partial class FileListPanel : UserControl
         this.ArrowModified.Text = field == "Modified" ? arrow : string.Empty;
         this.ArrowType.Text = field == "Type" ? arrow : string.Empty;
         this.ArrowSize.Text = field == "Size" ? arrow : string.Empty;
+        this.ArrowAttributes.Text = field == "Attributes" ? arrow : string.Empty;
     }
 
     /// <summary>刷新右侧信息窗格内容。</summary>

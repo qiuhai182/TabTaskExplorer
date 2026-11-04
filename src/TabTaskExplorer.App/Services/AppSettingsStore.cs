@@ -18,11 +18,29 @@ public class AppSettings
     /// <summary>是否显示文件扩展名。</summary>
     public bool ShowFileExtensions { get; set; } = true;
 
+    /// <summary>文件列表可见列：逗号分隔的列标识（Name/Modified/Type/Size/Attributes）。</summary>
+    public string FileVisibleColumns { get; set; } = "Name,Modified,Type,Size,Attributes";
+
+    /// <summary>文件列表列宽（逗号分隔的像素值，含勾选框与图标列）；空值使用界面默认列宽。</summary>
+    public string FileColumnWidths { get; set; } = string.Empty;
+
+    /// <summary>文件列表紧凑模式：减小行高与内边距，同屏显示更多条目。</summary>
+    public bool FileCompactMode { get; set; } = false;
+
+    /// <summary>文件列表排序字段（Name/Modified/Type/Size/Attributes），桌面与网页端共用。</summary>
+    public string FileSortField { get; set; } = "Name";
+
+    /// <summary>文件列表排序是否升序，桌面与网页端共用。</summary>
+    public bool FileSortAscending { get; set; } = true;
+
     /// <summary>双击标签是否关闭当前标签。</summary>
     public bool DoubleClickTabClose { get; set; } = true;
 
     /// <summary>界面主题：Dark（默认深色）或 Light（浅色），可由标题栏按钮或网页端服务切换。</summary>
     public string Theme { get; set; } = "Dark";
+
+    /// <summary>日志最低写入级别：Trace / Debug / Info / Warn / Error，默认 Info。</summary>
+    public string LogLevel { get; set; } = "Info";
 
     /// <summary>关闭窗口时是否最小化到托盘常驻。</summary>
     public bool CloseToTray { get; set; } = true;
@@ -87,17 +105,74 @@ public class AppSettings
     /// <summary>截图与录屏产物保存目录；留空表示使用「我的图片\TabTaskExplorer\截图录屏」。</summary>
     public string CaptureSaveDirectory { get; set; } = string.Empty;
 
-    /// <summary>截图完成后是否把图片文件写入系统剪贴板（可在资源管理器直接粘贴）。</summary>
-    public bool CaptureCopyToClipboard { get; set; } = true;
+    /// <summary>
+    /// 截图完成后是否把图片写入系统剪贴板。默认关闭：截图一律不自动复制，复制改由产物历史与完成提示的显式按钮触发；
+    /// 该字段仅为兼容旧配置保留，截图流程不再依据它自动写剪贴板。
+    /// </summary>
+    public bool CaptureCopyToClipboard { get; set; } = false;
+
+    /// <summary>是否已完成「截图不再默认复制到剪贴板」的旧配置迁移；只迁移一次。</summary>
+    public bool CaptureClipboardDefaultMigrated { get; set; } = false;
 
     /// <summary>截图或录屏完成后是否自动打开产物文件夹标签页。</summary>
     public bool CaptureOpenFolderAfter { get; set; } = true;
 
-    /// <summary>截图保存后是否自动打开标注编辑器（吸收 Snipaste 截图编辑流程，默认开启）。</summary>
-    public bool CaptureOpenEditorAfter { get; set; } = true;
+    /// <summary>截图保存后是否自动打开标注编辑器（默认关闭：避免刚截完就被编辑器窗口盖住内容）。</summary>
+    public bool CaptureOpenEditorAfter { get; set; } = false;
+
+    /// <summary>截图失败提示方式：balloon（托盘气泡，默认）/ log（仅日志）/ dialog（弹窗，会抢焦点）。</summary>
+    public string CaptureFailureNotice { get; set; } = "balloon";
+
+    /// <summary>失败提示方式下拉框索引：0 托盘气泡、1 仅日志、2 弹窗；读写 <see cref="CaptureFailureNotice"/>。</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public int CaptureFailureNoticeIndex
+    {
+        get
+        {
+            if (this.CaptureFailureNotice == "log")
+            {
+                return 1;
+            }
+            if (this.CaptureFailureNotice == "dialog")
+            {
+                return 2;
+            }
+            return 0;
+        }
+        set
+        {
+            if (value == 1)
+            {
+                this.CaptureFailureNotice = "log";
+            }
+            else if (value == 2)
+            {
+                this.CaptureFailureNotice = "dialog";
+            }
+            else
+            {
+                this.CaptureFailureNotice = "balloon";
+            }
+        }
+    }
 
     /// <summary>贴图窗口是否始终置顶（默认开启，关闭后贴图可被其他窗口覆盖）。</summary>
     public bool CapturePinTopmost { get; set; } = true;
+
+    /// <summary>截图时是否临时隐藏主窗口（默认开启）；仅在选区与主窗口相交且目标不是本程序窗口时生效。</summary>
+    public bool CaptureHideMainWindow { get; set; } = true;
+
+    /// <summary>截图完成后是否切到「截图与录屏」页并激活主窗口（默认开启）。</summary>
+    public bool CaptureActivateAfterCapture { get; set; } = true;
+
+    /// <summary>贴图是否避开原截图区域（默认开启）：优先出现在选区右侧/下方，放不下才翻转。</summary>
+    public bool CapturePinAvoidSource { get; set; } = true;
+
+    /// <summary>上一次贴图窗口左上角横坐标（物理像素）；-1 表示没有记录。</summary>
+    public int CapturePinLastX { get; set; } = -1;
+
+    /// <summary>上一次贴图窗口左上角纵坐标（物理像素）；-1 表示没有记录。</summary>
+    public int CapturePinLastY { get; set; } = -1;
 
     /// <summary>
     /// 「贴图截图」是否同时按产物规则保存文件（默认开启：先保存进产物历史，再用同一份文件生成贴图）；
@@ -227,6 +302,8 @@ public class AppSettingsStore
         WriteIndented = true,
     };
 
+    private static readonly object saveLock = new object();
+
     private readonly string filePath;
 
     public AppSettingsStore()
@@ -252,6 +329,7 @@ public class AppSettingsStore
                     EnsureFileOpenRules(settings);
                     EnsureWebSettings(settings);
                     EnsureCustomStartupItems(settings);
+                    EnsureCaptureClipboardDefault(settings);
                     return settings;
                 }
             }
@@ -262,25 +340,64 @@ public class AppSettingsStore
         }
         AppSettings fallback = new AppSettings();
         EnsureShortcuts(fallback);
+        EnsureCaptureClipboardDefault(fallback);
         return fallback;
     }
 
-    /// <summary>保存设置；写入失败时静默跳过，不影响主流程。</summary>
+    /// <summary>
+    /// 把「截图后自动复制到剪贴板」迁移为新默认值（关闭）：旧配置里为 true 的用户同样改为 false，
+    /// 并写一条日志说明；只迁移一次，之后用户改回 true 也不会被再次覆盖。
+    /// </summary>
+    private static void EnsureCaptureClipboardDefault(AppSettings settings)
+    {
+        if (settings.CaptureClipboardDefaultMigrated)
+        {
+            return;
+        }
+        bool previousValue = settings.CaptureCopyToClipboard;
+        settings.CaptureCopyToClipboard = false;
+        settings.CaptureClipboardDefaultMigrated = true;
+        UiLogger.Log("配置迁移", "截图剪贴板默认值迁移：迁移前自动复制=" + (previousValue ? "开启" : "关闭")
+            + " 迁移后自动复制=关闭 说明=截图不再自动写剪贴板，复制改由产物历史与完成提示的显式按钮触发 结果=已迁移");
+    }
+
+    /// <summary>保存设置；写入失败时静默跳过，不影响主流程。桌面与网页端可能并发保存，用锁与临时文件替换避免半截 JSON。</summary>
     public void Save(AppSettings settings)
     {
-        try
+        lock (saveLock)
         {
-            string? dataDirectory = Path.GetDirectoryName(this.filePath);
-            if (!string.IsNullOrEmpty(dataDirectory))
+            string? temporaryPath = null;
+            try
             {
-                Directory.CreateDirectory(dataDirectory);
+                string? dataDirectory = Path.GetDirectoryName(this.filePath);
+                if (!string.IsNullOrEmpty(dataDirectory))
+                {
+                    Directory.CreateDirectory(dataDirectory);
+                }
+                string json = JsonSerializer.Serialize(settings, jsonOptions);
+                temporaryPath = this.filePath + ".tmp-" + Guid.NewGuid().ToString("N");
+                File.WriteAllText(temporaryPath, json);
+                File.Move(temporaryPath, this.filePath, true);
+                temporaryPath = null;
             }
-            string json = JsonSerializer.Serialize(settings, jsonOptions);
-            File.WriteAllText(this.filePath, json);
-        }
-        catch
-        {
-            // 磁盘不可写等异常不阻断界面操作
+            catch
+            {
+                // 磁盘不可写等异常不阻断界面操作
+            }
+            finally
+            {
+                if (temporaryPath != null)
+                {
+                    try
+                    {
+                        File.Delete(temporaryPath);
+                    }
+                    catch (Exception)
+                    {
+                        // 临时文件清理失败不影响主流程
+                    }
+                }
+            }
         }
     }
 

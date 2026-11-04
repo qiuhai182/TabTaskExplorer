@@ -545,8 +545,18 @@ public class WebServiceHost
             {
                 string versionJson = JsonSerializer.Serialize(new
                 {
-                    version = "p0-1-web-modules-" + WebStaticAssets.Version,
-                    features = new { session = true, csrf = true, events = true, staticAssets = WebStaticAssets.IsAvailable },
+                    version = "p0-2-web-parity-" + WebStaticAssets.Version,
+                    features = new
+                    {
+                        session = true,
+                        csrf = true,
+                        events = true,
+                        staticAssets = WebStaticAssets.IsAvailable,
+                        thumbnails = true,
+                        preview = true,
+                        fileColumns = true,
+                        tasks = true,
+                    },
                 }, jsonOptions);
                 this.WriteBytes(stream, "application/json; charset=utf-8", Encoding.UTF8.GetBytes(versionJson));
                 return;
@@ -596,9 +606,44 @@ public class WebServiceHost
                 this.HandleReadFile(stream, request, profile, workspaceId, bridge);
                 return;
             }
+            if (path == "/api/thumb" && request.Method == "GET")
+            {
+                this.HandleThumbnail(stream, request, profile);
+                return;
+            }
+            if (path == "/api/preview" && request.Method == "GET")
+            {
+                this.HandlePreview(stream, request, profile, workspaceId, bridge);
+                return;
+            }
+            if (path == "/api/filecolumns" && (request.Method == "GET" || request.Method == "POST"))
+            {
+                this.HandleFileColumns(stream, request, profile, workspaceId, bridge);
+                return;
+            }
+            if (path == "/api/tasks" && (request.Method == "GET" || request.Method == "POST"))
+            {
+                this.HandleTasks(stream, request, profile, workspaceId, bridge);
+                return;
+            }
+            if (path.StartsWith("/api/tasks/", StringComparison.Ordinal) && request.Method == "POST")
+            {
+                this.HandleTaskCommand(stream, request, profile, workspaceId, bridge, path);
+                return;
+            }
             if (path == "/api/ide/text" && request.Method == "GET")
             {
                 this.HandleIdeText(stream, request, workspaceId, bridge);
+                return;
+            }
+            if (path == "/api/capture/state" && request.Method == "GET")
+            {
+                this.HandleCaptureState(stream, bridge);
+                return;
+            }
+            if (path == "/api/capture/action" && request.Method == "POST")
+            {
+                this.HandleCaptureAction(stream, request, profile, bridge);
                 return;
             }
             if (path == "/api/action" && request.Method == "POST")
@@ -830,11 +875,16 @@ public class WebServiceHost
                 || action == "startupcustomsave" || action == "startupcustomdelete"
                 || action == "disknewfolder" || action == "disknewfile" || action == "diskrename"
                 || action == "diskdelete" || action == "diskpasteinto" || action == "diskcopyto"
-                || action == "diskmoveto" || action == "diskcutsource";
+                || action == "diskmoveto" || action == "diskcutsource"
+                // 网页端截图会新建产物文件、删除历史会移除文件，均按新建与删除权限管控
+                || action == "capturefull" || action == "captureregion" || action == "capturepin"
+                || action == "capturedelete";
             bool needModify = action == "togglehidden" || action == "toggleextensions" || action == "pin" || action == "unpin" || action == "chmod"
                 || action == "idetext" || action == "idesave" || action == "idesaveall" || action == "idereplace" || action == "idereplaceall"
                 || action == "processkill" || action == "processpriority" || action == "processaffinity"
-                || action == "startuptoggle" || action == "startupcustomtoggle" || action == "startupcustomrun";
+                || action == "startuptoggle" || action == "startupcustomtoggle" || action == "startupcustomrun"
+                // 切换「贴图截图保存产物」属于修改设置；网页端显式复制写入系统剪贴板同样按修改权限管控
+                || action == "capturepinsave" || action == "capturecopy";
             if (needCreateDelete && !profile.AllowCreateDelete)
             {
                 UiLogger.Log("网页端访问", "拒绝：" + action + " 未放行新建与删除权限 端口=" + this.runtime.Port
@@ -1156,6 +1206,512 @@ public class WebServiceHost
             {
                 this.DeleteArchiveTempFile(archiveTempFile);
             }
+        }
+
+        /// <summary>网页端截图状态：保存目录、命名模板、格式、开关与产物历史（缩略图复用 /api/thumb）。</summary>
+        private void HandleCaptureState(NetworkStream stream, IWebWorkspaceBridge bridge)
+        {
+            string json = bridge.GetCaptureStateJson();
+            this.WriteBytes(stream, "application/json; charset=utf-8", Encoding.UTF8.GetBytes(json), 200, "no-store");
+        }
+
+        /// <summary>网页端截图动作：fullscreen / region / pin 触发截图，pinSave 切换保存开关，delete 删除历史产物。</summary>
+        private void HandleCaptureAction(NetworkStream stream, HttpRequest request, WebAccessProfile profile,
+            IWebWorkspaceBridge bridge)
+        {
+            string action = request.GetQuery("a");
+            string argument = request.GetQuery("arg");
+            if (argument.Length == 0 && request.Body.Length > 0)
+            {
+                argument = Encoding.UTF8.GetString(request.Body);
+            }
+            if (string.IsNullOrEmpty(action))
+            {
+                this.WriteText(stream, "缺少动作名称", 400);
+                return;
+            }
+            request.AuditTarget = argument.Length > 200 ? argument.Substring(0, 200) + "…" : argument;
+            if (!this.CheckActionPermission(stream, profile, request, "capture" + action, argument))
+            {
+                return;
+            }
+            UiLogger.Log("网页端访问", "执行截图动作：端口=" + this.runtime.Port + " 来源=" + request.RemoteAddress
+                + " 动作=" + action + " 参数=" + argument);
+            string json = bridge.ExecuteCaptureAction(action, argument);
+            this.WriteBytes(stream, "application/json; charset=utf-8", Encoding.UTF8.GetBytes(json), 200, "no-store");
+        }
+
+        /// <summary>按需生成/读取缩略图：成功返回 PNG 并带私有缓存头；不支持或失败返回 404 让页面保留类型图标。</summary>
+        private void HandleThumbnail(NetworkStream stream, HttpRequest request, WebAccessProfile profile)
+        {
+            string target = request.GetQuery("path");
+            if (target.Length == 0)
+            {
+                target = request.GetQuery("p");
+            }
+            if (string.IsNullOrEmpty(target))
+            {
+                this.WriteText(stream, "缺少缩略图路径", 400);
+                return;
+            }
+            if (!this.CheckPath(stream, profile, request, target))
+            {
+                return;
+            }
+            if (!File.Exists(target) || !ThumbnailService.IsSupportedPath(target))
+            {
+                this.WriteText(stream, "缩略图不可用", 404);
+                return;
+            }
+            double requested = 96;
+            double.TryParse(request.GetQuery("size"), out requested);
+            int tier = ThumbnailService.ResolveTier(requested <= 0 ? 96 : requested);
+            try
+            {
+                CancellationTokenSource cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+                string? thumbnailPath = ThumbnailService.GetThumbnailPathAsync(target, tier, cancellation.Token)
+                    .GetAwaiter().GetResult();
+                cancellation.Dispose();
+                if (string.IsNullOrEmpty(thumbnailPath) || !File.Exists(thumbnailPath))
+                {
+                    this.WriteText(stream, "缩略图不可用", 404);
+                    return;
+                }
+                byte[] png = File.ReadAllBytes(thumbnailPath);
+                UiLogger.Log("网页端缩略图", "命中：端口=" + this.runtime.Port + " 来源=" + request.RemoteAddress
+                    + " 目标=" + target + " 档位=" + tier + " 字节数=" + png.Length);
+                this.WriteBytes(stream, "image/png", png, 200, "private, max-age=600");
+            }
+            catch (Exception error)
+            {
+                UiLogger.LogError("网页端缩略图", "生成失败：目标=" + target + " 档位=" + tier, error);
+                this.WriteText(stream, "缩略图生成失败", 500);
+            }
+        }
+
+        /// <summary>快速预览元数据：分类与文本读取复用桌面公共方法；远程文本走工作区读取并截断。</summary>
+        private void HandlePreview(NetworkStream stream, HttpRequest request, WebAccessProfile profile,
+            string workspaceId, IWebWorkspaceBridge bridge)
+        {
+            string target = request.GetQuery("path");
+            if (target.Length == 0)
+            {
+                target = request.GetQuery("p");
+            }
+            if (string.IsNullOrEmpty(target))
+            {
+                this.WriteText(stream, "缺少预览路径", 400);
+                return;
+            }
+            if (!this.CheckPath(stream, profile, request, target))
+            {
+                return;
+            }
+            FilePreviewKind kind = FilePreviewClassifier.Detect(target);
+            bool local = File.Exists(target);
+            string sizeText = string.Empty;
+            string modifiedText = string.Empty;
+            if (local)
+            {
+                try
+                {
+                    FileInfo info = new FileInfo(target);
+                    sizeText = FormatPreviewSize(info.Length);
+                    modifiedText = info.LastWriteTime.ToString("yyyy/MM/dd HH:mm");
+                }
+                catch (Exception)
+                {
+                    // 元数据读取失败不影响预览主体
+                }
+            }
+            string text = string.Empty;
+            string hint = string.Empty;
+            if (kind == FilePreviewKind.Text)
+            {
+                if (local)
+                {
+                    text = FilePreviewClassifier.ReadTextPreview(target);
+                }
+                else
+                {
+                    WebWorkspace? workspace = string.IsNullOrEmpty(workspaceId) ? null : bridge.FindWorkspace(workspaceId);
+                    if (workspace != null)
+                    {
+                        text = workspace.ReadFileText(target);
+                        const int limit = 512 * 1024;
+                        if (text.Length > limit)
+                        {
+                            text = text.Substring(0, limit) + "\n\n…… 文件较大，仅显示前 512 KB";
+                        }
+                    }
+                    else
+                    {
+                        hint = "该路径不是本机文件，请切换到独立新页面后预览远程文本。";
+                    }
+                }
+            }
+            else if (kind == FilePreviewKind.Pdf)
+            {
+                hint = FilePreviewClassifier.DescribeUnsupported(kind);
+            }
+            else if (kind == FilePreviewKind.Audio || kind == FilePreviewKind.Video)
+            {
+                hint = "音视频在网页端显示占位：桌面端可用内置播放器预览，或双击使用系统默认程序打开。";
+            }
+            else if (kind == FilePreviewKind.Other)
+            {
+                hint = FilePreviewClassifier.DescribeUnsupported(kind);
+            }
+            if (!local && kind == FilePreviewKind.Image)
+            {
+                hint = "远程图片暂不生成网页预览图，请在资源管理器中打开。";
+            }
+            string json = JsonSerializer.Serialize(new
+            {
+                kind = kind.ToString().ToLowerInvariant(),
+                name = Path.GetFileName(target),
+                sizeText = sizeText,
+                modifiedText = modifiedText,
+                text = text,
+                hint = hint,
+                local = local,
+                supportsThumbnail = local && ThumbnailService.IsSupportedPath(target),
+            }, jsonOptions);
+            this.WriteBytes(stream, "application/json; charset=utf-8", Encoding.UTF8.GetBytes(json));
+        }
+
+        /// <summary>读写文件列表列配置：GET 返回共享设置，POST 校验后应用到桌面或工作区全部文件标签。</summary>
+        private void HandleFileColumns(NetworkStream stream, HttpRequest request, WebAccessProfile profile,
+            string workspaceId, IWebWorkspaceBridge bridge)
+        {
+            if (request.Method == "GET")
+            {
+                FileColumnConfig config = bridge.GetFileColumnConfig(workspaceId);
+                string json = JsonSerializer.Serialize(config, jsonOptions);
+                this.WriteBytes(stream, "application/json; charset=utf-8", Encoding.UTF8.GetBytes(json));
+                return;
+            }
+            if (!profile.AllowModify)
+            {
+                this.WriteText(stream, "该端口未放行修改权限", 403);
+                return;
+            }
+            FileColumnConfigPayload? payload;
+            try
+            {
+                string body = Encoding.UTF8.GetString(request.Body);
+                payload = body.Length == 0 ? null : JsonSerializer.Deserialize<FileColumnConfigPayload>(body, jsonOptions);
+            }
+            catch (Exception error)
+            {
+                UiLogger.LogError("网页端列配置", "解析请求体失败", error);
+                this.WriteText(stream, "列配置格式不正确", 400);
+                return;
+            }
+            if (payload == null)
+            {
+                this.WriteText(stream, "缺少列配置", 400);
+                return;
+            }
+            FileColumnConfig current = bridge.GetFileColumnConfig(workspaceId);
+            FileColumnConfig next = new FileColumnConfig
+            {
+                VisibleColumns = current.VisibleColumns,
+                ColumnWidths = current.ColumnWidths,
+                CompactMode = current.CompactMode,
+                SortField = current.SortField,
+                SortAscending = current.SortAscending,
+            };
+            if (payload.VisibleColumns != null)
+            {
+                List<string> columns = new List<string>();
+                foreach (string part in payload.VisibleColumns.Split(','))
+                {
+                    string name = part.Trim();
+                    if (name == "Name" || name == "Modified" || name == "Type" || name == "Size" || name == "Attributes")
+                    {
+                        if (!columns.Contains(name))
+                        {
+                            columns.Add(name);
+                        }
+                    }
+                }
+                if (columns.Count == 0)
+                {
+                    columns.Add("Name");
+                }
+                next.VisibleColumns = string.Join(",", columns);
+            }
+            if (payload.ColumnWidths != null)
+            {
+                next.ColumnWidths = this.NormalizeColumnWidthsText(payload.ColumnWidths);
+            }
+            if (payload.CompactMode.HasValue)
+            {
+                next.CompactMode = payload.CompactMode.Value;
+            }
+            if (payload.SortField != null)
+            {
+                string field = payload.SortField.Trim();
+                if (field == "Name" || field == "Modified" || field == "Type" || field == "Size" || field == "Attributes")
+                {
+                    next.SortField = field;
+                }
+            }
+            if (payload.SortAscending.HasValue)
+            {
+                next.SortAscending = payload.SortAscending.Value;
+            }
+            bridge.ApplyFileColumnConfig(workspaceId, next);
+            UiLogger.Log("网页端列配置", "已应用：端口=" + this.runtime.Port + " 来源=" + request.RemoteAddress
+                + " 工作区=" + (string.IsNullOrEmpty(workspaceId) ? "跟随桌面" : workspaceId)
+                + " 可见列=" + next.VisibleColumns + " 列宽=" + next.ColumnWidths
+                + " 紧凑=" + (next.CompactMode ? "开" : "关") + " 排序=" + next.SortField);
+            this.WriteOk(stream);
+        }
+
+        /// <summary>统一任务中心：GET 返回快照，POST 提交本地复制/移动/删除任务。</summary>
+        private void HandleTasks(NetworkStream stream, HttpRequest request, WebAccessProfile profile,
+            string workspaceId, IWebWorkspaceBridge bridge)
+        {
+            if (request.Method == "GET")
+            {
+                List<TabTaskExplorer.App.Services.Tasks.FileTaskSnapshot> tasks = bridge.GetFileTasks(workspaceId);
+                string tasksJson = JsonSerializer.Serialize(new { tasks = tasks }, jsonOptions);
+                this.WriteBytes(stream, "application/json; charset=utf-8", Encoding.UTF8.GetBytes(tasksJson));
+                return;
+            }
+            if (!profile.AllowCreateDelete)
+            {
+                this.WriteText(stream, "该端口未放行新建与删除权限", 403);
+                return;
+            }
+            FileTaskRequestPayload? payload;
+            try
+            {
+                string body = Encoding.UTF8.GetString(request.Body);
+                payload = body.Length == 0 ? null : JsonSerializer.Deserialize<FileTaskRequestPayload>(body, jsonOptions);
+            }
+            catch (Exception error)
+            {
+                UiLogger.LogError("网页端任务", "解析提交请求失败", error);
+                this.WriteText(stream, "任务请求格式不正确", 400);
+                return;
+            }
+            if (payload == null || payload.Sources == null || payload.Sources.Count == 0)
+            {
+                this.WriteText(stream, "任务缺少源路径", 400);
+                return;
+            }
+            TabTaskExplorer.App.Services.Tasks.FileTaskKind kind;
+            if (!TryParseTaskKind(payload.Kind, out kind))
+            {
+                this.WriteText(stream, "未知任务类型：" + payload.Kind, 400);
+                return;
+            }
+            List<string> sources = new List<string>();
+            foreach (string source in payload.Sources)
+            {
+                if (string.IsNullOrWhiteSpace(source))
+                {
+                    continue;
+                }
+                string trimmed = source.Trim();
+                if (!this.CheckPath(stream, profile, request, trimmed))
+                {
+                    return;
+                }
+                sources.Add(trimmed);
+            }
+            string destination = (payload.Destination ?? string.Empty).Trim();
+            if (kind != TabTaskExplorer.App.Services.Tasks.FileTaskKind.Delete)
+            {
+                if (destination.Length == 0 || !this.CheckPath(stream, profile, request, destination))
+                {
+                    if (destination.Length == 0)
+                    {
+                        this.WriteText(stream, "任务缺少目标目录", 400);
+                    }
+                    return;
+                }
+            }
+            TabTaskExplorer.App.Services.Tasks.FileConflictPolicy policy =
+                TabTaskExplorer.App.Services.Tasks.FileConflictPolicy.Ask;
+            if (!string.IsNullOrEmpty(payload.Policy))
+            {
+                if (!Enum.TryParse(payload.Policy, true, out policy))
+                {
+                    policy = TabTaskExplorer.App.Services.Tasks.FileConflictPolicy.Ask;
+                }
+            }
+            TabTaskExplorer.App.Services.Tasks.FileTaskRequest task =
+                new TabTaskExplorer.App.Services.Tasks.FileTaskRequest
+                {
+                    Kind = kind,
+                    Sources = sources,
+                    DestinationPath = destination,
+                    ConflictPolicy = policy,
+                };
+            string id = bridge.StartFileTask(workspaceId, task);
+            if (string.IsNullOrEmpty(id))
+            {
+                this.WriteText(stream, "任务提交失败：源路径为空或目标目录无效", 400);
+                return;
+            }
+            UiLogger.Log("网页端任务", "提交：端口=" + this.runtime.Port + " 来源=" + request.RemoteAddress
+                + " 工作区=" + (string.IsNullOrEmpty(workspaceId) ? "跟随桌面" : workspaceId)
+                + " 类型=" + kind + " 源=" + string.Join("、", sources) + " 目标=" + destination
+                + " 冲突策略=" + policy + " 任务=" + id);
+            string json = JsonSerializer.Serialize(new { id = id }, jsonOptions);
+            this.WriteBytes(stream, "application/json; charset=utf-8", Encoding.UTF8.GetBytes(json));
+        }
+
+        /// <summary>任务命令：/api/tasks/{id}/cancel|retry|conflict。</summary>
+        private void HandleTaskCommand(NetworkStream stream, HttpRequest request, WebAccessProfile profile,
+            string workspaceId, IWebWorkspaceBridge bridge, string path)
+        {
+            if (!profile.AllowCreateDelete)
+            {
+                this.WriteText(stream, "该端口未放行新建与删除权限", 403);
+                return;
+            }
+            string tail = path.Substring("/api/tasks/".Length);
+            string[] segments = tail.Split('/');
+            if (segments.Length != 2 || string.IsNullOrEmpty(segments[0]) || string.IsNullOrEmpty(segments[1]))
+            {
+                this.WriteText(stream, "任务命令缺少编号或动作", 400);
+                return;
+            }
+            string id = segments[0];
+            string action = segments[1];
+            if (action == "conflict")
+            {
+                FileTaskConflictPayload? payload;
+                try
+                {
+                    string body = Encoding.UTF8.GetString(request.Body);
+                    payload = body.Length == 0 ? null : JsonSerializer.Deserialize<FileTaskConflictPayload>(body, jsonOptions);
+                }
+                catch (Exception error)
+                {
+                    UiLogger.LogError("网页端任务", "解析冲突请求失败", error);
+                    this.WriteText(stream, "冲突请求格式不正确", 400);
+                    return;
+                }
+                if (payload == null || string.IsNullOrEmpty(payload.Action))
+                {
+                    this.WriteText(stream, "冲突请求缺少处理方式", 400);
+                    return;
+                }
+                bool success = bridge.ResolveFileTaskConflict(workspaceId, id, payload.Action, payload.ApplyToAll);
+                this.WriteText(stream, success ? "ok" : "任务不存在或已结束", success ? 200 : 404);
+                return;
+            }
+            if (action == "cancel")
+            {
+                bool success = bridge.CancelFileTask(workspaceId, id);
+                this.WriteText(stream, success ? "ok" : "任务不存在或已结束", success ? 200 : 404);
+                return;
+            }
+            if (action == "retry")
+            {
+                bool success = bridge.RetryFileTask(workspaceId, id);
+                this.WriteText(stream, success ? "ok" : "任务不可重试或不存在", success ? 200 : 404);
+                return;
+            }
+            this.WriteText(stream, "not found", 404);
+        }
+
+        private static bool TryParseTaskKind(string? text,
+            out TabTaskExplorer.App.Services.Tasks.FileTaskKind kind)
+        {
+            kind = TabTaskExplorer.App.Services.Tasks.FileTaskKind.Copy;
+            if (string.IsNullOrEmpty(text))
+            {
+                return false;
+            }
+            if (string.Equals(text, "copy", StringComparison.OrdinalIgnoreCase))
+            {
+                kind = TabTaskExplorer.App.Services.Tasks.FileTaskKind.Copy;
+                return true;
+            }
+            if (string.Equals(text, "move", StringComparison.OrdinalIgnoreCase))
+            {
+                kind = TabTaskExplorer.App.Services.Tasks.FileTaskKind.Move;
+                return true;
+            }
+            if (string.Equals(text, "delete", StringComparison.OrdinalIgnoreCase))
+            {
+                kind = TabTaskExplorer.App.Services.Tasks.FileTaskKind.Delete;
+                return true;
+            }
+            return false;
+        }
+
+        /// <summary>任务提交请求体。</summary>
+        private sealed class FileTaskRequestPayload
+        {
+            public string? Kind { get; set; }
+
+            public List<string>? Sources { get; set; }
+
+            public string? Destination { get; set; }
+
+            public string? Policy { get; set; }
+        }
+
+        /// <summary>冲突处理请求体。</summary>
+        private sealed class FileTaskConflictPayload
+        {
+            public string? Action { get; set; }
+
+            public bool ApplyToAll { get; set; }
+        }
+
+        /// <summary>规范化网页端提交的列宽：最多 7 段，每段 0..4000 像素；非法段回落默认列宽。</summary>
+        private string NormalizeColumnWidthsText(string text)
+        {
+            double[] defaults = new double[] { 30, 26, 480, 140, 130, 110, 100 };
+            string[] parts = text.Split(',');
+            List<string> widths = new List<string>();
+            for (int index = 0; index < defaults.Length; index++)
+            {
+                double width = defaults[index];
+                double parsed;
+                if (index < parts.Length && double.TryParse(parts[index].Trim(), out parsed) && parsed >= 0 && parsed <= 4000)
+                {
+                    width = parsed;
+                }
+                widths.Add(((int)Math.Round(width)).ToString());
+            }
+            return string.Join(",", widths);
+        }
+
+        private static string FormatPreviewSize(long bytes)
+        {
+            string[] units = new string[] { "B", "KB", "MB", "GB", "TB" };
+            double value = bytes;
+            int index = 0;
+            while (value >= 1024 && index < units.Length - 1)
+            {
+                value /= 1024;
+                index++;
+            }
+            return index == 0 ? value.ToString("0") + " B" : value.ToString("0.##") + " " + units[index];
+        }
+
+        /// <summary>列配置请求体：字段可缺省，只覆盖显式提交的部分。</summary>
+        private sealed class FileColumnConfigPayload
+        {
+            public string? VisibleColumns { get; set; }
+
+            public string? ColumnWidths { get; set; }
+
+            public bool? CompactMode { get; set; }
+
+            public string? SortField { get; set; }
+
+            public bool? SortAscending { get; set; }
         }
 
         /// <summary>

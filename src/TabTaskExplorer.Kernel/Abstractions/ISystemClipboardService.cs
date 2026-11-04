@@ -37,4 +37,10 @@ public interface ISystemClipboardService
     /// </summary>
     /// <returns>清空成功返回 true，失败或不支持返回 false。</returns>
     Task<bool> ClearAsync();
+
+    /// <summary>
+    /// 轻量探测剪贴板是否含文件 / 文件夹（不读文件内容、不写常规读取日志），用于工具栏粘贴按钮的启用态。
+    /// </summary>
+    /// <returns>探测结果；剪贴板不可用时 HasFileData 为 false。</returns>
+    Task<ClipboardPresence> ProbeAsync();
 }

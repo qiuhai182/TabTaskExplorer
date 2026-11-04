@@ -83,6 +83,7 @@ public class CaptureCoordinator : IDisposable
     private readonly IScreenRecordingService screenRecordingService;
     private readonly IGlobalHotkeyService globalHotkeyService;
     private readonly ISystemClipboardService systemClipboardService;
+    private readonly IClipboardImageWriter clipboardImageWriter;
     private readonly ITextRecognitionService ocrService;
     private readonly IScreenRegionDetector screenRegionDetector;
     private readonly ICaptureCancelInput captureCancelInput;
@@ -99,6 +100,7 @@ public class CaptureCoordinator : IDisposable
         IScreenRecordingService screenRecordingService,
         IGlobalHotkeyService globalHotkeyService,
         ISystemClipboardService systemClipboardService,
+        IClipboardImageWriter clipboardImageWriter,
         IScreenRegionDetector screenRegionDetector,
         ITextRecognitionService textRecognitionService,
         ICaptureCancelInput captureCancelInput,
@@ -108,6 +110,7 @@ public class CaptureCoordinator : IDisposable
         this.screenRecordingService = screenRecordingService;
         this.globalHotkeyService = globalHotkeyService;
         this.systemClipboardService = systemClipboardService;
+        this.clipboardImageWriter = clipboardImageWriter;
         this.screenRegionDetector = screenRegionDetector;
         this.ocrService = textRecognitionService;
         this.captureCancelInput = captureCancelInput;
@@ -365,12 +368,16 @@ public class CaptureCoordinator : IDisposable
             UiLogger.Log("截图", "区域截图已取消：用户没有完成框选");
             return CaptureOutcome.CreateCancelled("已取消区域截图");
         }
+        MainWindowCaptureState? hideState = this.PrepareMainWindowForCapture(CaptureTarget.Region, selectedArea.Value, "区域截图");
         cancelSource = await this.WaitForOverlayClosedAsync("区域截图", "区域截图");
         if (cancelSource != CaptureCancelSource.None)
         {
+            this.RestoreMainWindowAfterCapture(hideState, "区域截图选区");
             return this.CreateCaptureCancelOutcome(cancelSource, "区域截图", "遮罩关闭后");
         }
-        return await this.CaptureInternalAsync(CaptureTarget.Region, selectedArea.Value, 0, "区域截图", false);
+        CaptureOutcome regionOutcome = await this.CaptureInternalAsync(CaptureTarget.Region, selectedArea.Value, 0, "区域截图", false);
+        this.RestoreMainWindowAfterCapture(hideState, "区域截图选区");
+        return regionOutcome;
     }
 
     /// <summary>
@@ -410,7 +417,9 @@ public class CaptureCoordinator : IDisposable
         request.Area = selectedArea.Value;
         request.IncludeCursor = mainViewModel.Settings.CaptureIncludeCursor;
         request.ToolPath = mainViewModel.Settings.FfmpegPath;
+        MainWindowCaptureState? pinHideState = this.PrepareMainWindowForCapture(CaptureTarget.Region, selectedArea.Value, "贴图截图");
         ScreenCaptureResult captureResult = await this.screenCaptureService.CaptureAsync(request);
+        this.RestoreMainWindowAfterCapture(pinHideState, "贴图截图");
         if (!captureResult.Success)
         {
             string failureMessage = "贴图截图失败：" + captureResult.ErrorMessage;
@@ -497,7 +506,7 @@ public class CaptureCoordinator : IDisposable
             return this.CreateCaptureCancelOutcome(cancelSource, "贴图截图", "贴图创建前");
         }
 
-        PixelPoint pinPosition = new PixelPoint(captureResult.Area.X, captureResult.Area.Y);
+        PixelPoint pinPosition = this.ResolvePinPlacement(captureResult.Area, captureResult.PixelWidth, captureResult.PixelHeight);
         try
         {
             PinWindowManager.ShowPinnedImage(bitmap, pinPosition, mainViewModel.Settings,
@@ -514,30 +523,20 @@ public class CaptureCoordinator : IDisposable
 
         if (saveFile)
         {
-            bool copied = false;
-            if (mainViewModel.Settings.CaptureCopyToClipboard)
-            {
-                try
-                {
-                    copied = await this.systemClipboardService.WriteAsync(new string[] { savedPath }, false);
-                }
-                catch (Exception error)
-                {
-                    UiLogger.LogError("截图", "贴图截图写入剪贴板异常：路径=" + savedPath, error);
-                }
-            }
+            UiLogger.Log("截图", "贴图截图不自动写剪贴板：复制改由产物历史或完成提示的显式按钮触发 产物路径=" + savedPath);
             string outputDirectory = Path.GetDirectoryName(savedPath) ?? CapturePaths.ResolveOutputDirectory(mainViewModel.Settings);
             CaptureOutcome outcome = CaptureOutcome.CreateSuccess(savedPath, "贴图截图已保存并贴到屏幕：" + savedPath);
             this.CaptureFinished?.Invoke(outcome);
             if (mainViewModel.Settings.CaptureOpenFolderAfter)
             {
-                this.OpenOutputFolderTab(outputDirectory);
+                this.OpenOutputFolderTab(outputDirectory, false);
             }
             UiLogger.Log("截图", "贴图截图完成：产物路径=" + savedPath
                 + " 贴图源=同一产物文件"
                 + " 贴图位置横坐标=" + pinPosition.X
                 + " 贴图位置纵坐标=" + pinPosition.Y
-                + " 复制到剪贴板=" + copied);
+                + " 自动复制到剪贴板=否");
+            this.FinishCapturePresentation("贴图截图");
             return outcome;
         }
 
@@ -569,7 +568,292 @@ public class CaptureCoordinator : IDisposable
         return await this.CaptureInternalAsync(CaptureTarget.Region, lastArea, delaySeconds, "上次区域截图");
     }
 
-    /// <summary>截图主流程：解析区域、调用平台截图、保存 PNG、写剪贴板并打开产物目录。</summary>
+    /// <summary>
+    /// 显式复制产物到剪贴板（用户点击按钮或网页端调用，绝不由截图流程自动触发）：
+    /// 多选时一次写入全部文件路径，并把其中第一张图片写成 PNG / CF_DIBV5 / CF_DIB 位图。
+    /// </summary>
+    public async Task<CaptureOutcome> CopyCaptureFilesToClipboardAsync(IReadOnlyList<string> filePaths, string sceneName)
+    {
+        List<string> existingPaths = new List<string>();
+        if (filePaths != null)
+        {
+            foreach (string path in filePaths)
+            {
+                if (!string.IsNullOrWhiteSpace(path) && File.Exists(path))
+                {
+                    existingPaths.Add(path);
+                }
+            }
+        }
+        if (existingPaths.Count == 0)
+        {
+            UiLogger.Log("系统剪贴板", sceneName + "显式复制被拒绝：没有可复制的产物文件");
+            return CaptureOutcome.CreateFailure("没有可复制的产物文件");
+        }
+        string imagePath = string.Empty;
+        foreach (string path in existingPaths)
+        {
+            string extension = Path.GetExtension(path).ToLowerInvariant();
+            if (extension == ".png" || extension == ".jpg" || extension == ".jpeg"
+                || extension == ".bmp" || extension == ".gif" || extension == ".webp")
+            {
+                imagePath = path;
+                break;
+            }
+        }
+        bool copied = false;
+        if (imagePath.Length > 0 && this.clipboardImageWriter.IsSupported)
+        {
+            try
+            {
+                byte[] imageBytes = await File.ReadAllBytesAsync(imagePath);
+                ClipboardImageWriteResult result = await this.clipboardImageWriter.WriteAsync(imageBytes, existingPaths);
+                UiLogger.Log("系统剪贴板", sceneName + "显式复制：图片=" + imagePath
+                    + " 文件数量=" + existingPaths.Count + " 结果=" + (result.Success ? "成功" : "失败")
+                    + " 明细=" + result.Detail);
+                copied = result.Success;
+            }
+            catch (Exception error)
+            {
+                UiLogger.LogError("系统剪贴板", sceneName + "显式复制异常：图片=" + imagePath, error);
+            }
+        }
+        else
+        {
+            UiLogger.Log("系统剪贴板", sceneName + "显式复制：没有图片文件或平台不支持图片剪贴板 文件数量="
+                + existingPaths.Count + " 结果=回退为仅写文件路径");
+        }
+        if (!copied)
+        {
+            try
+            {
+                copied = await this.systemClipboardService.WriteAsync(existingPaths, false);
+                UiLogger.Log("系统剪贴板", sceneName + "显式复制回退为仅写文件路径：文件数量=" + existingPaths.Count
+                    + " 结果=" + (copied ? "成功" : "失败"));
+            }
+            catch (Exception error)
+            {
+                UiLogger.LogError("系统剪贴板", sceneName + "显式复制回退写文件路径异常：文件数量=" + existingPaths.Count, error);
+            }
+        }
+        if (!copied)
+        {
+            return CaptureOutcome.CreateFailure("复制到剪贴板失败，产物文件仍在磁盘上");
+        }
+        return CaptureOutcome.CreateSuccess(existingPaths[0], "已复制 " + existingPaths.Count + " 个产物到剪贴板");
+    }
+
+    /// <summary>主窗口在截图前的状态快照，用于截图后按原状态恢复。</summary>
+    private sealed class MainWindowCaptureState
+    {
+        /// <summary>截图前主窗口是否可见。</summary>
+        public bool WasVisible;
+
+        /// <summary>截图前的窗口状态（普通 / 最大化 / 最小化）。</summary>
+        public WindowState PreviousState;
+
+        /// <summary>本次截图的判定目标类型（窗口 / 区域 / 全屏）。</summary>
+        public string TargetType;
+
+        /// <summary>本次是否真的执行了隐藏。</summary>
+        public bool WasHidden;
+    }
+
+    /// <summary>
+    /// 按目标类型判定是否需要临时隐藏主窗口：
+    /// 区域与主窗口相交才隐藏；活动窗口且目标是本程序窗口不隐藏；全屏一律不隐藏（按用户所见截取）。
+    /// </summary>
+    private MainWindowCaptureState? PrepareMainWindowForCapture(CaptureTarget target, CaptureArea area, string sceneName)
+    {
+        MainWindowViewModel? mainViewModel = this.viewModel;
+        MainWindow? window = WindowRegistry.Primary;
+        string targetType = "全屏";
+        if (target == CaptureTarget.Region)
+        {
+            targetType = "区域";
+        }
+        else if (target == CaptureTarget.ActiveWindow)
+        {
+            targetType = "窗口";
+        }
+        if (window == null || mainViewModel == null)
+        {
+            UiLogger.Log("截图", sceneName + "主窗口避让判定：目标类型=" + targetType
+                + " 与主窗口相交=未知 处理=保持 恢复=无需恢复（主窗口或视图模型不存在）");
+            return null;
+        }
+        PixelRect windowRect = GetMainWindowPixelRect(window);
+        bool intersects = area.IsValid && Intersects(area, windowRect);
+        bool ownWindowTarget = false;
+        if (target == CaptureTarget.ActiveWindow)
+        {
+            IntPtr foreground = this.foregroundWindowService.CaptureForegroundWindow();
+            IntPtr self = window.TryGetPlatformHandle() == null ? IntPtr.Zero : window.TryGetPlatformHandle().Handle;
+            ownWindowTarget = foreground != IntPtr.Zero && self != IntPtr.Zero && foreground == self;
+        }
+        bool needHide = false;
+        if (targetType == "区域")
+        {
+            needHide = intersects;
+        }
+        else if (targetType == "窗口")
+        {
+            needHide = intersects && !ownWindowTarget;
+        }
+        MainWindowCaptureState state = new MainWindowCaptureState();
+        state.WasVisible = window.IsVisible;
+        state.PreviousState = window.WindowState;
+        state.TargetType = targetType;
+        if (needHide && mainViewModel.Settings.CaptureHideMainWindow && window.IsVisible)
+        {
+            window.Hide();
+            state.WasHidden = true;
+        }
+        UiLogger.Log("截图", sceneName + "主窗口避让判定：目标类型=" + targetType
+            + " 与主窗口相交=" + (intersects ? "是" : "否")
+            + " 本程序窗口目标=" + (ownWindowTarget ? "是" : "否")
+            + " 处理=" + (state.WasHidden ? "临时隐藏" : "保持")
+            + " 设置项=" + (mainViewModel.Settings.CaptureHideMainWindow ? "开启" : "关闭")
+            + " 恢复=" + (state.WasHidden ? "待恢复" : "无需恢复"));
+        return state;
+    }
+
+    /// <summary>取主窗口在物理像素坐标中的矩形，用于与截图区域判断相交。</summary>
+    private static PixelRect GetMainWindowPixelRect(MainWindow window)
+    {
+        double scaling = window.RenderScaling <= 0 ? 1.0 : window.RenderScaling;
+        int width = (int)Math.Round(window.Bounds.Width * scaling);
+        int height = (int)Math.Round(window.Bounds.Height * scaling);
+        return new PixelRect(window.Position.X, window.Position.Y, width, height);
+    }
+
+    /// <summary>判断截图区域与主窗口矩形是否有交集。</summary>
+    private static bool Intersects(CaptureArea area, PixelRect rect)
+    {
+        int left = Math.Max(area.X, rect.X);
+        int top = Math.Max(area.Y, rect.Y);
+        int right = Math.Min(area.X + area.Width, rect.X + rect.Width);
+        int bottom = Math.Min(area.Y + area.Height, rect.Y + rect.Height);
+        return right > left && bottom > top;
+    }
+
+    /// <summary>
+    /// 截图完成后的展示：按设置激活主窗口并切到「截图与录屏」页；关闭设置时保持当前前台窗口。
+    /// 激活只发生在截图完成之后，截图期间所有相关调用点均用局部参数抑制激活。
+    /// </summary>
+    private void FinishCapturePresentation(string sceneName)
+    {
+        MainWindowViewModel? mainViewModel = this.viewModel;
+        if (mainViewModel == null)
+        {
+            return;
+        }
+        if (!mainViewModel.Settings.CaptureActivateAfterCapture)
+        {
+            UiLogger.Log("截图", sceneName + "完成后不激活主窗口：因截图流程而抑制激活 设置项=关闭 结果=保持当前前台窗口");
+            return;
+        }
+        MainWindow? window = WindowRegistry.Primary;
+        if (window != null)
+        {
+            window.ShowActivated = true;
+            if (!window.IsVisible)
+            {
+                window.Show();
+            }
+            if (window.WindowState == WindowState.Minimized)
+            {
+                window.WindowState = WindowState.Normal;
+            }
+            window.Activate();
+        }
+        mainViewModel.OpenCaptureTab();
+        UiLogger.Log("截图", sceneName + "完成后激活主窗口并切到截图与录屏页：结果=已展示最新产物");
+    }
+
+    /// <summary>截图后恢复主窗口：不激活、不改变前台窗口，原为最小化则保持最小化。</summary>
+    private void RestoreMainWindowAfterCapture(MainWindowCaptureState? state, string sceneName)
+    {
+        if (state == null || !state.WasHidden)
+        {
+            if (state != null)
+            {
+                UiLogger.Log("截图", sceneName + "主窗口恢复：目标类型=" + state.TargetType
+                    + " 处理=保持 恢复=无需恢复");
+            }
+            return;
+        }
+        MainWindow? window = WindowRegistry.Primary;
+        if (window == null)
+        {
+            UiLogger.Log("截图", sceneName + "恢复主窗口失败：主窗口不存在");
+            return;
+        }
+        bool previousShowActivated = window.ShowActivated;
+        window.ShowActivated = false;
+        window.Show();
+        window.ShowActivated = previousShowActivated;
+        if (state.PreviousState == WindowState.Minimized)
+        {
+            window.WindowState = WindowState.Minimized;
+        }
+        UiLogger.Log("截图", sceneName + "主窗口恢复：目标类型=" + state.TargetType
+            + " 原可见=" + state.WasVisible + " 原窗口状态=" + state.PreviousState
+            + " 处理=临时隐藏 恢复=已恢复");
+    }
+
+    /// <summary>计算贴图位置：默认避开原截图区域，优先右侧、其次下方，放不下才翻转，并记住上次位置。</summary>
+    private PixelPoint ResolvePinPlacement(CaptureArea sourceArea, int imageWidth, int imageHeight)
+    {
+        MainWindowViewModel? mainViewModel = this.viewModel;
+        MainWindow? window = WindowRegistry.Primary;
+        PixelRect workingArea = new PixelRect(0, 0, 1920, 1080);
+        if (window != null && window.Screens.Primary != null)
+        {
+            workingArea = window.Screens.Primary.WorkingArea;
+        }
+        bool avoidSource = mainViewModel == null || mainViewModel.Settings.CapturePinAvoidSource;
+        if (!avoidSource && mainViewModel != null && mainViewModel.Settings.CapturePinLastX >= 0
+            && mainViewModel.Settings.CapturePinLastY >= 0)
+        {
+            PixelPoint remembered = new PixelPoint(mainViewModel.Settings.CapturePinLastX,
+                mainViewModel.Settings.CapturePinLastY);
+            UiLogger.Log("贴图", "贴图位置=复用上次位置 横坐标=" + remembered.X + " 纵坐标=" + remembered.Y);
+            return remembered;
+        }
+        int offset = 8;
+        int x = sourceArea.X + sourceArea.Width + offset;
+        int y = sourceArea.Y;
+        if (x + imageWidth > workingArea.X + workingArea.Width)
+        {
+            x = sourceArea.X - imageWidth - offset;
+        }
+        if (x < workingArea.X)
+        {
+            x = workingArea.X + offset;
+        }
+        if (y + imageHeight > workingArea.Y + workingArea.Height)
+        {
+            y = sourceArea.Y + sourceArea.Height - imageHeight;
+        }
+        if (y < workingArea.Y)
+        {
+            y = workingArea.Y + offset;
+        }
+        PixelPoint position = new PixelPoint(x, y);
+        if (mainViewModel != null)
+        {
+            mainViewModel.Settings.CapturePinLastX = x;
+            mainViewModel.Settings.CapturePinLastY = y;
+            this.settingsStore.Save(mainViewModel.Settings);
+        }
+        UiLogger.Log("贴图", "贴图位置计算：原区域=" + sourceArea + " 图像宽度=" + imageWidth
+            + " 图像高度=" + imageHeight + " 结果横坐标=" + x + " 结果纵坐标=" + y
+            + " 避开原区域=" + avoidSource);
+        return position;
+    }
+
+    /// <summary>截图主流程：解析区域、调用平台截图、保存 PNG 并打开产物目录（不再自动写剪贴板）。</summary>
     private async Task<CaptureOutcome> CaptureInternalAsync(CaptureTarget target, CaptureArea area,
         int delaySeconds, string captureMode, bool resetCancelTracking = true)
     {
@@ -582,7 +866,7 @@ public class CaptureCoordinator : IDisposable
             + " 指定区域=" + (area.IsValid ? area.ToString() : "未指定")
             + " 延迟秒数=" + delaySeconds
             + " 包含鼠标指针=" + mainViewModel.Settings.CaptureIncludeCursor
-            + " 复制到剪贴板=" + mainViewModel.Settings.CaptureCopyToClipboard
+            + " 自动复制到剪贴板=已停用（设置值=" + mainViewModel.Settings.CaptureCopyToClipboard + "）"
             + " 完成后打开产物文件夹=" + mainViewModel.Settings.CaptureOpenFolderAfter);
         CaptureCancelSource cancelSource = await this.WaitForCancelablePhaseAsync(delaySeconds,
             captureMode, "延迟等待", resetCancelTracking);
@@ -596,7 +880,9 @@ public class CaptureCoordinator : IDisposable
         request.Area = area;
         request.IncludeCursor = mainViewModel.Settings.CaptureIncludeCursor;
         request.ToolPath = mainViewModel.Settings.FfmpegPath;
+        MainWindowCaptureState? hideState = this.PrepareMainWindowForCapture(target, area, captureMode);
         ScreenCaptureResult captureResult = await this.screenCaptureService.CaptureAsync(request);
+        this.RestoreMainWindowAfterCapture(hideState, captureMode);
         if (!captureResult.Success)
         {
             string failureMessage = "截图失败：" + captureResult.ErrorMessage;
@@ -653,35 +939,20 @@ public class CaptureCoordinator : IDisposable
             return this.CreateCaptureCancelOutcome(cancelSource, captureMode, "写入剪贴板前");
         }
 
-        if (mainViewModel.Settings.CaptureCopyToClipboard)
-        {
-            bool copied = false;
-            try
-            {
-                copied = await this.systemClipboardService.WriteAsync(new string[] { screenshotPath }, false);
-            }
-            catch (Exception error)
-            {
-                UiLogger.LogError("截图", "写入系统剪贴板异常：路径=" + screenshotPath, error);
-            }
-            UiLogger.Log("截图", "截图写入系统剪贴板：路径=" + screenshotPath + " 结果="
-                + (copied ? "成功，可在资源管理器直接粘贴" : "失败，图片已保存在磁盘上"));
-        }
-        else
-        {
-            UiLogger.Log("截图", "截图未写入系统剪贴板：用户已关闭「截图后复制到剪贴板」");
-        }
+        UiLogger.Log("截图", "截图未自动写剪贴板：复制改由产物历史或完成提示的显式按钮触发 产物路径=" + screenshotPath);
 
         CaptureOutcome outcome = CaptureOutcome.CreateSuccess(screenshotPath, "截图已保存：" + screenshotPath);
         this.CaptureFinished?.Invoke(outcome);
         if (mainViewModel.Settings.CaptureOpenFolderAfter)
         {
-            this.OpenOutputFolderTab(outputDirectory);
+            this.OpenOutputFolderTab(outputDirectory, false);
         }
         else
         {
             UiLogger.Log("截图", "截图完成后未打开产物文件夹：用户已关闭「完成后自动打开产物文件夹」开关");
         }
+        // 截图完成后再激活主窗口并切到截图页；截图期间的所有窗口行为均用局部参数抑制激活
+        this.FinishCapturePresentation(captureMode);
         if (mainViewModel.Settings.CaptureOpenEditorAfter)
         {
             Dispatcher.UIThread.Post(delegate
@@ -1405,7 +1676,9 @@ public class CaptureCoordinator : IDisposable
     }
 
     /// <summary>在程序窗口内打开产物文件夹标签；同一路径的标签已存在时直接选中，不重复新建。</summary>
-    public void OpenOutputFolderTab(string directory)
+    /// <param name="directory">产物目录。</param>
+    /// <param name="activateWindow">是否把主窗口带到前台；截图流程传 false，避免抢走用户当前焦点。</param>
+    public void OpenOutputFolderTab(string directory, bool activateWindow = true)
     {
         if (string.IsNullOrWhiteSpace(directory))
         {
@@ -1413,7 +1686,7 @@ public class CaptureCoordinator : IDisposable
             return;
         }
         MainWindow? window = WindowRegistry.Primary;
-        if (window != null)
+        if (window != null && activateWindow)
         {
             if (!window.IsVisible)
             {
@@ -1807,7 +2080,7 @@ public class CaptureCoordinator : IDisposable
         this.settingsStore.Save(mainViewModel.Settings);
         UiLogger.Log("配置更改", "截图录屏设置已保存：原因=" + reason
             + " 保存目录=" + CapturePaths.ResolveOutputDirectory(mainViewModel.Settings)
-            + " 复制到剪贴板=" + mainViewModel.Settings.CaptureCopyToClipboard
+            + " 自动复制到剪贴板=已停用（设置值=" + mainViewModel.Settings.CaptureCopyToClipboard + "）"
             + " 完成打开文件夹=" + mainViewModel.Settings.CaptureOpenFolderAfter
             + " 包含鼠标指针=" + mainViewModel.Settings.CaptureIncludeCursor
             + " 延迟秒数=" + mainViewModel.Settings.CaptureDelaySeconds
@@ -1898,23 +2171,84 @@ public class CaptureCoordinator : IDisposable
         return duration.ToString(@"hh\:mm\:ss");
     }
 
-    /// <summary>显示失败提示并把主窗口带到前台，保证全局热键触发的失败也能被看到。</summary>
+    /// <summary>
+    /// 截图失败提示：按设置分三档——托盘气泡（默认，不激活）、仅日志、弹窗（会抢焦点）。
+    /// 默认档使用无焦点浮层，避免把主窗口顶到前台。
+    /// </summary>
     private void ShowFailure(string title, string message)
     {
-        MainWindow? window = WindowRegistry.Primary;
-        if (window != null)
+        string mode = this.viewModel == null ? "balloon" : this.viewModel.Settings.CaptureFailureNotice;
+        if (string.IsNullOrEmpty(mode))
         {
-            if (!window.IsVisible)
-            {
-                window.Show();
-            }
-            if (window.WindowState == WindowState.Minimized)
-            {
-                window.WindowState = WindowState.Normal;
-            }
-            window.Activate();
+            mode = "balloon";
         }
-        MessageDialog.Show(window, title, message);
+        if (string.Equals(mode, "log", StringComparison.Ordinal))
+        {
+            UiLogger.Log("截图", "截图失败提示：标题=" + title + " 内容=" + message
+                + " 截图失败提示方式=仅日志 结果=未显示任何界面提示");
+            return;
+        }
+        if (string.Equals(mode, "dialog", StringComparison.Ordinal))
+        {
+            MainWindow? window = WindowRegistry.Primary;
+            if (window != null)
+            {
+                if (!window.IsVisible)
+                {
+                    window.Show();
+                }
+                if (window.WindowState == WindowState.Minimized)
+                {
+                    window.WindowState = WindowState.Normal;
+                }
+                window.Activate();
+            }
+            UiLogger.Log("截图", "截图失败提示：标题=" + title + " 内容=" + message
+                + " 截图失败提示方式=弹窗（会抢焦点） 结果=已显示模态提示");
+            MessageDialog.Show(window, title, message);
+            return;
+        }
+        Dispatcher.UIThread.Post(delegate
+        {
+            try
+            {
+                PixelRect workingArea = this.ResolveToastWorkingArea();
+                FailureToastWindow toast = new FailureToastWindow(title, message, workingArea);
+                toast.ShowToast();
+            }
+            catch (Exception error)
+            {
+                UiLogger.LogError("截图", "截图失败提示浮层显示失败：标题=" + title, error);
+            }
+        });
+        UiLogger.Log("截图", "截图失败提示：标题=" + title + " 内容=" + message
+            + " 截图失败提示方式=托盘气泡 结果=已显示无焦点浮层");
+    }
+
+    /// <summary>取鼠标所在显示器的工作区：气泡出现在该屏右下角，而不是固定主屏。</summary>
+    private PixelRect ResolveToastWorkingArea()
+    {
+        MainWindow? window = WindowRegistry.Primary;
+        int pointerX = 0;
+        int pointerY = 0;
+        bool hasPointer = this.screenRegionDetector.TryGetPointerPosition(out pointerX, out pointerY);
+        if (window != null && hasPointer)
+        {
+            foreach (Screen candidate in window.Screens.All)
+            {
+                PixelRect bounds = candidate.Bounds;
+                if (pointerX >= bounds.X && pointerX < bounds.X + bounds.Width
+                    && pointerY >= bounds.Y && pointerY < bounds.Y + bounds.Height)
+                {
+                    return candidate.WorkingArea;
+                }
+            }
+        }
+        if (window != null && window.Screens.Primary != null)
+        {
+            return window.Screens.Primary.WorkingArea;
+        }
+        return new PixelRect(0, 0, 1920, 1080);
     }
 
     /// <summary>释放全局快捷键与录制进程。</summary>

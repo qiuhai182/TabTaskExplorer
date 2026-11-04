@@ -10,6 +10,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Avalonia.Controls;
 using TabTaskExplorer.App.Services;
 using TabTaskExplorer.App.Services.Capture;
+using TabTaskExplorer.App.Services.Tasks;
 using TabTaskExplorer.Kernel.Abstractions;
 using TabTaskExplorer.Kernel.Capture;
 using TabTaskExplorer.Kernel.Media;
@@ -44,6 +45,9 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
 {
     private readonly IServiceProvider services;
     private readonly AppSettingsStore settingsStore = new AppSettingsStore();
+
+    /// <summary>桌面统一任务中心（本地复制/移动/删除）。</summary>
+    private readonly FileTaskCenter fileTaskCenter = new FileTaskCenter();
     private readonly CaptureCoordinator captureCoordinator;
     private readonly CustomStartupService customStartupService;
     private object? selectedTab;
@@ -53,6 +57,11 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
     private bool isIdeMode;
     private List<string>? clipboardPaths;
     private bool clipboardIsCut;
+    private bool canPasteFromClipboard;
+    private bool clipboardProbeRunning;
+    private Avalonia.Threading.DispatcherTimer? clipboardAvailabilityTimer;
+    private string clipboardAvailabilitySignature = string.Empty;
+    private bool taskRefreshSubscribed;
     private WebServiceHost? debugWebHost;
     private bool webServiceRunning;
     private int webServicePort;
@@ -63,6 +72,21 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
 
     /// <summary>应用设置（所有标签页共享同一份实例）。</summary>
     public AppSettings Settings { get; private set; }
+
+    /// <summary>工具栏「粘贴」是否可用：只有剪贴板含文件 / 文件夹时启用，纯文本或图片为 false。</summary>
+    public bool CanPasteFromClipboard
+    {
+        get { return this.canPasteFromClipboard; }
+        private set
+        {
+            if (this.canPasteFromClipboard == value)
+            {
+                return;
+            }
+            this.canPasteFromClipboard = value;
+            this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CanPasteFromClipboard)));
+        }
+    }
 
     /// <summary>自定义启动项服务：本次开机首次启动检查与启动项管理标签共用同一实例。</summary>
     public CustomStartupService CustomStartup
@@ -221,6 +245,8 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
     {
         this.services = services;
         this.Settings = this.settingsStore.Load();
+        ThumbnailService.Configure(this.Settings.FfmpegPath);
+        UiLogger.SetMinimumLevel(UiLogger.ParseLevel(this.Settings.LogLevel, LogLevel.Info));
         this.captureCoordinator = services.GetRequiredService<CaptureCoordinator>();
         this.customStartupService = new CustomStartupService(this.Settings, this.settingsStore);
         this.IdeShell = new IdeShellViewModel(this.Settings, services);
@@ -247,6 +273,7 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
         {
             this.EnterIdeMode();
         }
+        this.StartClipboardAvailabilityWatcher();
     }
 
     /// <summary>
@@ -257,6 +284,8 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
     {
         this.services = services;
         this.Settings = sharedSettings;
+        ThumbnailService.Configure(this.Settings.FfmpegPath);
+        UiLogger.SetMinimumLevel(UiLogger.ParseLevel(this.Settings.LogLevel, LogLevel.Info));
         this.captureCoordinator = services.GetRequiredService<CaptureCoordinator>();
         this.customStartupService = new CustomStartupService(this.Settings, this.settingsStore);
         this.IdeShell = new IdeShellViewModel(this.Settings, services);
@@ -264,6 +293,7 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
         this.FillQuickAccessItems();
         this.SyncViewSettings();
         this.ApplySavedTheme();
+        this.StartClipboardAvailabilityWatcher();
         UiLogger.Log("程序行为", "新窗口视图模型创建：共享设置对象、不恢复会话标签、资源管理器模式");
     }
 
@@ -477,10 +507,11 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
     private void CreateFileTab(IFileSystemProvider provider, string path,
         DiskScanService? scanService, IArchiveService archiveService)
     {
-        FileTabViewModel tab = new FileTabViewModel(provider, this.Settings, path, scanService, archiveService);
+        FileTabViewModel tab = new FileTabViewModel(provider, this.Settings, path, scanService, archiveService, this.settingsStore);
         tab.PathChanged += this.OnTabPathChanged;
         tab.ArchiveOpenRequested += this.OnArchiveOpenRequested;
         tab.MediaOpenRequested += this.OnMediaOpenRequested;
+        tab.RetryTaskRequested = (workspaceId, taskId) => this.RetryFileTask(workspaceId, taskId);
         this.Tabs.Add(tab);
         this.SelectedTab = tab;
         string locationText = string.IsNullOrEmpty(path) ? "此电脑" : path;
@@ -968,6 +999,13 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
                 this.OpenTerminalTab(profile);
             }
         }
+        catch (RemoteHopException hopError)
+        {
+            UiLogger.Log("远程连接审计", "跳板链连接失败：连接=" + profile.Name + " 跳序=" + hopError.HopIndex
+                + " 主机=" + hopError.Host + ":" + hopError.Port + " 阶段=" + hopError.Stage
+                + " 耗时=" + hopError.ElapsedMilliseconds + " 毫秒 结果=未建立终端，原因=" + hopError.Message);
+            Views.MessageDialog.Show(this.OwnerWindow, "跳板连接失败", hopError.Message);
+        }
         catch (Exception ex)
         {
             UiLogger.LogError("远程连接", "打开终端失败：连接名称=" + profile.Name + " 服务器=" + profile.Host
@@ -1004,10 +1042,11 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
             });
             // 远程标签传空扫描服务：禁止对本机磁盘做目录大小回填
             FileTabViewModel newTab = new FileTabViewModel(provider, this.Settings, "/", null,
-                this.services.GetRequiredService<IArchiveService>());
+                this.services.GetRequiredService<IArchiveService>(), this.settingsStore);
             newTab.AttachedProfileId = profile.Id;
             newTab.PathChanged += this.OnTabPathChanged;
             newTab.RemoteFileOpenRequested += this.OnRemoteFileOpenRequested;
+            newTab.RetryTaskRequested = (workspaceId, taskId) => this.RetryFileTask(workspaceId, taskId);
             this.Tabs.Add(newTab);
             this.SelectedTab = newTab;
         }
@@ -1027,6 +1066,13 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
                 this.OpenRemoteFolderTab(profile);
             }
         }
+        catch (RemoteHopException hopError)
+        {
+            UiLogger.Log("远程连接审计", "跳板链连接失败：连接=" + profile.Name + " 跳序=" + hopError.HopIndex
+                + " 主机=" + hopError.Host + ":" + hopError.Port + " 阶段=" + hopError.Stage
+                + " 耗时=" + hopError.ElapsedMilliseconds + " 毫秒 结果=未建立远程文件夹，原因=" + hopError.Message);
+            Views.MessageDialog.Show(this.OwnerWindow, "跳板连接失败", hopError.Message);
+        }
         catch (Exception ex)
         {
             UiLogger.LogError("远程连接", "打开远程文件夹失败：连接名称=" + profile.Name + " 服务器=" + profile.Host
@@ -1038,7 +1084,8 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
     /// <summary>首次连接确认主机指纹；用户确认后写入 known_hosts 并返回 true。</summary>
     private async Task<bool> ConfirmUnknownHostKeyAsync(HostKeyUnknownException keyError)
     {
-        string message = "首次连接 " + keyError.Host + ":" + keyError.Port + "\n"
+        string message = (keyError.HopIndex > 0 ? "第 " + keyError.HopIndex + " 跳（跳板机）" : "目标主机") + "\n"
+            + "首次连接 " + keyError.Host + ":" + keyError.Port + "\n"
             + "主机密钥算法：" + keyError.KeyType + "\n"
             + "SHA256 指纹：" + keyError.FingerprintSha256 + "\n\n"
             + "请核对该指纹与服务器管理员提供的一致；确认后将保存到 known_hosts。";
@@ -1061,6 +1108,7 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
     private async Task<bool> ConfirmHostKeyMismatchAsync(HostKeyMismatchException keyError)
     {
         string message = "主机密钥与已信任记录不一致，连接已阻断。\n"
+            + (keyError.HopIndex > 0 ? "位置：第 " + keyError.HopIndex + " 跳（跳板机）\n" : "位置：目标主机\n")
             + "主机：" + keyError.Host + ":" + keyError.Port + "\n"
             + "密钥算法：" + keyError.KeyType + "\n"
             + "已信任指纹：" + keyError.ExpectedFingerprintSha256 + "\n"
@@ -1532,6 +1580,99 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
         {
             tab.ShowMessage((isCut ? "已剪切 " : "已复制 ") + paths.Count + " 项，按 Ctrl+V 粘贴到目标文件夹");
         }
+        _ = this.RefreshClipboardAvailabilityAsync(true);
+    }
+
+    /// <summary>启动剪贴板监听（1.2 秒轮询，仅在可用性变化时刷新并记日志，避免日志抖动）。</summary>
+    private void StartClipboardAvailabilityWatcher()
+    {
+        if (this.clipboardAvailabilityTimer != null)
+        {
+            return;
+        }
+        this.clipboardAvailabilityTimer = new Avalonia.Threading.DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(1200),
+        };
+        this.clipboardAvailabilityTimer.Tick += async delegate
+        {
+            try
+            {
+                await this.RefreshClipboardAvailabilityAsync(false);
+            }
+            catch (Exception error)
+            {
+                UiLogger.LogError("程序行为", "刷新剪贴板粘贴可用性失败", error);
+            }
+        };
+        this.clipboardAvailabilityTimer.Start();
+        _ = this.RefreshClipboardAvailabilityAsync(true);
+    }
+
+    /// <summary>
+    /// 刷新「粘贴」可用性：内部剪贴板优先，其次轻量探测系统剪贴板（CF_HDROP / 文件列表）。
+    /// 只在状态变化或强制时写日志：粘贴可用性=可用/不可用 剪贴板格式=… 来源=…。
+    /// </summary>
+    public async Task RefreshClipboardAvailabilityAsync(bool forceLog)
+    {
+        // 防止重入：上一次探测尚未返回时跳过本次，避免后台探测任务堆积
+        if (this.clipboardProbeRunning)
+        {
+            return;
+        }
+        this.clipboardProbeRunning = true;
+        try
+        {
+            bool hasFiles;
+            string format;
+            string source;
+            if (this.clipboardPaths != null && this.clipboardPaths.Count > 0)
+            {
+                hasFiles = true;
+                format = "内部剪贴板文件列表";
+                source = "内部剪贴板";
+            }
+            else
+            {
+                ISystemClipboardService? systemClipboard = this.services.GetService<ISystemClipboardService>();
+                if (systemClipboard == null)
+                {
+                    hasFiles = false;
+                    format = "系统剪贴板服务未注册";
+                    source = "无服务";
+                }
+                else
+                {
+                    ClipboardPresence presence;
+                    UiWatchdog.EnterStage("剪贴板探测");
+                    try
+                    {
+                        presence = await systemClipboard.ProbeAsync();
+                    }
+                    finally
+                    {
+                        UiWatchdog.LeaveStage("剪贴板探测");
+                    }
+                    hasFiles = presence.HasFileData;
+                    format = presence.FormatDescription
+                        + (presence.FileCount > 0 ? "，文件数=" + presence.FileCount : string.Empty);
+                    source = "系统剪贴板";
+                }
+            }
+            string signature = (hasFiles ? "1" : "0") + "|" + format;
+            if (!forceLog && signature == this.clipboardAvailabilitySignature)
+            {
+                return;
+            }
+            this.clipboardAvailabilitySignature = signature;
+            this.CanPasteFromClipboard = hasFiles;
+            UiLogger.Log("程序行为", "粘贴可用性=" + (hasFiles ? "可用" : "不可用")
+                + " 剪贴板格式=" + format + " 来源=" + source);
+        }
+        finally
+        {
+            this.clipboardProbeRunning = false;
+        }
     }
 
     /// <summary>把复制 / 剪切的路径写进系统剪贴板，让资源管理器等外部程序也能粘贴。</summary>
@@ -1573,6 +1714,12 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
             UiLogger.Log("程序行为", "粘贴：选中标签=无且未指定目标目录 结果=失败，未执行粘贴");
             return;
         }
+        if (tab != null && tab.FileSystemProvider is ArchiveFileSystemProvider && string.IsNullOrEmpty(targetDirectory))
+        {
+            tab.ShowMessage("压缩包预览标签不支持粘贴，请在普通文件夹或远程目录中粘贴");
+            UiLogger.Log("程序行为", "粘贴：目标=压缩包预览标签 结果=不支持，已提示不可用");
+            return;
+        }
 
         ClipboardContent? content = null;
         ISystemClipboardService? systemClipboard = this.services.GetService<ISystemClipboardService>();
@@ -1582,6 +1729,7 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
         }
         else
         {
+            UiWatchdog.EnterStage("剪贴板读取");
             try
             {
                 content = await systemClipboard.ReadAsync();
@@ -1589,6 +1737,10 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
             catch (Exception error)
             {
                 UiLogger.LogError("程序行为", "粘贴：读取系统剪贴板 结果=失败，按内部剪贴板判定", error);
+            }
+            finally
+            {
+                UiWatchdog.LeaveStage("剪贴板读取");
             }
         }
 
@@ -1628,12 +1780,74 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
         bool isCut = decision.IsCut;
         IReadOnlyList<string> paths = decision.Paths;
         bool usedStateFormat = decision.Category == ClipboardPasteCategory.StateFormat;
+        // 目标是否为真实本地目录与当前标签类型无关：导航 / 书签 / 磁盘视图落点到本地目录时也应进入本地任务中心
+        bool localTask = paths.Count > 0 && Directory.Exists(target);
+        if (localTask)
+        {
+            foreach (string candidate in paths)
+            {
+                if (!File.Exists(candidate) && !Directory.Exists(candidate))
+                {
+                    localTask = false;
+                    break;
+                }
+            }
+        }
+        if (localTask)
+        {
+            this.EnsureTaskRefreshSubscription();
+            UiLogger.Log("程序行为", "粘贴开始：源数量=" + paths.Count + " 目标=" + target
+                + " 冲突策略=询问（同名文件替换/改名共存，同名文件夹合并/替换/逐项处理/改名共存）");
+            string taskId;
+            UiWatchdog.EnterStage("任务提交");
+            try
+            {
+                taskId = this.fileTaskCenter.Submit(new TabTaskExplorer.App.Services.Tasks.FileTaskRequest
+                {
+                    Kind = isCut ? TabTaskExplorer.App.Services.Tasks.FileTaskKind.Move : TabTaskExplorer.App.Services.Tasks.FileTaskKind.Copy,
+                    Sources = new List<string>(paths),
+                    DestinationPath = target,
+                    ConflictPolicy = TabTaskExplorer.App.Services.Tasks.FileConflictPolicy.Ask,
+                });
+            }
+            finally
+            {
+                UiWatchdog.LeaveStage("任务提交");
+            }
+            if (!string.IsNullOrEmpty(taskId))
+            {
+                if (isCut)
+                {
+                    this.clipboardPaths = null;
+                    _ = this.RefreshClipboardAvailabilityAsync(true);
+                }
+                if (tab != null)
+                {
+                    tab.ShowMessage("已提交" + (isCut ? "移动" : "复制") + "任务：" + paths.Count + " 项，冲突时等待你选择处理方式");
+                }
+                UiLogger.Log("程序行为", "粘贴提交任务中心：目标目录=" + target + " 路径总数=" + paths.Count
+                    + " 方式=" + (isCut ? "移动" : "复制") + " 任务=" + taskId);
+                if (isCut && systemClipboard != null && usedStateFormat)
+                {
+                    try
+                    {
+                        await systemClipboard.ClearAsync();
+                    }
+                    catch (Exception error)
+                    {
+                        UiLogger.LogError("程序行为", "粘贴提交任务后清理系统剪贴板失败", error);
+                    }
+                }
+                return;
+            }
+        }
         await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
         {
             successCount = this.TransferPathsToDirectory(tab, target, paths, isCut, out failedCount);
             if (isCut)
             {
                 this.clipboardPaths = null;
+                _ = this.RefreshClipboardAvailabilityAsync(true);
             }
             if (tab != null) { tab.ShowMessage("粘贴完成：成功 " + successCount + " 项，失败 " + failedCount + " 项"); }
             UiLogger.Log("程序行为", "粘贴落地：目标目录=" + target + " 路径总数=" + paths.Count
@@ -1946,6 +2160,7 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
     public void SaveSettingsAndApply()
     {
         this.settingsStore.Save(this.Settings);
+        UiLogger.SetMinimumLevel(UiLogger.ParseLevel(this.Settings.LogLevel, LogLevel.Info));
         int globalShortcutCount = 0;
         int shortcutCount = 0;
         if (this.Settings.Shortcuts != null)
@@ -2154,6 +2369,284 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
         return this.DispatchDebugSnapshotAsync();
     }
 
+    /// <summary>读取文件列表列配置：工作区编号为空时取桌面共享设置（跨线程安全）。</summary>
+    public FileColumnConfig GetFileColumnConfig(string workspaceId)
+    {
+        if (!string.IsNullOrEmpty(workspaceId))
+        {
+            WebWorkspace? workspace;
+            if (this.webWorkspaces.TryGetValue(workspaceId, out workspace))
+            {
+                return workspace.GetFileColumnConfig();
+            }
+            return new FileColumnConfig();
+        }
+        if (Avalonia.Threading.Dispatcher.UIThread.CheckAccess())
+        {
+            return this.BuildDesktopFileColumnConfig();
+        }
+        return Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(
+            new Func<FileColumnConfig>(this.BuildDesktopFileColumnConfig)).GetTask().GetAwaiter().GetResult();
+    }
+
+    private FileColumnConfig BuildDesktopFileColumnConfig()
+    {
+        FileTabViewModel? tab = this.SelectedFileTab;
+        return new FileColumnConfig
+        {
+            VisibleColumns = this.Settings.FileVisibleColumns,
+            ColumnWidths = tab != null ? tab.ColumnWidths : this.Settings.FileColumnWidths,
+            CompactMode = this.Settings.FileCompactMode,
+            SortField = tab != null ? tab.SortField : this.Settings.FileSortField,
+            SortAscending = tab != null ? tab.SortAscending : this.Settings.FileSortAscending,
+        };
+    }
+
+    /// <summary>应用文件列表列配置：工作区编号为空时应用到桌面全部文件标签并保存一次（跨线程安全）。</summary>
+    public void ApplyFileColumnConfig(string workspaceId, FileColumnConfig config)
+    {
+        if (!string.IsNullOrEmpty(workspaceId))
+        {
+            WebWorkspace? workspace;
+            if (this.webWorkspaces.TryGetValue(workspaceId, out workspace))
+            {
+                workspace.ApplyFileColumnConfig(config);
+            }
+            return;
+        }
+        if (config == null)
+        {
+            return;
+        }
+        if (!Avalonia.Threading.Dispatcher.UIThread.CheckAccess())
+        {
+            Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(
+                new Action(delegate { this.ApplyDesktopFileColumnConfig(config); })).GetTask().GetAwaiter().GetResult();
+            return;
+        }
+        this.ApplyDesktopFileColumnConfig(config);
+    }
+
+    private void ApplyDesktopFileColumnConfig(FileColumnConfig config)
+    {
+        this.Settings.FileVisibleColumns = config.VisibleColumns;
+        this.Settings.FileColumnWidths = config.ColumnWidths;
+        this.Settings.FileCompactMode = config.CompactMode;
+        this.Settings.FileSortField = config.SortField;
+        this.Settings.FileSortAscending = config.SortAscending;
+        foreach (object tab in this.Tabs)
+        {
+            FileTabViewModel? fileTab = tab as FileTabViewModel;
+            if (fileTab == null)
+            {
+                continue;
+            }
+            fileTab.ApplyColumnConfiguration(config.VisibleColumns, config.ColumnWidths, config.CompactMode, false);
+            fileTab.ApplySortConfiguration(config.SortField, config.SortAscending, false);
+        }
+        this.settingsStore.Save(this.Settings);
+        UiLogger.Log("文件列表", "应用网页端列配置：可见列=" + config.VisibleColumns + " 列宽=" + config.ColumnWidths
+            + " 紧凑=" + (config.CompactMode ? "开" : "关") + " 排序=" + config.SortField
+            + (config.SortAscending ? " 升序" : " 降序"));
+    }
+
+    /// <summary>读取统一任务快照：工作区编号为空时取桌面本地任务与远程传输映射（跨线程安全）。</summary>
+    public List<FileTaskSnapshot> GetFileTasks(string workspaceId)
+    {
+        if (!string.IsNullOrEmpty(workspaceId))
+        {
+            WebWorkspace? workspace;
+            if (this.webWorkspaces.TryGetValue(workspaceId, out workspace))
+            {
+                return workspace.GetFileTasks();
+            }
+            return new List<FileTaskSnapshot>();
+        }
+        if (Avalonia.Threading.Dispatcher.UIThread.CheckAccess())
+        {
+            return this.BuildDesktopFileTasks();
+        }
+        return Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(
+            new Func<List<FileTaskSnapshot>>(this.BuildDesktopFileTasks)).GetTask().GetAwaiter().GetResult();
+    }
+
+    private List<FileTaskSnapshot> BuildDesktopFileTasks()
+    {
+        List<FileTaskSnapshot> result = new List<FileTaskSnapshot>(this.fileTaskCenter.Snapshot());
+        result.AddRange(RemoteTaskAdapter.Snapshot(this.Tabs));
+        return result;
+    }
+
+    /// <summary>本地任务完成后刷新桌面文件标签，避免任务中心异步落地后列表仍是旧内容。</summary>
+    private void EnsureTaskRefreshSubscription()
+    {
+        if (this.taskRefreshSubscribed)
+        {
+            return;
+        }
+        this.taskRefreshSubscribed = true;
+        this.fileTaskCenter.TaskFinished += delegate(FileTaskSnapshot snapshot)
+        {
+            Avalonia.Threading.Dispatcher.UIThread.Post(delegate
+            {
+                this.RefreshFileTabsAfterTask();
+                this.ShowTaskFinishedNotice(snapshot);
+            });
+        };
+        this.fileTaskCenter.ConflictPending += delegate(FileTaskSnapshot snapshot)
+        {
+            Avalonia.Threading.Dispatcher.UIThread.Post(delegate { this.ShowTaskConflictNotice(snapshot); });
+        };
+    }
+
+    /// <summary>任务等待冲突选择时弹出桌面对话框（同名文件二选一 / 同名文件夹四选一，可本批统一）。</summary>
+    private async void ShowTaskConflictNotice(FileTaskSnapshot snapshot)
+    {
+        string name = string.IsNullOrEmpty(snapshot.ConflictName) ? snapshot.ConflictPath : snapshot.ConflictName;
+        string text = snapshot.ConflictIsDirectory
+            ? "目标已存在同名文件夹：" + name
+                + "。请选择：合并（保留两边内容）、替换（清空目标后写入源内容，删除走回收站）、"
+                + "逐项处理文件夹内同名项，或改名共存。关闭窗口=取消任务，不会自动跳过。"
+            : "目标已存在同名文件：" + name
+                + "。请选择替换（删除目标文件后写入源文件，删除走回收站）或改名共存（两边都保留）。"
+                + "关闭窗口=取消任务，不会自动跳过。";
+        FileTabViewModel? tab = this.SelectedFileTab;
+        if (tab != null)
+        {
+            tab.ShowMessage(text);
+        }
+        UiLogger.Log("任务中心", text + " 任务=" + snapshot.Id);
+        (FileConflictAction Action, bool ApplyToAll) result;
+        UiWatchdog.EnterStage("冲突对话框");
+        try
+        {
+            result = await Views.MessageDialog.AskTaskConflictAsync(this.OwnerWindow, "任务冲突", text,
+                snapshot.ConflictIsDirectory);
+        }
+        finally
+        {
+            UiWatchdog.LeaveStage("冲突对话框");
+        }
+        bool resolved = this.fileTaskCenter.ResolveConflict(snapshot.Id, result.Action.ToString(), result.ApplyToAll);
+        UiLogger.Log("任务中心", "冲突选择写回：任务=" + snapshot.Id + " 选择=" + result.Action
+            + " 本批统一=" + result.ApplyToAll + " 结果=" + resolved);
+    }
+
+    /// <summary>任务失败时在底部摘要旁暴露「重试失败项」，避免用户以为已经处理完成。</summary>
+    private void ShowTaskFinishedNotice(FileTaskSnapshot snapshot)
+    {
+        if (snapshot.Failed <= 0)
+        {
+            return;
+        }
+        string text = "任务失败 " + snapshot.Failed + " 项：" + snapshot.Message + "；可点右侧「重试失败项」重新提交。";
+        FileTabViewModel? tab = this.SelectedFileTab;
+        if (tab != null)
+        {
+            tab.ShowMessage(text);
+            tab.SetFailedTask(string.Empty, snapshot.Id);
+        }
+        UiLogger.Log("任务中心", text + " 任务=" + snapshot.Id);
+    }
+
+    private void RefreshFileTabsAfterTask()
+    {
+        foreach (object tab in this.Tabs)
+        {
+            FileTabViewModel? fileTab = tab as FileTabViewModel;
+            if (fileTab != null)
+            {
+                fileTab.Refresh();
+            }
+        }
+    }
+
+    /// <summary>把共享排序设置同步到所有桌面文件标签（仅在设置与标签不一致时重排）。</summary>
+    private void ApplySharedSortToFileTabs()
+    {
+        string field = this.Settings.FileSortField;
+        if (field != "Name" && field != "Modified" && field != "Type" && field != "Size" && field != "Attributes")
+        {
+            field = "Name";
+        }
+        foreach (object tab in this.Tabs)
+        {
+            FileTabViewModel? fileTab = tab as FileTabViewModel;
+            if (fileTab != null && (fileTab.SortField != field || fileTab.SortAscending != this.Settings.FileSortAscending))
+            {
+                fileTab.ApplySortConfiguration(field, this.Settings.FileSortAscending, false);
+            }
+        }
+    }
+
+    /// <summary>提交本地任务；工作区编号为空时进入桌面任务中心。</summary>
+    public string StartFileTask(string workspaceId, FileTaskRequest request)
+    {
+        if (!string.IsNullOrEmpty(workspaceId))
+        {
+            WebWorkspace? workspace;
+            if (this.webWorkspaces.TryGetValue(workspaceId, out workspace))
+            {
+                return workspace.StartFileTask(request);
+            }
+            return string.Empty;
+        }
+        this.EnsureTaskRefreshSubscription();
+        return this.fileTaskCenter.Submit(request);
+    }
+
+    /// <summary>取消任务：本地任务优先，其次映射远程队列。</summary>
+    public bool CancelFileTask(string workspaceId, string id)
+    {
+        if (!string.IsNullOrEmpty(workspaceId))
+        {
+            WebWorkspace? workspace;
+            return this.webWorkspaces.TryGetValue(workspaceId, out workspace) && workspace.CancelFileTask(id);
+        }
+        if (this.fileTaskCenter.Cancel(id))
+        {
+            return true;
+        }
+        if (Avalonia.Threading.Dispatcher.UIThread.CheckAccess())
+        {
+            return RemoteTaskAdapter.Cancel(this.Tabs, id);
+        }
+        return Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(
+            new Func<bool>(delegate { return RemoteTaskAdapter.Cancel(this.Tabs, id); })).GetTask().GetAwaiter().GetResult();
+    }
+
+    /// <summary>重试失败任务：本地任务新建重试任务，远程任务转发继续。</summary>
+    public bool RetryFileTask(string workspaceId, string id)
+    {
+        if (!string.IsNullOrEmpty(workspaceId))
+        {
+            WebWorkspace? workspace;
+            return this.webWorkspaces.TryGetValue(workspaceId, out workspace) && workspace.RetryFileTask(id);
+        }
+        if (this.fileTaskCenter.Retry(id))
+        {
+            return true;
+        }
+        if (Avalonia.Threading.Dispatcher.UIThread.CheckAccess())
+        {
+            return RemoteTaskAdapter.Retry(this.Tabs, id);
+        }
+        return Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(
+            new Func<bool>(delegate { return RemoteTaskAdapter.Retry(this.Tabs, id); })).GetTask().GetAwaiter().GetResult();
+    }
+
+    /// <summary>处理冲突询问。</summary>
+    public bool ResolveFileTaskConflict(string workspaceId, string id, string action, bool applyToAll)
+    {
+        if (!string.IsNullOrEmpty(workspaceId))
+        {
+            WebWorkspace? workspace;
+            return this.webWorkspaces.TryGetValue(workspaceId, out workspace)
+                && workspace.ResolveFileTaskConflict(id, action, applyToAll);
+        }
+        return this.fileTaskCenter.ResolveConflict(id, action, applyToAll);
+    }
+
     /// <summary>读取桌面 IDE 指定编辑器的当前文本（跨线程安全；返回格式：令牌 + 换行 + 文本）。</summary>
     public string ReadDesktopIdeText(int index)
     {
@@ -2194,6 +2687,239 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
         return Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(
             new Func<string>(delegate { return this.ExecuteWebActionOnUiThread(action, argument); }))
             .GetTask().GetAwaiter().GetResult();
+    }
+
+    /// <summary>网页端读取截图状态：保存目录、命名模板、格式、开关与产物历史（JSON 文本）。</summary>
+    public string GetCaptureStateJson()
+    {
+        AppSettings settings = this.Settings;
+        string outputDirectory = CapturePaths.ResolveOutputDirectory(settings);
+        string[] files = this.captureCoordinator.ListCaptureFiles();
+        List<object> items = new List<object>();
+        foreach (string file in files)
+        {
+            try
+            {
+                FileInfo info = new FileInfo(file);
+                if (!info.Exists)
+                {
+                    continue;
+                }
+                items.Add(new
+                {
+                    fileName = info.Name,
+                    fullPath = info.FullName,
+                    sizeBytes = info.Length,
+                    sizeText = CapturePaths.DescribeSize(info.Length),
+                    modifiedTime = info.LastWriteTime.ToString("yyyy-MM-dd HH:mm:ss"),
+                    thumbnailUrl = "/api/thumb?path=" + Uri.EscapeDataString(info.FullName),
+                });
+            }
+            catch (Exception error)
+            {
+                UiLogger.LogError("网页端截图", "读取产物信息失败：路径=" + file, error);
+            }
+        }
+        object payload = new
+        {
+            outputDirectory = outputDirectory,
+            fileNameTemplate = CapturePaths.ScreenshotPrefix + "yyyyMMdd_HHmmss.png",
+            format = "png",
+            pinSave = settings.CapturePinShotSaveFile,
+            copyToClipboard = settings.CaptureCopyToClipboard,
+            openFolderAfter = settings.CaptureOpenFolderAfter,
+            openEditorAfter = settings.CaptureOpenEditorAfter,
+            count = items.Count,
+            items = items,
+        };
+        return System.Text.Json.JsonSerializer.Serialize(payload);
+    }
+
+    /// <summary>网页端截图动作：fullscreen / region / pin 提交截图，pinSave 切换保存开关，delete 删除产物文件。</summary>
+    public string ExecuteCaptureAction(string action, string argument)
+    {
+        if (string.Equals(action, "fullscreen", StringComparison.Ordinal)
+            || string.Equals(action, "region", StringComparison.Ordinal)
+            || string.Equals(action, "pin", StringComparison.Ordinal))
+        {
+            UiLogger.Log("网页端截图", "网页端提交截图任务：动作=" + action
+                + " 延迟秒数=" + this.Settings.CaptureDelaySeconds);
+            Avalonia.Threading.Dispatcher.UIThread.Post(delegate
+            {
+                _ = this.RunWebCaptureAsync(action);
+            });
+            return System.Text.Json.JsonSerializer.Serialize(new
+            {
+                ok = true,
+                message = "截图任务已提交，请刷新状态查看新产物",
+            });
+        }
+        if (string.Equals(action, "pinSave", StringComparison.Ordinal))
+        {
+            return this.SetCapturePinSaveFromWeb(argument);
+        }
+        if (string.Equals(action, "delete", StringComparison.Ordinal))
+        {
+            return this.DeleteCaptureProductFromWeb(argument);
+        }
+        if (string.Equals(action, "copy", StringComparison.Ordinal))
+        {
+            return this.CopyCaptureProductsFromWeb(argument);
+        }
+        return System.Text.Json.JsonSerializer.Serialize(new
+        {
+            ok = false,
+            message = "未知截图动作：" + action,
+        });
+    }
+
+    /// <summary>网页端切换「贴图截图保存产物」开关：参数 on / off 指定值，其余按当前值取反。</summary>
+    private string SetCapturePinSaveFromWeb(string argument)
+    {
+        bool newValue = !this.Settings.CapturePinShotSaveFile;
+        string mode = argument == null ? string.Empty : argument.Trim().ToLowerInvariant();
+        if (mode == "on" || mode == "true" || mode == "1")
+        {
+            newValue = true;
+        }
+        else if (mode == "off" || mode == "false" || mode == "0")
+        {
+            newValue = false;
+        }
+        Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(new Action(delegate
+        {
+            this.Settings.CapturePinShotSaveFile = newValue;
+            this.captureCoordinator.PersistSettings("网页端切换「贴图截图保存产物」开关");
+        })).GetTask().GetAwaiter().GetResult();
+        UiLogger.Log("网页端截图", "切换贴图截图保存开关：新值=" + (newValue ? "开启" : "关闭")
+            + " 参数=" + mode + " 结果=已保存到设置");
+        return System.Text.Json.JsonSerializer.Serialize(new
+        {
+            ok = true,
+            pinSave = newValue,
+            message = "贴图截图保存产物=" + (newValue ? "开启" : "关闭"),
+        });
+    }
+
+    /// <summary>网页端删除一条产物：只允许删除产物目录内的截图 / 录屏文件。</summary>
+    private string DeleteCaptureProductFromWeb(string argument)
+    {
+        string targetPath;
+        try
+        {
+            targetPath = Path.GetFullPath(argument == null ? string.Empty : argument.Trim());
+        }
+        catch (Exception error)
+        {
+            UiLogger.LogError("网页端截图", "删除产物失败：路径非法 参数=" + argument, error);
+            return System.Text.Json.JsonSerializer.Serialize(new { ok = false, message = "路径非法：" + argument });
+        }
+        string outputDirectory = Path.GetFullPath(CapturePaths.ResolveOutputDirectory(this.Settings));
+        if (!targetPath.StartsWith(outputDirectory + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+        {
+            UiLogger.Log("网页端截图", "拒绝删除：目标不在产物目录内 目标=" + targetPath + " 产物目录=" + outputDirectory);
+            return System.Text.Json.JsonSerializer.Serialize(new { ok = false, message = "只允许删除产物目录内的文件" });
+        }
+        if (!CapturePaths.IsCaptureFile(targetPath))
+        {
+            UiLogger.Log("网页端截图", "拒绝删除：目标不是截图或录屏产物 目标=" + targetPath);
+            return System.Text.Json.JsonSerializer.Serialize(new { ok = false, message = "目标不是截图或录屏产物" });
+        }
+        if (!File.Exists(targetPath))
+        {
+            UiLogger.Log("网页端截图", "删除产物失败：文件不存在 目标=" + targetPath);
+            return System.Text.Json.JsonSerializer.Serialize(new { ok = false, message = "产物文件不存在" });
+        }
+        try
+        {
+            File.Delete(targetPath);
+            UiLogger.Log("网页端截图", "删除产物成功：目标=" + targetPath);
+            return System.Text.Json.JsonSerializer.Serialize(new
+            {
+                ok = true,
+                message = "已删除：" + Path.GetFileName(targetPath),
+            });
+        }
+        catch (Exception error)
+        {
+            UiLogger.LogError("网页端截图", "删除产物失败：目标=" + targetPath, error);
+            return System.Text.Json.JsonSerializer.Serialize(new { ok = false, message = "删除失败：" + error.Message });
+        }
+    }
+
+    /// <summary>
+    /// 网页端显式复制：参数为可选文件路径列表（换行 / 竖线 / 分号分隔），留空复制最近一条产物；
+    /// 沿用 PNG + CF_DIBV5 + CF_DIB + 文件列表的双格式写入，不会由截图流程自动触发。
+    /// </summary>
+    private string CopyCaptureProductsFromWeb(string argument)
+    {
+        List<string> paths = new List<string>();
+        if (!string.IsNullOrWhiteSpace(argument))
+        {
+            string[] separators = new string[] { "\n", "|", ";" };
+            foreach (string line in argument.Split(separators, StringSplitOptions.RemoveEmptyEntries))
+            {
+                string path = line.Trim();
+                if (path.Length > 0)
+                {
+                    paths.Add(path);
+                }
+            }
+        }
+        if (paths.Count == 0)
+        {
+            string[] recentFiles = this.captureCoordinator.ListCaptureFiles();
+            if (recentFiles.Length > 0)
+            {
+                paths.Add(recentFiles[0]);
+            }
+        }
+        if (paths.Count == 0)
+        {
+            UiLogger.Log("网页端截图", "网页端显式复制被拒绝：没有可复制的产物");
+            return System.Text.Json.JsonSerializer.Serialize(new { ok = false, message = "没有可复制的产物" });
+        }
+        UiLogger.Log("网页端截图", "网页端显式复制：文件数量=" + paths.Count + " 文件列表=" + string.Join("、", paths));
+        CaptureOutcome outcome = this.captureCoordinator
+            .CopyCaptureFilesToClipboardAsync(paths, "网页端显式复制").GetAwaiter().GetResult();
+        return System.Text.Json.JsonSerializer.Serialize(new
+        {
+            ok = outcome.Success,
+            count = paths.Count,
+            message = outcome.Message,
+        });
+    }
+
+    /// <summary>在界面线程执行网页端提交的截图任务，完成后写日志供网页端刷新状态时对照。</summary>
+    private async Task RunWebCaptureAsync(string action)
+    {
+        CaptureOutcome outcome;
+        try
+        {
+            if (string.Equals(action, "region", StringComparison.Ordinal))
+            {
+                outcome = await this.captureCoordinator.CaptureRegionAsync(this.Settings.CaptureDelaySeconds);
+            }
+            else if (string.Equals(action, "pin", StringComparison.Ordinal))
+            {
+                outcome = await this.captureCoordinator.CapturePinRegionAsync(this.Settings.CaptureDelaySeconds);
+            }
+            else
+            {
+                outcome = await this.captureCoordinator.CaptureAsync(CaptureTarget.FullScreen,
+                    this.Settings.CaptureDelaySeconds);
+            }
+        }
+        catch (Exception error)
+        {
+            UiLogger.LogError("网页端截图", "网页端截图异常：动作=" + action, error);
+            return;
+        }
+        UiLogger.Log("网页端截图", "网页端截图完成：动作=" + action
+            + " 成功=" + outcome.Success
+            + " 已取消=" + outcome.Cancelled
+            + " 产物=" + (outcome.FilePath.Length == 0 ? "（无）" : outcome.FilePath)
+            + " 说明=" + outcome.Message);
     }
 
     /// <summary>构建桌面当前标签的系统右键菜单层级（跨线程安全，网页端请求线程调用）。</summary>
@@ -2891,9 +3617,21 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
         if (action == "deletechecked")
         {
             if (fileTab == null) { return "当前标签不是文件列表"; }
-            if (fileTab.GetCheckedRows().Count == 0) { return "请先勾选要删除的条目"; }
-            fileTab.DeleteChecked();
-            return "已把勾选条目移入回收站";
+            List<string> deletePaths = fileTab.GetCheckedPaths();
+            if (deletePaths.Count == 0) { return "请先勾选要删除的条目"; }
+            this.EnsureTaskRefreshSubscription();
+            string deleteTaskId = this.fileTaskCenter.Submit(new TabTaskExplorer.App.Services.Tasks.FileTaskRequest
+            {
+                Kind = TabTaskExplorer.App.Services.Tasks.FileTaskKind.Delete,
+                Sources = deletePaths,
+                ConflictPolicy = TabTaskExplorer.App.Services.Tasks.FileConflictPolicy.Skip,
+            });
+            if (string.IsNullOrEmpty(deleteTaskId))
+            {
+                fileTab.DeleteChecked();
+                return "已把勾选条目移入回收站";
+            }
+            return "已提交删除任务：共 " + deletePaths.Count + " 项，可在任务中心查看进度";
         }
         if (action == "batchrename")
         {
@@ -3403,6 +4141,7 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
     /// <summary>构建界面状态快照（必须在 UI 线程调用）。</summary>
     public DebugUiState BuildDebugState()
     {
+        this.ApplySharedSortToFileTabs();
         DebugUiState state = new DebugUiState();
         state.GeneratedTime = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
         state.Theme = this.Settings.Theme;
@@ -3445,6 +4184,19 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
         // 视图开关与最近访问（与桌面设置、地址栏"最近"列表同构）
         state.ShowHiddenFiles = this.Settings.ShowHiddenFiles;
         state.ShowFileExtensions = this.Settings.ShowFileExtensions;
+        state.FileVisibleColumns = this.Settings.FileVisibleColumns;
+        state.FileColumnWidths = this.Settings.FileColumnWidths;
+        state.FileCompactMode = this.Settings.FileCompactMode;
+        state.FileSortField = this.Settings.FileSortField;
+        state.FileSortAscending = this.Settings.FileSortAscending;
+        foreach (FileTaskSnapshot task in this.fileTaskCenter.Snapshot())
+        {
+            state.Tasks.Add(task);
+        }
+        foreach (FileTaskSnapshot task in RemoteTaskAdapter.Snapshot(this.Tabs))
+        {
+            state.Tasks.Add(task);
+        }
         foreach (string recentPath in this.RecentPaths)
         {
             state.RecentPaths.Add(recentPath);

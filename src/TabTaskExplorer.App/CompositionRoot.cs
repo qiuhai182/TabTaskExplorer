@@ -97,6 +97,17 @@ public static class CompositionRoot
         // 系统剪贴板：三平台共用同一套 Avalonia 实现，复制 / 剪切与外部程序双向互通
         services.AddSingleton<ISystemClipboardService, AvaloniaSystemClipboardService>();
 
+        // 图片剪贴板：Windows 一次写入 PNG / CF_DIBV5 / CF_DIB 与 CF_HDROP 文件列表；
+        // 其他平台留空实现，上层自动回退为仅写文件路径
+        if (OperatingSystem.IsWindows())
+        {
+            services.AddSingleton<IClipboardImageWriter, WindowsClipboardImageWriter>();
+        }
+        else
+        {
+            services.AddSingleton<IClipboardImageWriter, NullClipboardImageWriter>();
+        }
+
         // 网页端服务：仅绑定本机回环地址，页面与程序界面实时同构
         services.AddSingleton<Services.WebServiceHost>();
 

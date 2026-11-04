@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Avalonia.Threading;
 using Microsoft.Extensions.DependencyInjection;
+using TabTaskExplorer.App.Services.Tasks;
 using TabTaskExplorer.App.ViewModels;
 using TabTaskExplorer.Kernel.Abstractions;
 using TabTaskExplorer.Kernel.Models;
@@ -24,6 +25,9 @@ public class WebWorkspace
     private readonly AppSettings settings;
     private readonly List<object> tabs = new List<object>();
     private int selectedIndex = -1;
+
+    /// <summary>工作区自己的统一任务中心（本地复制/移动/删除）。</summary>
+    private readonly FileTaskCenter fileTaskCenter = new FileTaskCenter();
 
     /// <summary>独立工作区自己的剪贴板：被复制或剪切的条目路径。</summary>
     private List<string>? clipboardPaths;
@@ -59,6 +63,35 @@ public class WebWorkspace
         this.settings = settings;
         this.ideShell = new IdeShellViewModel(settings, services);
         this.Id = Guid.NewGuid().ToString("N");
+        this.fileTaskCenter.TaskFinished += delegate
+        {
+            Dispatcher.UIThread.Post(delegate
+            {
+                foreach (object tab in this.tabs)
+                {
+                    FileTabViewModel? fileTab = tab as FileTabViewModel;
+                    if (fileTab != null)
+                    {
+                        fileTab.Refresh();
+                    }
+                }
+            });
+        };
+        this.fileTaskCenter.ConflictPending += delegate(FileTaskSnapshot snapshot)
+        {
+            Dispatcher.UIThread.Post(delegate
+            {
+                string text = "任务等待冲突处理：" + (string.IsNullOrEmpty(snapshot.ConflictName) ? snapshot.ConflictPath : snapshot.ConflictName)
+                    + "，请在任务中心选择处理方式（不会自动跳过，可取消任务）";
+                this.lastNotice = text;
+                FileTabViewModel? fileTab = this.CurrentFileTab();
+                if (fileTab != null)
+                {
+                    fileTab.ShowMessage(text);
+                }
+                UiLogger.Log("网页端任务", "工作区=" + this.Id + " " + text + " 任务=" + snapshot.Id);
+            });
+        };
         this.AddFileTab(string.Empty);
     }
 
@@ -120,7 +153,8 @@ public class WebWorkspace
     private void CreateFileTab(IFileSystemProvider provider, string path,
         DiskScanService? scanService, IArchiveService archiveService)
     {
-        FileTabViewModel tab = new FileTabViewModel(provider, this.settings, path, scanService, archiveService);
+        FileTabViewModel tab = new FileTabViewModel(provider, this.settings, path, scanService, archiveService,
+            new AppSettingsStore());
         tab.ArchiveOpenRequested += this.OnArchiveOpenRequested;
         this.tabs.Add(tab);
         this.selectedIndex = this.tabs.Count - 1;
@@ -854,9 +888,19 @@ public class WebWorkspace
         if (action == "deletechecked")
         {
             if (fileTab == null) { return "当前标签不是文件列表"; }
-            if (fileTab.GetCheckedRows().Count == 0) { return "请先勾选要删除的条目"; }
-            fileTab.DeleteChecked();
-            return "已把勾选条目移入回收站";
+            List<string> deletePaths = fileTab.GetCheckedPaths();
+            if (deletePaths.Count == 0) { return "请先勾选要删除的条目"; }
+            string deleteTaskId = this.fileTaskCenter.Submit(new FileTaskRequest
+            {
+                Kind = FileTaskKind.Delete,
+                Sources = deletePaths,
+                ConflictPolicy = FileConflictPolicy.Skip,
+            });
+            if (string.IsNullOrEmpty(deleteTaskId))
+            {
+                return "删除任务提交失败";
+            }
+            return "已提交删除任务：共 " + deletePaths.Count + " 项，可在任务中心查看进度";
         }
         if (action == "batchrename")
         {
@@ -1262,12 +1306,13 @@ public class WebWorkspace
     }
 
     /// <summary>
-    /// 解析网页端保存连接的参数并写入存储。参数为换行分隔的 11 段：
-    /// 编号、名称、分组、协议、主机、端口、用户名、认证方式、私钥路径、保活秒数、密码（末尾可空）。
+    /// 解析网页端保存连接的参数并写入存储。参数为换行分隔：
+    /// 前 11 段为编号、名称、分组、协议、主机、端口、用户名、认证方式、私钥路径、保活秒数、密码；
+    /// 其后每行是一个跳板：主机|端口|用户名|认证方式|私钥路径|密码（密码留空表示保持原凭据）。
     /// </summary>
     public static string SaveConnectionFromWeb(ConnectionManagerViewModel tab, string argument)
     {
-        string[] parts = argument.Split(new char[] { '\n' }, 11);
+        string[] parts = argument.Split('\n');
         if (parts.Length < 10)
         {
             return "保存参数不完整，至少需要编号、名称、分组、协议、主机、端口、用户名、认证方式、私钥路径与保活秒数";
@@ -1281,7 +1326,83 @@ public class WebWorkspace
         string host = parts[4].Trim();
         if (host.Length == 0)
         {
-            return "请填写主机地址";
+            return "请填写目标主机地址（当前连接）";
+        }
+
+        List<RemoteJumpHop> parsedHops = new List<RemoteJumpHop>();
+        List<string> hopSecrets = new List<string>();
+        for (int lineIndex = 11; lineIndex < parts.Length; lineIndex++)
+        {
+            string line = parts[lineIndex].Trim();
+            if (line.Length == 0)
+            {
+                // 空行直接跳过，便于用户用空行分隔或粘贴时带尾部换行
+                continue;
+            }
+            int lineNumber = lineIndex + 1;
+            int hopNumber = parsedHops.Count + 1;
+            string location = "第 " + lineNumber + " 行（第 " + hopNumber + " 跳）";
+            if (hopNumber > RemoteConnectionProfile.MaxJumpHops)
+            {
+                return location + "：跳板机最多 " + RemoteConnectionProfile.MaxJumpHops
+                    + " 跳，当前为 " + (parsedHops.Count + 1) + " 跳";
+            }
+            string[] fields = line.Split(new char[] { '|' }, 6);
+            if (fields.Length < 5)
+            {
+                return location + "：字段数量不足，需要“主机|端口|用户名|认证方式|私钥路径”，密码可选";
+            }
+            string hopHost = fields[0].Trim();
+            if (hopHost.Length == 0)
+            {
+                return location + "：字段“主机”为空";
+            }
+            string hopPortText = fields[1].Trim();
+            int hopPort = 0;
+            if (hopPortText.Length > 0
+                && (!int.TryParse(hopPortText, out hopPort) || hopPort <= 0 || hopPort > 65535))
+            {
+                return location + "：字段“端口”不是有效端口：" + hopPortText;
+            }
+            string hopUser = fields[2].Trim();
+            if (hopUser.Length == 0)
+            {
+                return location + "：字段“用户名”为空";
+            }
+            string authText = fields[3].Trim();
+            RemoteAuthType hopAuthType;
+            if (authText.Length == 0 || authText.Equals("Password", StringComparison.OrdinalIgnoreCase))
+            {
+                hopAuthType = RemoteAuthType.Password;
+            }
+            else if (authText.Equals("PrivateKey", StringComparison.OrdinalIgnoreCase))
+            {
+                hopAuthType = RemoteAuthType.PrivateKey;
+            }
+            else
+            {
+                return location + "：字段“认证方式”必须为 Password 或 PrivateKey，当前为：" + authText;
+            }
+            string hopKeyPath = fields[4].Trim();
+            if (hopAuthType == RemoteAuthType.PrivateKey)
+            {
+                if (hopKeyPath.Length == 0)
+                {
+                    return location + "：字段“私钥路径”为空";
+                }
+                if (!File.Exists(hopKeyPath))
+                {
+                    return location + "：私钥文件不存在：" + hopKeyPath;
+                }
+            }
+            RemoteJumpHop hop = new RemoteJumpHop();
+            hop.Host = hopHost;
+            hop.Port = hopPort;
+            hop.Username = hopUser;
+            hop.AuthType = hopAuthType;
+            hop.PrivateKeyPath = hopKeyPath;
+            parsedHops.Add(hop);
+            hopSecrets.Add(fields.Length > 5 ? fields[5] : string.Empty);
         }
 
         RemoteConnectionProfile? profile = WebWorkspace.FindConnection(tab, id);
@@ -1289,6 +1410,24 @@ public class WebWorkspace
         {
             profile = tab.CreateDraft();
         }
+        // 按主机+端口+用户名沿用旧凭据，避免重排跳板后密码错位；新密码由视图模型统一加密
+        List<RemoteJumpHop> oldHops = profile.JumpHops == null
+            ? new List<RemoteJumpHop>()
+            : new List<RemoteJumpHop>(profile.JumpHops);
+        for (int index = 0; index < parsedHops.Count; index++)
+        {
+            RemoteJumpHop parsed = parsedHops[index];
+            foreach (RemoteJumpHop oldHop in oldHops)
+            {
+                if (oldHop.Host == parsed.Host && oldHop.GetEffectivePort() == parsed.GetEffectivePort()
+                    && oldHop.Username == parsed.Username)
+                {
+                    parsed.ProtectedSecret = oldHop.ProtectedSecret;
+                    break;
+                }
+            }
+        }
+        profile.JumpHops = parsedHops;
         profile.Name = name;
         profile.Group = parts[2].Trim();
         profile.Protocol = parts[3].Trim() == "FTP" ? RemoteProtocol.Ftp : RemoteProtocol.Ssh;
@@ -1309,8 +1448,16 @@ public class WebWorkspace
         }
         profile.KeepAliveSeconds = keepAlive;
         string secret = parts.Length > 10 ? parts[10] : string.Empty;
-        tab.Save(profile, secret);
-        return "已保存连接：" + profile.Name;
+        try
+        {
+            tab.Save(profile, secret, hopSecrets);
+        }
+        catch (ArgumentException error)
+        {
+            return error.Message;
+        }
+        string hopText = profile.HasJumpHops ? "，跳板 " + profile.JumpHops.Count + " 跳" : string.Empty;
+        return "已保存连接：" + profile.Name + hopText;
     }
 
     /// <summary>在后台线程建立远程文件系统连接，成功后回到界面线程新建远程文件夹标签。</summary>
@@ -1343,7 +1490,7 @@ public class WebWorkspace
                         }
                     }
                     FileTabViewModel newTab = new FileTabViewModel(provider, workspace.settings, "/", null,
-                        workspace.services.GetRequiredService<IArchiveService>());
+                        workspace.services.GetRequiredService<IArchiveService>(), new AppSettingsStore());
                     newTab.AttachedProfileId = profile.Id;
                     workspace.tabs.Add(newTab);
                     workspace.selectedIndex = workspace.tabs.Count - 1;
@@ -1363,12 +1510,14 @@ public class WebWorkspace
                     Port = keyError.Port,
                     KeyType = keyError.KeyType,
                     FingerprintSha256 = keyError.FingerprintSha256,
+                    HopIndex = keyError.HopIndex,
                 };
-                workspace.lastNotice = "首次连接 " + keyError.Host + ":" + keyError.Port
+                workspace.lastNotice = (keyError.HopIndex > 0 ? "第 " + keyError.HopIndex + " 跳：" : string.Empty)
+                    + "首次连接 " + keyError.Host + ":" + keyError.Port
                     + "，需要确认主机指纹：" + keyError.FingerprintSha256;
-                UiLogger.Log("远程连接审计", "主机密钥待确认：连接=" + profile.Name + " 主机=" + keyError.Host
-                    + " 端口=" + keyError.Port + " 算法=" + keyError.KeyType + " 指纹=" + keyError.FingerprintSha256
-                    + " 结果=已阻断，等待用户确认");
+                UiLogger.Log("远程连接审计", "主机密钥待确认：连接=" + profile.Name + " 跳序=" + keyError.HopIndex
+                    + " 主机=" + keyError.Host + " 端口=" + keyError.Port + " 算法=" + keyError.KeyType
+                    + " 指纹=" + keyError.FingerprintSha256 + " 结果=已阻断，等待用户确认");
             }
             catch (HostKeyMismatchException keyError)
             {
@@ -1382,13 +1531,21 @@ public class WebWorkspace
                     KeyType = keyError.KeyType,
                     FingerprintSha256 = keyError.ActualFingerprintSha256,
                     ExpectedFingerprintSha256 = keyError.ExpectedFingerprintSha256,
+                    HopIndex = keyError.HopIndex,
                 };
-                workspace.lastNotice = "主机密钥与已信任记录不一致，连接已阻断："
-                    + keyError.Host + ":" + keyError.Port;
-                UiLogger.Log("远程连接审计", "主机密钥变更被阻断：连接=" + profile.Name + " 主机=" + keyError.Host
-                    + " 端口=" + keyError.Port + " 算法=" + keyError.KeyType
+                workspace.lastNotice = (keyError.HopIndex > 0 ? "第 " + keyError.HopIndex + " 跳：" : string.Empty)
+                    + "主机密钥与已信任记录不一致，连接已阻断：" + keyError.Host + ":" + keyError.Port;
+                UiLogger.Log("远程连接审计", "主机密钥变更被阻断：连接=" + profile.Name + " 跳序=" + keyError.HopIndex
+                    + " 主机=" + keyError.Host + " 端口=" + keyError.Port + " 算法=" + keyError.KeyType
                     + " 已信任指纹=" + keyError.ExpectedFingerprintSha256
                     + " 当前指纹=" + keyError.ActualFingerprintSha256 + " 结果=硬阻断，未建立会话");
+            }
+            catch (RemoteHopException hopError)
+            {
+                workspace.lastNotice = hopError.Message;
+                UiLogger.Log("远程连接审计", "跳板链连接失败：连接=" + profile.Name + " 跳序=" + hopError.HopIndex
+                    + " 主机=" + hopError.Host + ":" + hopError.Port + " 阶段=" + hopError.Stage
+                    + " 耗时=" + hopError.ElapsedMilliseconds + " 毫秒 结果=未建立会话，原因=" + hopError.Message);
             }
             catch (Exception error)
             {
@@ -1416,54 +1573,76 @@ public class WebWorkspace
         {
             return "请先进入目标文件夹";
         }
-        IFileSystemProvider fileSystem = this.services.GetRequiredService<IFileSystemProvider>();
-        int successCount = 0;
-        int failedCount = 0;
-        foreach (string path in this.clipboardPaths)
-        {
-            if (string.IsNullOrEmpty(path))
-            {
-                continue;
-            }
-            try
-            {
-                if (this.clipboardIsCut)
-                {
-                    fileSystem.Move(path, targetDirectory);
-                }
-                else
-                {
-                    fileSystem.Copy(path, targetDirectory);
-                }
-                successCount++;
-            }
-            catch (Exception)
-            {
-                failedCount++;
-            }
-        }
         string landedPathsText = string.Join("、", this.clipboardPaths);
         bool landedIsCut = this.clipboardIsCut;
+        bool localTask = fileTab != null && fileTab.FileSystemProvider is DefaultFileSystemProvider;
+        if (localTask)
+        {
+            foreach (string candidate in this.clipboardPaths)
+            {
+                if (!File.Exists(candidate) && !Directory.Exists(candidate))
+                {
+                    localTask = false;
+                    break;
+                }
+            }
+        }
+        string taskId = string.Empty;
+        if (localTask)
+        {
+            UiLogger.Log("网页端工作区", "工作区=" + this.Id + " 粘贴开始：源数量=" + this.clipboardPaths.Count
+                + " 目标=" + targetDirectory + " 冲突策略=询问（同名文件替换/改名共存，同名文件夹合并/替换/逐项处理/改名共存）");
+            taskId = this.fileTaskCenter.Submit(new FileTaskRequest
+            {
+                Kind = landedIsCut ? FileTaskKind.Move : FileTaskKind.Copy,
+                Sources = new List<string>(this.clipboardPaths),
+                DestinationPath = targetDirectory,
+                ConflictPolicy = FileConflictPolicy.Ask,
+            });
+        }
+        if (string.IsNullOrEmpty(taskId))
+        {
+            // 远程或虚拟路径沿用原有提供者复制/移动，不进入本地任务中心
+            if (fileTab != null)
+            {
+                int successCount = 0;
+                int failedCount = 0;
+                foreach (string path in this.clipboardPaths)
+                {
+                    try
+                    {
+                        if (landedIsCut) { fileTab.FileSystemProvider.Move(path, targetDirectory); }
+                        else { fileTab.FileSystemProvider.Copy(path, targetDirectory); }
+                        successCount++;
+                    }
+                    catch (Exception)
+                    {
+                        failedCount++;
+                    }
+                }
+                if (landedIsCut)
+                {
+                    this.clipboardPaths = null;
+                }
+                string fallbackMessage = "粘贴完成：成功 " + successCount + " 项，失败 " + failedCount + " 项";
+                fileTab.ShowMessage(fallbackMessage);
+                fileTab.Refresh();
+                return fallbackMessage;
+            }
+            return "任务提交失败：请检查源路径与目标目录";
+        }
         if (this.clipboardIsCut)
         {
             this.clipboardPaths = null;
         }
-        string message = "粘贴完成：成功 " + successCount + " 项，失败 " + failedCount + " 项";
-        UiLogger.Log("网页端工作区", "工作区=" + this.Id + " 粘贴落地：目标目录=" + targetDirectory
+        string message = "已提交" + (landedIsCut ? "移动" : "复制") + "任务：" + landedPathsText
+            + " → " + targetDirectory + "，冲突时在任务中心选择处理方式（不会自动跳过）";
+        UiLogger.Log("网页端工作区", "工作区=" + this.Id + " 粘贴提交任务中心：目标目录=" + targetDirectory
             + " 路径列表=" + landedPathsText
-            + " 方式=" + (landedIsCut ? "移动" : "复制")
-            + " 成功条数=" + successCount + " 失败条数=" + failedCount
-            + " 结果=" + (failedCount == 0 ? "全部成功" : "部分或全部失败"));
+            + " 方式=" + (landedIsCut ? "移动" : "复制") + " 任务=" + taskId);
         if (fileTab != null)
         {
             fileTab.ShowMessage(message);
-            fileTab.Refresh();
-        }
-        this.RefreshTabsAtDirectory(targetDirectory);
-        DiskViewPanelViewModel? diskTab = this.CurrentDiskTab();
-        if (diskTab != null)
-        {
-            diskTab.RefreshAfterChange(targetDirectory);
         }
         return message;
     }
@@ -1850,6 +2029,7 @@ public class WebWorkspace
     private DebugUiState BuildState()
     {
         this.LastAccessTime = DateTime.Now;
+        this.ApplySharedSortToFileTabs();
         DebugUiState state = new DebugUiState();
         state.GeneratedTime = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
         state.Theme = this.settings.Theme;
@@ -1887,6 +2067,19 @@ public class WebWorkspace
         // 视图开关（独立工作区读写同一份设置，与桌面保持一致）
         state.ShowHiddenFiles = this.settings.ShowHiddenFiles;
         state.ShowFileExtensions = this.settings.ShowFileExtensions;
+        state.FileVisibleColumns = this.settings.FileVisibleColumns;
+        state.FileColumnWidths = this.settings.FileColumnWidths;
+        state.FileCompactMode = this.settings.FileCompactMode;
+        state.FileSortField = this.settings.FileSortField;
+        state.FileSortAscending = this.settings.FileSortAscending;
+        foreach (FileTaskSnapshot task in this.fileTaskCenter.Snapshot())
+        {
+            state.Tasks.Add(task);
+        }
+        foreach (FileTaskSnapshot task in RemoteTaskAdapter.Snapshot(this.tabs))
+        {
+            state.Tasks.Add(task);
+        }
 
         // IDE 模式镜像（独立工作区自己的 IDE 外壳，与桌面 IDE 外壳同构）
         state.IsIdeMode = this.isIdeMode;
@@ -1910,6 +2103,113 @@ public class WebWorkspace
             });
         }
         return state;
+    }
+
+    /// <summary>读取工作区共享列配置（在界面线程取设置与当前标签列宽）。</summary>
+    public FileColumnConfig GetFileColumnConfig()
+    {
+        return this.RunOnUiThread<FileColumnConfig>(delegate
+        {
+            FileTabViewModel? tab = this.CurrentFileTab();
+            return new FileColumnConfig
+            {
+                VisibleColumns = this.settings.FileVisibleColumns,
+                ColumnWidths = tab != null ? tab.ColumnWidths : this.settings.FileColumnWidths,
+                CompactMode = this.settings.FileCompactMode,
+                SortField = tab != null ? tab.SortField : this.settings.FileSortField,
+                SortAscending = tab != null ? tab.SortAscending : this.settings.FileSortAscending,
+            };
+        });
+    }
+
+    /// <summary>应用列配置到工作区全部文件标签并保存一次设置。</summary>
+    public void ApplyFileColumnConfig(FileColumnConfig config)
+    {
+        if (config == null)
+        {
+            return;
+        }
+        this.RunOnUiThread<bool>(delegate
+        {
+            this.settings.FileVisibleColumns = config.VisibleColumns;
+            this.settings.FileColumnWidths = config.ColumnWidths;
+            this.settings.FileCompactMode = config.CompactMode;
+            this.settings.FileSortField = config.SortField;
+            this.settings.FileSortAscending = config.SortAscending;
+            foreach (object tab in this.tabs)
+            {
+                FileTabViewModel? fileTab = tab as FileTabViewModel;
+                if (fileTab == null)
+                {
+                    continue;
+                }
+                fileTab.ApplyColumnConfiguration(config.VisibleColumns, config.ColumnWidths, config.CompactMode, false);
+                fileTab.ApplySortConfiguration(config.SortField, config.SortAscending, false);
+            }
+            new AppSettingsStore().Save(this.settings);
+            return true;
+        });
+    }
+
+    /// <summary>把共享排序设置同步到工作区所有文件标签（仅在设置与标签不一致时重排）。</summary>
+    private void ApplySharedSortToFileTabs()
+    {
+        string field = this.settings.FileSortField;
+        if (field != "Name" && field != "Modified" && field != "Type" && field != "Size" && field != "Attributes")
+        {
+            field = "Name";
+        }
+        foreach (object tab in this.tabs)
+        {
+            FileTabViewModel? fileTab = tab as FileTabViewModel;
+            if (fileTab != null && (fileTab.SortField != field || fileTab.SortAscending != this.settings.FileSortAscending))
+            {
+                fileTab.ApplySortConfiguration(field, this.settings.FileSortAscending, false);
+            }
+        }
+    }
+
+    /// <summary>读取工作区统一任务快照（本地 + 远程映射）。</summary>
+    public List<FileTaskSnapshot> GetFileTasks()
+    {
+        return this.RunOnUiThread<List<FileTaskSnapshot>>(delegate
+        {
+            List<FileTaskSnapshot> result = new List<FileTaskSnapshot>(this.fileTaskCenter.Snapshot());
+            result.AddRange(RemoteTaskAdapter.Snapshot(this.tabs));
+            return result;
+        });
+    }
+
+    /// <summary>提交本地任务。</summary>
+    public string StartFileTask(FileTaskRequest request)
+    {
+        return this.fileTaskCenter.Submit(request);
+    }
+
+    /// <summary>取消任务：先查本地任务，再映射远程队列。</summary>
+    public bool CancelFileTask(string id)
+    {
+        if (this.fileTaskCenter.Cancel(id))
+        {
+            return true;
+        }
+        return this.RunOnUiThread<bool>(delegate { return RemoteTaskAdapter.Cancel(this.tabs, id); });
+    }
+
+    /// <summary>重试失败任务：先查本地任务，再映射远程队列继续。</summary>
+    public bool RetryFileTask(string id)
+    {
+        if (this.fileTaskCenter.Retry(id))
+        {
+            return true;
+        }
+        return this.RunOnUiThread<bool>(delegate { return RemoteTaskAdapter.Retry(this.tabs, id); });
+    }
+
+    /// <summary>处理本地任务冲突询问。</summary>
+    public bool ResolveFileTaskConflict(string id, string action, bool applyToAll)
+    {
+        return this.fileTaskCenter.ResolveConflict(id, action, applyToAll);
     }
 
     /// <summary>当前选中的文件标签；不是文件标签时返回 null。</summary>
@@ -2284,6 +2584,12 @@ public interface IWebWorkspaceBridge
     /// <summary>执行跟随桌面模式的界面动作（排序、历史、搜索、勾选、剪贴板、视图、开关等），返回给页面的提示文字。</summary>
     string ExecuteDesktopAction(string action, string argument);
 
+    /// <summary>读取截图录屏状态与产物历史（JSON 文本：保存目录、命名模板、格式、开关、历史条目）。</summary>
+    string GetCaptureStateJson();
+
+    /// <summary>执行截图录屏动作（fullscreen / region / pin / pinSave / delete），返回 JSON 文本。</summary>
+    string ExecuteCaptureAction(string action, string argument);
+
     /// <summary>构建桌面当前标签的系统右键菜单层级（校验目标必须位于桌面已打开标签内）。</summary>
     WebContextMenuResult BuildDesktopContextMenu(IReadOnlyList<string> paths, bool isBackground);
 
@@ -2310,4 +2616,25 @@ public interface IWebWorkspaceBridge
 
     /// <summary>销毁指定独立工作区。</summary>
     void RemoveWorkspace(string id);
+
+    /// <summary>读取文件列表列配置：工作区编号为空时取桌面共享设置。</summary>
+    FileColumnConfig GetFileColumnConfig(string workspaceId);
+
+    /// <summary>应用文件列表列配置：工作区编号为空时应用到桌面全部文件标签。</summary>
+    void ApplyFileColumnConfig(string workspaceId, FileColumnConfig config);
+
+    /// <summary>读取统一任务快照：工作区编号为空时取桌面任务与远程传输映射。</summary>
+    List<FileTaskSnapshot> GetFileTasks(string workspaceId);
+
+    /// <summary>提交本地任务，返回任务编号。</summary>
+    string StartFileTask(string workspaceId, FileTaskRequest request);
+
+    /// <summary>取消任务（本地或远程）。</summary>
+    bool CancelFileTask(string workspaceId, string id);
+
+    /// <summary>重试失败任务（本地或远程继续）。</summary>
+    bool RetryFileTask(string workspaceId, string id);
+
+    /// <summary>处理冲突询问。</summary>
+    bool ResolveFileTaskConflict(string workspaceId, string id, string action, bool applyToAll);
 }

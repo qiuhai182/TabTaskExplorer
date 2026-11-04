@@ -378,8 +378,12 @@ function renderConnections(tab) {
   connEditingId = selected ? selected.id : '';
   const value = selected || {
     id: '', name: '', group: '', protocol: 'SSH', host: '', port: 0, username: '',
-    authType: 'Password', privateKeyPath: '', keepAliveSeconds: 15
+    authType: 'Password', privateKeyPath: '', keepAliveSeconds: 15, jumpHops: []
   };
+  const hopLines = (value.jumpHops || []).map(function (hop) {
+    return [hop.host || '', hop.port > 0 ? hop.port : '', hop.username || '',
+      hop.authType || 'Password', hop.privateKeyPath || '', ''].join('|');
+  }).join('\n');
   html += '<div class="connForm">'
     + '<label>名称</label><input id="connName" class="wide" value="' + escAttr(value.name) + '">'
     + '<label>分组</label><input id="connGroup" value="' + escAttr(value.group) + '">'
@@ -395,14 +399,15 @@ function renderConnections(tab) {
     + '<label>私钥路径</label><input id="connKey" class="wide" value="' + escAttr(value.privateKeyPath) + '">'
     + '<label>保活秒数</label><input id="connKeep" value="' + escAttr(String(value.keepAliveSeconds)) + '">'
     + '<label>密码</label><input id="connSecret" class="wide" type="password" placeholder="留空保持原密码">'
+    + '<label>跳板链</label><textarea id="connHops" class="wide" rows="3" placeholder="每行一跳：主机|端口|用户名|认证方式(Password/PrivateKey)|私钥路径|密码（留空保持）">' + esc(hopLines) + '</textarea>'
     + '</div>'
-    + '<div class="hint">Xshell / Xftp 导入的连接不含密码与私钥路径，请在上方补填后保存；打开远程文件夹会以新标签页浏览远端目录。</div>';
+    + '<div class="hint">跳板链最多 3 跳，按填写顺序逐跳连接；每跳独立校验主机指纹。Xshell / Xftp 导入的连接不含密码与私钥路径，请在上方补填后保存。</div>';
   return html;
 }
 
 function connNew() {
   connEditingId = '';
-  const textIds = ['connName', 'connGroup', 'connHost', 'connPort', 'connUser', 'connKey', 'connKeep', 'connSecret'];
+  const textIds = ['connName', 'connGroup', 'connHost', 'connPort', 'connUser', 'connKey', 'connKeep', 'connSecret', 'connHops'];
   for (const id of textIds) {
     const element = document.getElementById(id);
     if (element) { element.value = ''; }
@@ -424,13 +429,14 @@ function connFieldValues() {
   return [
     valueOf('connName'), valueOf('connGroup'), valueOf('connProtocol'), valueOf('connHost'),
     valueOf('connPort'), valueOf('connUser'), valueOf('connAuth'), valueOf('connKey'),
-    valueOf('connKeep'), valueOf('connSecret')
+    valueOf('connKeep'), valueOf('connSecret'), valueOf('connHops')
   ];
 }
 
 function connSave() {
   if (!permissions.canCreateDelete) { flash('该端口未放行新建与删除权限，无法保存连接'); return; }
   const values = connFieldValues();
+  // 前 11 段固定字段，第 12 段起为跳板链（每行一跳），服务端按行解析
   doAction('connsave', [connEditingId].concat(values).join('\n'));
 }
 
@@ -472,6 +478,7 @@ function renderHostKeyDialog(pending) {
   const mismatch = pending.errorCode === 'HOST_KEY_MISMATCH';
   let body = '<div class="hostKeyBox">'
     + '<div class="hostKeyTitle">' + (mismatch ? '主机密钥不匹配（连接已阻断）' : '确认主机指纹') + '</div>'
+    + '<div class="hostKeyLine">位置：' + (pending.hopIndex > 0 ? '第 ' + pending.hopIndex + ' 跳（跳板机）' : '目标主机') + '</div>'
     + '<div class="hostKeyLine">主机：' + esc(pending.host) + ':' + pending.port + '</div>'
     + '<div class="hostKeyLine">算法：' + esc(pending.keyType) + '</div>'
     + '<div class="hostKeyLine">SHA256：<span class="hostKeyPrint">' + esc(pending.fingerprintSha256) + '</span></div>';

@@ -20,20 +20,30 @@ public class SftpFileSystemProvider : IFileSystemProvider, IFileContentAccess, I
     private readonly RemoteConnectionProfile profile;
     private readonly string credential;
     private readonly KnownHostStore? knownHosts;
+    private readonly Func<SshJumpChain?>? jumpChainFactory;
     private SftpClient? client;
+    private SshJumpChain? chain;
 
     /// <summary>使用连接配置与明文凭据创建提供者；连接延迟到首次操作时建立，避免阻塞调用线程。</summary>
     public SftpFileSystemProvider(RemoteConnectionProfile profile, string credential)
-        : this(profile, credential, null)
+        : this(profile, credential, null, null)
     {
     }
 
     /// <summary>创建提供者并指定已知主机存储；传入后每次连接都会校验主机密钥，未信任或变更时阻断。</summary>
     public SftpFileSystemProvider(RemoteConnectionProfile profile, string credential, KnownHostStore? knownHosts)
+        : this(profile, credential, knownHosts, null)
+    {
+    }
+
+    /// <summary>创建提供者并指定跳板链工厂；工厂按需建立逐跳连接，提供者负责在重连时释放旧链。</summary>
+    public SftpFileSystemProvider(RemoteConnectionProfile profile, string credential, KnownHostStore? knownHosts,
+        Func<SshJumpChain?>? jumpChainFactory)
     {
         this.profile = profile;
         this.credential = credential;
         this.knownHosts = knownHosts;
+        this.jumpChainFactory = jumpChainFactory;
     }
 
     /// <summary>确保 SFTP 连接已建立；全部操作开始前调用。</summary>
@@ -58,6 +68,7 @@ public class SftpFileSystemProvider : IFileSystemProvider, IFileContentAccess, I
                 this.client.Dispose();
                 this.client = null;
             }
+            this.DisposeChain();
 
             string keyType = string.Empty;
             string actualFingerprint = string.Empty;
@@ -65,7 +76,10 @@ public class SftpFileSystemProvider : IFileSystemProvider, IFileContentAccess, I
             bool unknown = false;
             bool mismatch = false;
             KnownHostStore? store = this.knownHosts;
-            ConnectionInfo info = SshSessionFactory.BuildConnectionInfo(this.profile, this.credential);
+            SshJumpChain? createdChain = this.jumpChainFactory == null ? null : this.jumpChainFactory();
+            ConnectionInfo info = createdChain == null
+                ? SshSessionFactory.BuildConnectionInfo(this.profile, this.credential)
+                : createdChain.TargetInfo;
             SftpClient created = new SftpClient(info);
             created.KeepAliveInterval = TimeSpan.FromSeconds(15);
             if (store != null)
@@ -100,6 +114,10 @@ public class SftpFileSystemProvider : IFileSystemProvider, IFileContentAccess, I
             catch (Exception error)
             {
                 created.Dispose();
+                if (createdChain != null)
+                {
+                    createdChain.Dispose();
+                }
                 if (unknown)
                 {
                     throw new HostKeyUnknownException(this.profile.Host, this.profile.GetEffectivePort(), keyType,
@@ -115,10 +133,25 @@ public class SftpFileSystemProvider : IFileSystemProvider, IFileContentAccess, I
             if (!created.IsConnected)
             {
                 created.Dispose();
+                if (createdChain != null)
+                {
+                    createdChain.Dispose();
+                }
                 throw new InvalidOperationException("SFTP 连接失败：服务器无响应");
             }
             this.client = created;
+            this.chain = createdChain;
             return created;
+        }
+    }
+
+    /// <summary>释放旧跳板链，避免重连后遗留已失效的转发端口。</summary>
+    private void DisposeChain()
+    {
+        if (this.chain != null)
+        {
+            this.chain.Dispose();
+            this.chain = null;
         }
     }
 

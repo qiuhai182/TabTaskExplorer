@@ -63,11 +63,12 @@
   .connToolbar { padding:6px 2px; display:flex; gap:6px; flex-wrap:wrap; }
   .connForm { padding:8px 2px; display:grid; grid-template-columns:80px minmax(140px,1fr) 80px minmax(140px,1fr); gap:6px 8px; max-width:760px; align-items:center; }
   .connForm label { font-size:12px; opacity:.85; }
-  .connForm input, .connForm select { border:1px solid #D5D5D5; border-radius:3px; padding:4px 6px; font:13px 'Segoe UI','Microsoft YaHei'; outline:none; background:#fff; color:inherit; min-width:0; }
+  .connForm input, .connForm select, .connForm textarea { border:1px solid #D5D5D5; border-radius:3px; padding:4px 6px; font:13px 'Segoe UI','Microsoft YaHei'; outline:none; background:#fff; color:inherit; min-width:0; }
+  .connForm textarea { resize:vertical; line-height:1.5; }
   .connForm .wide { grid-column:span 3; }
   .connForm label.startupCheck { display:flex; align-items:center; gap:5px; }
   .connForm label.startupCheck input { width:auto; min-width:0; }
-  body.dark .connForm input, body.dark .connForm select { background:#202020; border-color:#3C3C3C; }
+  body.dark .connForm input, body.dark .connForm select, body.dark .connForm textarea { background:#202020; border-color:#3C3C3C; }
   .pop { position:absolute; top:100%; right:0; margin-top:3px; background:#fff; border:1px solid #DCDCDC; border-radius:6px; box-shadow:0 6px 18px rgba(0,0,0,.14); padding:4px; z-index:30; min-width:360px; max-height:320px; overflow:auto; }
   .pop .item { padding:5px 8px; border-radius:4px; cursor:pointer; font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .pop .item:hover { background:#F0F6FF; }
@@ -314,3 +315,77 @@
   .hostKeyBtns { margin-top:14px; display:flex; gap:8px; justify-content:flex-end; }
   body.dark .hostKeyBox { background:#262626; color:#E8E8E8; }
   body.dark .hostKeyWarn { color:#FF8A80; }
+
+  /* ===== 行内缩略图 ===== */
+  .thumbBox { position:relative; display:inline-flex; width:16px; height:16px; flex:none; align-items:center; justify-content:center; overflow:hidden; border-radius:2px; }
+  .thumbBox>svg { width:100%; height:100%; display:block; }
+  .thumbBox .rowThumbImg { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:none; background:#F0F0F0; }
+  .thumbBox.thumbLoaded .rowThumbImg { display:block; }
+  .thumbBox.thumbLoaded>svg { display:none; }
+  td.iconCell { width:auto; padding-left:0; padding-right:0; }
+  td.attrs { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#808080; }
+  .ticon .thumbBox { width:100%; height:100%; }
+  .ticon .thumbBox.tileThumb { border-radius:3px; }
+  .ticon .thumbBox.tileThumb .rowThumbImg { border-radius:3px; }
+  #contentMain.compact tr.row td { padding-top:1px; padding-bottom:1px; line-height:18px; }
+  #contentMain.compact .tile .tname { margin-top:1px; }
+
+  /* ===== 快速预览层 ===== */
+  .previewPane { position:fixed; right:16px; top:72px; bottom:40px; width:420px; max-width:calc(100vw - 32px);
+    background:#FFFFFF; color:#1C1C1C; border:1px solid #DCDCDC; border-radius:8px;
+    box-shadow:0 12px 40px rgba(0,0,0,.22); display:flex; flex-direction:column; z-index:60; overflow:hidden; }
+  .previewHead { display:flex; align-items:center; gap:8px; padding:8px 10px; border-bottom:1px solid #ECECEC; }
+  .previewTitle { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13px; font-weight:600; }
+  .previewClose { width:22px; text-align:center; cursor:pointer; color:#808080; font-size:16px; }
+  .previewClose:hover { color:#D9534F; }
+  .previewBody { flex:1; min-height:0; overflow:auto; padding:10px; display:flex; flex-direction:column; }
+  .previewMeta { padding:6px 10px; border-top:1px solid #ECECEC; color:#808080; font-size:11px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .previewText { margin:0; padding:4px; white-space:pre-wrap; word-break:break-word; font:12px/1.55 Consolas,'Cascadia Code',monospace; }
+  .previewImageBox { flex:1; min-height:0; display:flex; align-items:center; justify-content:center; }
+  .previewImageBox .thumbBox { width:100%; height:100%; max-height:100%; background:transparent; }
+  .previewImageBox .thumbBox>svg { width:64px; height:64px; margin:auto; }
+  .previewImageBox .thumbBox .rowThumbImg { object-fit:contain; background:transparent; }
+  .previewPlaceholder { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; text-align:center; }
+  .previewPlaceholder svg { width:64px; height:64px; }
+  .previewHint { color:#606060; font-size:12px; line-height:1.7; white-space:pre-wrap; max-width:330px; }
+  body.dark .previewPane { background:#242424; color:#E8E8E8; border-color:#3C3C3C; }
+  body.dark .previewHead { border-bottom-color:#333333; }
+  body.dark .previewMeta { border-top-color:#333333; color:#8A8A8A; }
+  body.dark .previewHint { color:#B0B0B0; }
+  body.dark .previewClose { color:#9A9A9A; }
+  body.dark .previewImageBox .thumbBox .rowThumbImg { background:#1E1E1E; }
+
+  /* ===== 统一任务中心 ===== */
+  .taskBadge { color:#2F6FD0; font-size:11px; margin-left:3px; }
+  .taskPanel { position:fixed; right:16px; top:72px; bottom:40px; width:440px; max-width:calc(100vw - 32px);
+    background:#FFFFFF; color:#1C1C1C; border:1px solid #DCDCDC; border-radius:8px;
+    box-shadow:0 12px 40px rgba(0,0,0,.22); display:flex; flex-direction:column; z-index:59; overflow:hidden; }
+  .taskHead { display:flex; align-items:center; padding:8px 10px; border-bottom:1px solid #ECECEC; }
+  .taskTitle { flex:1; font-size:13px; font-weight:600; }
+  .taskList { flex:1; min-height:0; overflow:auto; padding:8px 10px; }
+  .taskFoot { padding:6px 10px; border-top:1px solid #ECECEC; color:#808080; font-size:11px; }
+  .taskRow { border:1px solid #EDEDED; border-radius:6px; padding:7px 8px; margin-bottom:8px; }
+  .taskRow.task-waitingConflict { border-color:#E0A800; background:#FFF9E6; }
+  .taskRow.task-failed { border-color:#E5A3A3; }
+  .taskRowHead { display:flex; align-items:center; gap:6px; }
+  .taskKind { font-weight:600; font-size:12px; }
+  .taskTag { border:1px solid #2F6FD0; color:#2F6FD0; border-radius:3px; padding:0 3px; font-size:10px; }
+  .taskState { margin-left:auto; font-size:11px; color:#808080; }
+  .taskPaths { margin-top:4px; font-size:11px; color:#606060; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .taskBar { height:6px; border-radius:3px; background:#ECECEC; margin-top:5px; overflow:hidden; }
+  .taskBarFill { height:100%; background:#2F6FD0; transition:width .2s linear; }
+  .task-failed .taskBarFill { background:#D9534F; }
+  .task-waitingConflict .taskBarFill { background:#E0A800; }
+  .taskMeta { margin-top:4px; font-size:11px; color:#707070; }
+  .taskActions { display:flex; gap:6px; margin-top:5px; }
+  .taskConflict { margin-top:6px; border-top:1px dashed #E0C878; padding-top:6px; }
+  .taskConflictPath { font-size:11px; color:#8A6D00; }
+  .taskAll { display:flex; align-items:center; gap:4px; font-size:11px; margin:4px 0; }
+  .taskAll input { width:auto; }
+  .taskConflictBtns { display:flex; flex-wrap:wrap; gap:5px; }
+  body.dark .taskPanel { background:#242424; color:#E8E8E8; border-color:#3C3C3C; }
+  body.dark .taskHead, body.dark .taskFoot { border-color:#333333; }
+  body.dark .taskRow { border-color:#363636; }
+  body.dark .taskRow.task-waitingConflict { background:#3A3218; border-color:#8A6D00; }
+  body.dark .taskPaths, body.dark .taskMeta, body.dark .taskState { color:#A0A0A0; }
+  body.dark .taskBar { background:#3A3A3A; }

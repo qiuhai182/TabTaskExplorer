@@ -51,6 +51,8 @@
     <!-- 二维码 / 条码识别：纯托管实现，跨 Windows / Linux / macOS 使用，
          对应 Snipaste 的 BarcodeDecoder（其原实现基于 zxing-cpp） -->
     <PackageReference Include="ZXing.Net" Version="0.16.11" />
+    <!-- 缩略图字体预览使用 Skia 直接渲染字体文件；该包已由 Avalonia.Skia 传递引入，这里显式声明保证编译期可见 -->
+    <PackageReference Include="SkiaSharp" Version="3.119.4" />
   </ItemGroup>
 
   <!-- 音视频解码后端：Windows 随包分发 libvlc（约 110MB，build.bat 会做 plugins 裁剪）；

@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Text;
-using System.Text.RegularExpressions;
 
 namespace TabTaskExplorer.App.Services;
 
@@ -35,9 +34,7 @@ public static class WebSecurity
     /// <summary>单个会话允许保留的最长数量，超出后顶出最旧的会话，避免内存无限增长。</summary>
     public const int MaxSessions = 512;
 
-    private static readonly Regex SecretPattern = new Regex(
-        "(?i)(password|passwd|pwd|token|secret|authorization|cookie)\\s*[=:]\\s*[^\\s&;]+",
-        RegexOptions.Compiled);
+
 
     /// <summary>生成 URL 安全的随机令牌（Base64Url，不带填充）。</summary>
     public static string GenerateToken(int byteLength)
@@ -52,14 +49,13 @@ public static class WebSecurity
         return WebSecurity.GenerateToken(5);
     }
 
-    /// <summary>对日志文本中的密码、凭据、令牌与 Cookie 做脱敏。</summary>
+    /// <summary>
+    /// 对日志文本中的密码、密钥、Bearer 与会话令牌、Authorization 头、URL 内嵌凭据做脱敏。
+    /// 统一委托给 <see cref="LogSanitizer"/>，保证网页端审计与诊断包使用同一套规则。
+    /// </summary>
     public static string MaskSecrets(string? text)
     {
-        if (string.IsNullOrEmpty(text))
-        {
-            return string.Empty;
-        }
-        return WebSecurity.SecretPattern.Replace(text, "$1=***");
+        return LogSanitizer.MaskSecrets(text);
     }
 
     /// <summary>固定时间比较两个文本，避免通过比较耗时推断令牌。</summary>

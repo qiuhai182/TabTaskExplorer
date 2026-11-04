@@ -1,6 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
+using System.Runtime.InteropServices;
+using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
@@ -62,35 +66,86 @@ public class AvaloniaSystemClipboardService : ISystemClipboardService
     /// <param name="paths">要写入的路径列表（可含压缩包虚拟路径）。</param>
     /// <param name="isCut">true 为剪切（外部粘贴为移动），false 为复制。</param>
     /// <returns>写入成功返回 true，失败或不支持返回 false。</returns>
-    public Task<bool> WriteAsync(IReadOnlyList<string> paths, bool isCut)
+    public async Task<bool> WriteAsync(IReadOnlyList<string> paths, bool isCut)
     {
-        return Dispatcher.UIThread.InvokeAsync(() => WriteOnUIThreadAsync(paths, isCut));
+        if (OperatingSystem.IsWindows())
+        {
+            ClipboardPresence probe = await Task.Run(ProbeOnWindowsWorker).ConfigureAwait(false);
+            if (!probe.ClipboardAvailable)
+            {
+                UiLogger.Log("系统剪贴板", "写入剪贴板：剪贴板被其他进程占用 结果=放弃本次写入，仅保留内部剪贴板");
+                return false;
+            }
+        }
+        return await Dispatcher.UIThread.InvokeAsync(() => WriteOnUIThreadAsync(paths, isCut));
     }
 
     /// <summary>把一段纯文本写入系统剪贴板（例如网页端地址），供粘贴到浏览器地址栏等场景使用。</summary>
     /// <param name="text">要写入剪贴板的文本。</param>
     /// <returns>写入成功返回 true，失败或不支持返回 false。</returns>
-    public Task<bool> WriteTextAsync(string text)
+    public async Task<bool> WriteTextAsync(string text)
     {
-        return Dispatcher.UIThread.InvokeAsync(() => WriteTextOnUIThreadAsync(text));
+        if (OperatingSystem.IsWindows())
+        {
+            ClipboardPresence probe = await Task.Run(ProbeOnWindowsWorker).ConfigureAwait(false);
+            if (!probe.ClipboardAvailable)
+            {
+                UiLogger.Log("系统剪贴板", "写入文本：剪贴板被其他进程占用 结果=放弃本次写入");
+                return false;
+            }
+        }
+        return await Dispatcher.UIThread.InvokeAsync(() => WriteTextOnUIThreadAsync(text));
     }
 
     /// <summary>
     /// 读取系统剪贴板内容：先读我方状态标记，再读外部文件列表与各平台剪切标记。
     /// </summary>
     /// <returns>读取结果；读取失败时返回 HasTransfer 为 false 的结果，由上层回退内部剪贴板。</returns>
-    public Task<ClipboardContent> ReadAsync()
+    public async Task<ClipboardContent> ReadAsync()
     {
-        return Dispatcher.UIThread.InvokeAsync(ReadOnUIThreadAsync);
+        if (OperatingSystem.IsWindows())
+        {
+            // 先做 200 毫秒限时的后台探测：剪贴板被其他进程占用时直接放弃，绝不进 UI 线程等待 OpenClipboard
+            ClipboardPresence probe = await Task.Run(ProbeOnWindowsWorker).ConfigureAwait(false);
+            if (!probe.ClipboardAvailable)
+            {
+                UiLogger.Log("系统剪贴板", "读取剪贴板：剪贴板被其他进程占用 结果=放弃本次读取，按空剪贴板处理");
+                return new ClipboardContent();
+            }
+        }
+        return await Dispatcher.UIThread.InvokeAsync(ReadOnUIThreadAsync);
     }
 
     /// <summary>
     /// 清空系统剪贴板。剪切落地成功后调用，与资源管理器一致：剪切的文件粘贴走后不再保留在剪贴板里。
     /// </summary>
     /// <returns>清空成功返回 true，失败或不支持返回 false。</returns>
-    public Task<bool> ClearAsync()
+    public async Task<bool> ClearAsync()
     {
-        return Dispatcher.UIThread.InvokeAsync(ClearOnUIThreadAsync);
+        if (OperatingSystem.IsWindows())
+        {
+            ClipboardPresence probe = await Task.Run(ProbeOnWindowsWorker).ConfigureAwait(false);
+            if (!probe.ClipboardAvailable)
+            {
+                UiLogger.Log("系统剪贴板", "清空剪贴板：剪贴板被其他进程占用 结果=放弃本次清空");
+                return false;
+            }
+        }
+        return await Dispatcher.UIThread.InvokeAsync(ClearOnUIThreadAsync);
+    }
+
+    /// <summary>
+    /// 轻量探测剪贴板是否含文件 / 文件夹：只取文件列表与我方状态标记，不读文件内容，也不写成功日志（由调用方按变化记录）。
+    /// </summary>
+    public Task<ClipboardPresence> ProbeAsync()
+    {
+        // Windows：完全在后台线程用 Win32 读取 CF_HDROP，OpenClipboard 最多重试 200 毫秒，绝不进 UI 线程。
+        if (OperatingSystem.IsWindows())
+        {
+            return Task.Run(ProbeOnWindowsWorker);
+        }
+        // 其他平台：剪贴板实现通常不出现 OpenClipboard 独占阻塞，保留 UI 线程实现但加 250 毫秒超时兜底。
+        return ProbeOnUiThreadWithTimeoutAsync();
     }
 
     /// <summary>在界面线程上清空系统剪贴板。</summary>
@@ -263,6 +318,116 @@ public class AvaloniaSystemClipboardService : ISystemClipboardService
         return content;
     }
 
+    /// <summary>非 Windows 平台：UI 线程探测加 250 毫秒超时，超时按不可用处理，避免调用方等待。</summary>
+    private static async Task<ClipboardPresence> ProbeOnUiThreadWithTimeoutAsync()
+    {
+        Task<ClipboardPresence> probe = Dispatcher.UIThread.InvokeAsync(ProbeOnUIThreadAsync);
+        Task completed = await Task.WhenAny(probe, Task.Delay(250)).ConfigureAwait(false);
+        if (completed != probe)
+        {
+            return new ClipboardPresence { ClipboardAvailable = false, FormatDescription = "探测超时" };
+        }
+        return await probe.ConfigureAwait(false);
+    }
+
+    /// <summary>Windows 后台探测：OpenClipboard 最多重试 200 毫秒，读取 CF_HDROP 数量与我方状态标记格式。</summary>
+    private static ClipboardPresence ProbeOnWindowsWorker()
+    {
+        ClipboardPresence presence = new ClipboardPresence();
+        long deadline = Stopwatch.GetTimestamp() + (long)(Stopwatch.Frequency * 0.2);
+        bool opened = false;
+        for (int attempt = 0; attempt < 12; attempt++)
+        {
+            if (OpenClipboard(IntPtr.Zero))
+            {
+                opened = true;
+                break;
+            }
+            if (Stopwatch.GetTimestamp() >= deadline)
+            {
+                break;
+            }
+            Thread.Sleep(15);
+        }
+        if (!opened)
+        {
+            presence.ClipboardAvailable = false;
+            presence.FormatDescription = "剪贴板被其他进程占用";
+            return presence;
+        }
+        try
+        {
+            uint stateFormat = RegisterClipboardFormatW("tabtaskexplorer-cut");
+            bool hasState = stateFormat != 0 && GetClipboardData(stateFormat) != IntPtr.Zero;
+            IntPtr drop = GetClipboardData(CF_HDROP);
+            int fileCount = 0;
+            if (drop != IntPtr.Zero)
+            {
+                uint count = DragQueryFileW(drop, 0xFFFFFFFF, null, 0);
+                fileCount = (int)count;
+            }
+            presence.FileCount = fileCount;
+            presence.HasFileData = hasState || fileCount > 0;
+            presence.FormatDescription = presence.HasFileData
+                ? (fileCount > 0 ? "文件列表（CF_HDROP）" : "应用状态标记（文件路径）")
+                : "非文件（文本或图片）";
+        }
+        catch (Exception error)
+        {
+            presence.FormatDescription = "读取失败";
+            UiLogger.LogError("系统剪贴板", "后台探测剪贴板失败", error);
+        }
+        finally
+        {
+            CloseClipboard();
+        }
+        return presence;
+    }
+
+    /// <summary>探测剪贴板文件数据；纯文本 / 图片不视为可粘贴文件。</summary>
+    private static async Task<ClipboardPresence> ProbeOnUIThreadAsync()
+    {
+        ClipboardPresence presence = new ClipboardPresence();
+        TopLevel? owner = GetOwnerTopLevel();
+        IClipboard? clipboard = owner == null ? null : owner.Clipboard;
+        if (clipboard == null)
+        {
+            presence.FormatDescription = "剪贴板不可用";
+            return presence;
+        }
+        try
+        {
+            using (IAsyncDataTransfer? transfer = await clipboard.TryGetDataAsync())
+            {
+                if (transfer == null)
+                {
+                    presence.FormatDescription = "空";
+                    return presence;
+                }
+                int stateCount = 0;
+                string? stateValue = await transfer.TryGetValueAsync(StateFormat);
+                if (!string.IsNullOrEmpty(stateValue))
+                {
+                    string[] lines = stateValue.Split('\n');
+                    stateCount = lines.Length > 1 ? lines.Length - 1 : 0;
+                }
+                IStorageItem[]? files = await transfer.TryGetFilesAsync();
+                int fileCount = files == null ? 0 : files.Length;
+                presence.FileCount = Math.Max(stateCount, fileCount);
+                presence.HasFileData = presence.FileCount > 0;
+                presence.FormatDescription = presence.HasFileData
+                    ? (fileCount > 0 ? "文件列表（CF_HDROP）" : "应用状态标记（文件路径）")
+                    : "非文件（文本或图片）";
+            }
+        }
+        catch (Exception error)
+        {
+            presence.FormatDescription = "读取失败";
+            UiLogger.LogError("系统剪贴板", "探测剪贴板文件数据失败", error);
+        }
+        return presence;
+    }
+
     /// <summary>组装我方状态标记文本：首行是剪切或复制，其余行是全部路径。</summary>
     private static string BuildStateValue(IReadOnlyList<string> paths, bool isCut)
     {
@@ -422,4 +587,22 @@ public class AvaloniaSystemClipboardService : ISystemClipboardService
         }
         return null;
     }
+
+    /// <summary>Windows 文件拖放格式 CF_HDROP。</summary>
+    private const uint CF_HDROP = 14;
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool OpenClipboard(IntPtr hWndNewOwner);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool CloseClipboard();
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr GetClipboardData(uint uFormat);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern uint RegisterClipboardFormatW(string lpszFormat);
+
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+    private static extern uint DragQueryFileW(IntPtr hDrop, uint iFile, StringBuilder? lpszFile, uint cch);
 }

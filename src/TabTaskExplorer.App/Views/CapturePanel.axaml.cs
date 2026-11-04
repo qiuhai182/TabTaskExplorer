@@ -504,6 +504,79 @@ public partial class CapturePanel : UserControl
         viewModel.OpenOutputFolder();
     }
 
+    /// <summary>产物历史：右键「复制到剪贴板」——多选时复制全部选中条目，否则复制右键命中的条目。</summary>
+    private async void OnHistoryCopyImageClick(object? sender, RoutedEventArgs e)
+    {
+        CaptureTabViewModel? viewModel = this.ViewModel;
+        List<string> paths = this.CollectSelectedHistoryPaths();
+        CaptureHistoryItem? item = ResolveMenuItemItem(sender);
+        if (paths.Count == 0 && item != null)
+        {
+            paths.Add(item.FullPath);
+        }
+        if (viewModel == null)
+        {
+            UiLogger.Log("截图录屏", "产物历史右键复制到剪贴板：视图模型为空，结果=复制取消");
+            return;
+        }
+        UiLogger.Log("截图录屏", "产物历史右键复制到剪贴板：文件数量=" + paths.Count
+            + " 文件列表=" + (paths.Count == 0 ? "（无）" : string.Join("、", paths)));
+        await viewModel.CopyToClipboardAsync(paths, "产物历史右键复制");
+    }
+
+    /// <summary>产物历史工具栏「复制选中到剪贴板」：按 Ctrl / Shift 多选的条目批量复制。</summary>
+    private async void OnCopySelectedClick(object? sender, RoutedEventArgs e)
+    {
+        CaptureTabViewModel? viewModel = this.ViewModel;
+        if (viewModel == null)
+        {
+            UiLogger.Log("截图录屏", "按钮=复制选中到剪贴板 被点击：视图模型未就绪，结果=复制取消");
+            return;
+        }
+        List<string> paths = this.CollectSelectedHistoryPaths();
+        UiLogger.Log("截图录屏", "按钮=复制选中到剪贴板 被点击：选中数量=" + paths.Count);
+        await viewModel.CopyToClipboardAsync(paths, "产物历史多选复制");
+    }
+
+    /// <summary>产物历史工具栏「复制最近一张」：复制历史列表第一条（按修改时间倒序）。</summary>
+    private async void OnCopyLatestClick(object? sender, RoutedEventArgs e)
+    {
+        CaptureTabViewModel? viewModel = this.ViewModel;
+        if (viewModel == null)
+        {
+            UiLogger.Log("截图录屏", "按钮=复制最近一张 被点击：视图模型未就绪，结果=复制取消");
+            return;
+        }
+        List<string> paths = new List<string>();
+        if (viewModel.HistoryItems.Count > 0)
+        {
+            paths.Add(viewModel.HistoryItems[0].FullPath);
+        }
+        UiLogger.Log("截图录屏", "按钮=复制最近一张 被点击：产物数量=" + viewModel.HistoryItems.Count
+            + " 目标=" + (paths.Count == 0 ? "（无）" : paths[0]));
+        await viewModel.CopyToClipboardAsync(paths, "产物历史复制最近一张");
+    }
+
+    /// <summary>收集产物历史当前多选的全部路径，保持列表顺序。</summary>
+    private List<string> CollectSelectedHistoryPaths()
+    {
+        List<string> paths = new List<string>();
+        IList? selectedItems = this.HistoryList.SelectedItems;
+        if (selectedItems == null)
+        {
+            return paths;
+        }
+        foreach (object selectedItem in selectedItems)
+        {
+            CaptureHistoryItem? item = selectedItem as CaptureHistoryItem;
+            if (item != null)
+            {
+                paths.Add(item.FullPath);
+            }
+        }
+        return paths;
+    }
+
     private void OnHistoryCopyPathClick(object? sender, RoutedEventArgs e)
     {
         CaptureHistoryItem? item = ResolveMenuItemItem(sender);

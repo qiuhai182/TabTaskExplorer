@@ -81,9 +81,23 @@ public class ConnectionManagerViewModel : INotifyPropertyChanged, ITabView
         return draft;
     }
 
-    /// <summary>保存连接配置：编号已存在则更新，否则新增。明文密码非空时一并加密保存。</summary>
-    public RemoteConnectionProfile Save(RemoteConnectionProfile profile, string? plaintextSecret)
+    /// <summary>
+    /// 保存连接配置：编号已存在则更新，否则新增。明文密码非空时一并加密保存；
+    /// hopPlaintextSecrets 与 JumpHops 按顺序对应，留空表示保持该跳原有凭据。
+    /// </summary>
+    public RemoteConnectionProfile Save(RemoteConnectionProfile profile, string? plaintextSecret,
+        IReadOnlyList<string>? hopPlaintextSecrets = null)
     {
+        if (hopPlaintextSecrets != null && profile.JumpHops != null)
+        {
+            for (int index = 0; index < hopPlaintextSecrets.Count && index < profile.JumpHops.Count; index++)
+            {
+                if (!string.IsNullOrEmpty(hopPlaintextSecrets[index]))
+                {
+                    this.manager.SetJumpSecret(profile, index, hopPlaintextSecrets[index]);
+                }
+            }
+        }
         bool exists = this.manager.FindById(profile.Id) != null;
         if (exists)
         {

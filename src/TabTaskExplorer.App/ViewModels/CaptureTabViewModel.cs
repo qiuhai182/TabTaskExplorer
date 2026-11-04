@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
@@ -290,6 +291,21 @@ public class CaptureTabViewModel : INotifyPropertyChanged, ITabView
         this.StatusText = "请选择要贴到屏幕的区域（移动鼠标预选窗口 / Tab 切换层级）……";
         CaptureOutcome outcome = await this.coordinator.CapturePinRegionAsync(this.ResolveDelaySeconds());
         this.ApplyOutcome(outcome);
+    }
+
+    /// <summary>显式复制指定产物到剪贴板（支持多选批量），结果写进状态栏。</summary>
+    public async Task CopyToClipboardAsync(IReadOnlyList<string> filePaths, string sceneName)
+    {
+        if (filePaths == null || filePaths.Count == 0)
+        {
+            this.StatusText = "请先选中要复制的产物";
+            UiLogger.Log("截图录屏", sceneName + "显式复制被忽略：没有选中产物");
+            return;
+        }
+        this.StatusText = "正在复制 " + filePaths.Count + " 个产物到剪贴板……";
+        CaptureOutcome outcome = await this.coordinator.CopyCaptureFilesToClipboardAsync(filePaths, sceneName);
+        this.StatusText = outcome.Message;
+        UiLogger.Log("截图录屏", sceneName + "显式复制结束：文件数量=" + filePaths.Count + " 结果=" + outcome.Message);
     }
 
     /// <summary>执行活动窗口截图（含延迟）。</summary>

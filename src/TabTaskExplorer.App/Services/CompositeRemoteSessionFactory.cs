@@ -15,10 +15,11 @@ public class CompositeRemoteSessionFactory : IRemoteSessionFactory
     private readonly SshSessionFactory sshFactory;
     private readonly FtpSessionFactory ftpFactory = new FtpSessionFactory();
 
-    /// <summary>注入已知主机密钥存储，SSH 连接前据此校验主机密钥。</summary>
-    public CompositeRemoteSessionFactory(KnownHostStore knownHosts)
+    /// <summary>注入已知主机密钥存储与凭据保护器，SSH 连接前校验主机密钥并按需解密跳板凭据。</summary>
+    public CompositeRemoteSessionFactory(KnownHostStore knownHosts, ISecretProtector secretProtector)
     {
-        this.sshFactory = new SshSessionFactory(knownHosts);
+        this.sshFactory = new SshSessionFactory(knownHosts, secretProtector,
+            message => UiLogger.Log("远程连接审计", message));
     }
 
     /// <inheritdoc />

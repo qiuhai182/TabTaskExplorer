@@ -12,6 +12,8 @@ internal static class Program
         // 入口日志：本次启动收到的全部参数（系统唤起的文件夹路径走这里进入）
         Services.UiLogger.Log("程序启动", "程序入口：进程号=" + Environment.ProcessId
             + " 参数个数=" + args.Length + " 参数内容=" + string.Join(" | ", args));
+        // 启动时按保留策略清理旧日志：保留最新 7 份且总量不超过 256 兆，清理失败不影响启动
+        Services.UiLogger.CleanupOldLogs();
         LogInvocationContext();
 
         // 进程级 AppUserModelID 必须在任何窗口（包括 Avalonia 内部窗口）创建前设置；

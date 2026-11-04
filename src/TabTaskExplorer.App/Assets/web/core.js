@@ -427,6 +427,7 @@ async function doAction(action, argument) {
       return;
     }
     if (text) { flash(text); }
+    if (text && text.indexOf('任务中心') >= 0) { toggleTaskPanel(true); }
   } catch (error) {
     flash('网页端服务连接中断，正在重试……');
     return;

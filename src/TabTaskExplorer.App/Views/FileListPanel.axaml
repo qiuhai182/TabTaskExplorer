@@ -36,31 +36,38 @@
             <ColumnDefinition Width="140" />
             <ColumnDefinition Width="130" />
             <ColumnDefinition Width="110" />
+            <ColumnDefinition Width="100" />
           </Grid.ColumnDefinitions>
           <TextBlock Grid.Column="0" />
           <TextBlock Grid.Column="1" />
-          <Button Grid.Column="2" Tag="Name" Click="OnSortClick" FontWeight="Medium" HorizontalAlignment="Left" Background="Transparent" Foreground="{DynamicResource TextMutedBrush}">
+          <Button Grid.Column="2" Tag="Name" Click="OnSortClick" IsVisible="{Binding ShowNameColumn}" FontWeight="Medium" HorizontalAlignment="Left" Background="Transparent" Foreground="{DynamicResource TextMutedBrush}">
             <StackPanel Orientation="Horizontal">
               <TextBlock Text="名称" />
               <TextBlock x:Name="ArrowName" Margin="4,0,0,0" />
             </StackPanel>
           </Button>
-          <Button Grid.Column="3" Tag="Modified" Click="OnSortClick" FontWeight="Medium" HorizontalAlignment="Left" Background="Transparent" Foreground="{DynamicResource TextMutedBrush}">
+          <Button Grid.Column="3" Tag="Modified" Click="OnSortClick" IsVisible="{Binding ShowModifiedColumn}" FontWeight="Medium" HorizontalAlignment="Left" Background="Transparent" Foreground="{DynamicResource TextMutedBrush}">
             <StackPanel Orientation="Horizontal">
               <TextBlock Text="修改日期" />
               <TextBlock x:Name="ArrowModified" Margin="4,0,0,0" />
             </StackPanel>
           </Button>
-          <Button Grid.Column="4" Tag="Type" Click="OnSortClick" FontWeight="Medium" HorizontalAlignment="Left" Background="Transparent" Foreground="{DynamicResource TextMutedBrush}">
+          <Button Grid.Column="4" Tag="Type" Click="OnSortClick" IsVisible="{Binding ShowTypeColumn}" FontWeight="Medium" HorizontalAlignment="Left" Background="Transparent" Foreground="{DynamicResource TextMutedBrush}">
             <StackPanel Orientation="Horizontal">
               <TextBlock Text="类型" />
               <TextBlock x:Name="ArrowType" Margin="4,0,0,0" />
             </StackPanel>
           </Button>
-          <Button Grid.Column="5" Tag="Size" Click="OnSortClick" FontWeight="Medium" HorizontalAlignment="Left" Background="Transparent" Foreground="{DynamicResource TextMutedBrush}">
+          <Button Grid.Column="5" Tag="Size" Click="OnSortClick" IsVisible="{Binding ShowSizeColumn}" FontWeight="Medium" HorizontalAlignment="Left" Background="Transparent" Foreground="{DynamicResource TextMutedBrush}">
             <StackPanel Orientation="Horizontal">
               <TextBlock Text="大小" />
               <TextBlock x:Name="ArrowSize" Margin="4,0,0,0" />
+            </StackPanel>
+          </Button>
+          <Button Grid.Column="6" Tag="Attributes" Click="OnSortClick" IsVisible="{Binding ShowAttributesColumn}" FontWeight="Medium" HorizontalAlignment="Left" Background="Transparent" Foreground="{DynamicResource TextMutedBrush}">
+            <StackPanel Orientation="Horizontal">
+              <TextBlock Text="属性" />
+              <TextBlock x:Name="ArrowAttributes" Margin="4,0,0,0" />
             </StackPanel>
           </Button>
         </Grid>
@@ -81,7 +88,9 @@
               <ListBox.ItemTemplate>
                 <DataTemplate>
                   <!-- 背景由 App.axaml 的 Border.row 系列样式提供：本地直接写 Background 会压过悬停、选中与拖放高亮样式 -->
-                  <Border Classes="row" Classes.checked="{Binding IsSelected, Mode=TwoWay}" DoubleTapped="OnRowDoubleTapped" Padding="2,3">
+                  <Border Classes="row" Classes.checked="{Binding IsSelected, Mode=TwoWay}" DoubleTapped="OnRowDoubleTapped"
+                          MinHeight="{Binding DataContext.RowHeight, RelativeSource={RelativeSource AncestorType=ListBox}}"
+                          Padding="{Binding DataContext.RowPadding, RelativeSource={RelativeSource AncestorType=ListBox}}">
                     <Border.ContextMenu>
                       <ContextMenu Opening="OnSystemMenuOpening">
                         <MenuItem Header="打开" Click="OnMenuOpenClick" />
@@ -108,17 +117,21 @@
                         <ColumnDefinition Width="140" />
                         <ColumnDefinition Width="130" />
                         <ColumnDefinition Width="110" />
+                        <ColumnDefinition Width="100" />
                       </Grid.ColumnDefinitions>
                       <CheckBox Grid.Column="0" IsChecked="{Binding IsSelected, Mode=TwoWay}" Click="OnRowCheckChanged" />
-                      <views:FileTypeIcon Grid.Column="1" Width="16" Height="16" Category="{Binding IconCategory}"
-                                         AccentColor="{Binding IconColor}" VerticalAlignment="Center" />
-                      <TextBlock Grid.Column="2" Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                      <views:ThumbnailView Grid.Column="1" Width="20" Height="20" Category="{Binding IconCategory}"
+                                           AccentColor="{Binding IconColor}" VerticalAlignment="Center" />
+                      <TextBlock Grid.Column="2" Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
+                                 IsVisible="{Binding DataContext.ShowNameColumn, RelativeSource={RelativeSource AncestorType=ListBox}}" />
                       <TextBlock Grid.Column="3" Text="{Binding ModifiedText}" Opacity="0.8" VerticalAlignment="Center"
-                                 IsVisible="{Binding DataContext.IsDetailsLayout, RelativeSource={RelativeSource AncestorType=ListBox}}" />
+                                 IsVisible="{Binding DataContext.ShowModifiedColumn, RelativeSource={RelativeSource AncestorType=ListBox}}" />
                       <TextBlock Grid.Column="4" Text="{Binding TypeText}" Opacity="0.8" VerticalAlignment="Center"
-                                 IsVisible="{Binding DataContext.IsListLayout, RelativeSource={RelativeSource AncestorType=ListBox}, Converter={x:Static conv:BoolConverters.Not}}" />
+                                 IsVisible="{Binding DataContext.ShowTypeColumn, RelativeSource={RelativeSource AncestorType=ListBox}}" />
                       <TextBlock Grid.Column="5" Text="{Binding SizeText}" Opacity="0.8" VerticalAlignment="Center"
-                                 IsVisible="{Binding DataContext.IsDetailsLayout, RelativeSource={RelativeSource AncestorType=ListBox}}" />
+                                 IsVisible="{Binding DataContext.ShowSizeColumn, RelativeSource={RelativeSource AncestorType=ListBox}}" />
+                      <TextBlock Grid.Column="6" Text="{Binding AttributesText}" Opacity="0.8" VerticalAlignment="Center"
+                                 IsVisible="{Binding DataContext.ShowAttributesColumn, RelativeSource={RelativeSource AncestorType=ListBox}}" />
                     </Grid>
                   </Border>
                 </DataTemplate>
@@ -155,10 +168,10 @@
                       </Border.ContextMenu>
                       <StackPanel Spacing="4">
                         <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}" Click="OnRowCheckChanged" HorizontalAlignment="Left" />
-                        <views:FileTypeIcon Width="{Binding $parent[ItemsControl].DataContext.TileIconSize}"
-                                           Height="{Binding $parent[ItemsControl].DataContext.TileIconSize}"
-                                           Category="{Binding IconCategory}" AccentColor="{Binding IconColor}"
-                                           HorizontalAlignment="Left" />
+                        <views:ThumbnailView Width="{Binding $parent[ItemsControl].DataContext.TileIconSize}"
+                                             Height="{Binding $parent[ItemsControl].DataContext.TileIconSize}"
+                                             Category="{Binding IconCategory}" AccentColor="{Binding IconColor}"
+                                             HorizontalAlignment="Left" />
                         <TextBlock Text="{Binding DisplayName}" TextWrapping="Wrap" />
                         <TextBlock Text="{Binding TypeText}" FontSize="11" Opacity="0.7"
                                    IsVisible="{Binding DataContext.IsTileLayout, RelativeSource={RelativeSource AncestorType=ItemsControl}}" />
@@ -185,7 +198,25 @@
       </Border>
     </Grid>
 
-    <!-- 摘要栏 -->
-    <TextBlock Grid.Row="1" Margin="10,4" Text="{Binding SummaryText}" FontSize="12" Opacity="0.7" />
+    <!-- 摘要栏：条目统计 + 紧凑模式 + 列显示配置 -->
+    <Grid Grid.Row="1" ColumnDefinitions="*,Auto,Auto,Auto" Margin="10,2">
+      <TextBlock Grid.Column="0" Text="{Binding SummaryText}" FontSize="12" Opacity="0.7" VerticalAlignment="Center" />
+      <Button Grid.Column="1" Content="重试失败项" FontSize="12" Padding="8,2" Margin="8,0" VerticalAlignment="Center"
+              IsVisible="{Binding CanRetryFailedTask}" Click="OnRetryFailedTaskClick" />
+      <CheckBox Grid.Column="2" Content="紧凑模式" FontSize="12" Margin="8,0" VerticalAlignment="Center"
+                IsChecked="{Binding IsCompactMode, Mode=TwoWay}" />
+      <Button Grid.Column="3" Content="列设置" FontSize="12" Padding="8,2" VerticalAlignment="Center"
+              Click="OnColumnMenuButtonClick">
+        <Button.Flyout>
+          <MenuFlyout Placement="Top">
+            <MenuItem x:Name="ColumnNameItem" Header="名称" Tag="Name" ToggleType="CheckBox" Click="OnToggleColumnClick" />
+            <MenuItem x:Name="ColumnModifiedItem" Header="修改日期" Tag="Modified" ToggleType="CheckBox" Click="OnToggleColumnClick" />
+            <MenuItem x:Name="ColumnTypeItem" Header="类型" Tag="Type" ToggleType="CheckBox" Click="OnToggleColumnClick" />
+            <MenuItem x:Name="ColumnSizeItem" Header="大小" Tag="Size" ToggleType="CheckBox" Click="OnToggleColumnClick" />
+            <MenuItem x:Name="ColumnAttributesItem" Header="属性" Tag="Attributes" ToggleType="CheckBox" Click="OnToggleColumnClick" />
+          </MenuFlyout>
+        </Button.Flyout>
+      </Button>
+    </Grid>
   </Grid>
 </UserControl>
