@@ -590,12 +590,12 @@ public class App : Application
     {
         List<MainWindow> openWindows = new List<MainWindow>(WindowRegistry.GetAllWindows());
         Services.UiLogger.Log("程序退出", "托盘菜单选择退出：保存会话后关闭全部窗口 窗口总数=" + openWindows.Count);
-        System.Threading.Thread watchdog = new System.Threading.Thread(delegate
+        System.Threading.Thread watchdog = new System.Threading.Thread(new System.Threading.ThreadStart(delegate
         {
             System.Threading.Thread.Sleep(1500);
             Services.UiLogger.Log("程序退出", "托盘退出看门狗：界面线程 1.5 秒内未完成退出 结果=执行强制结束进程");
             Environment.Exit(0);
-        });
+        }));
         watchdog.IsBackground = true;
         watchdog.Name = "托盘退出看门狗";
         watchdog.Start();

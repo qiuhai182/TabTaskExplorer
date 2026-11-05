@@ -159,6 +159,15 @@ function renderToolbarState() {
     if (tick) { tick.innerHTML = visibleColumns.indexOf(name) >= 0 ? '&#10003;' : ''; }
   }
   document.getElementById('btnHidden').classList.toggle('disabled', !permissions.canModify);
+  const pasteButton = document.getElementById('btnPaste');
+  if (pasteButton) {
+    const clipboardHasFiles = !!(state && state.clipboardHasFiles);
+    const canPaste = permissions.canCreateDelete && clipboardHasFiles;
+    pasteButton.classList.toggle('disabled', !canPaste);
+    pasteButton.setAttribute('data-disabled-reason', canPaste ? '' : (permissions.canCreateDelete
+      ? '剪贴板为空或没有文件，粘贴不可用'
+      : '该端口未放行该操作，权限方案=' + permissions.profile));
+  }
 }
 
 // ======== 共享列配置与缩略图 ========

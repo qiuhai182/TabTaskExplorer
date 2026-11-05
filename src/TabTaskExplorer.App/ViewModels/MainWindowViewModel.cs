@@ -59,6 +59,7 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
     private bool clipboardIsCut;
     private bool canPasteFromClipboard;
     private bool clipboardProbeRunning;
+    private int clipboardProbeTickCount;
     private Avalonia.Threading.DispatcherTimer? clipboardAvailabilityTimer;
     private string clipboardAvailabilitySignature = string.Empty;
     private bool taskRefreshSubscribed;
@@ -1599,6 +1600,13 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
             try
             {
                 await this.RefreshClipboardAvailabilityAsync(false);
+                this.clipboardProbeTickCount++;
+                if (this.clipboardProbeTickCount % 20 == 0)
+                {
+                    UiLogger.Log("程序行为", "剪贴板监听心跳：已探测 " + this.clipboardProbeTickCount
+                        + " 次 当前可用性=" + (this.canPasteFromClipboard ? "可用" : "不可用")
+                        + " 格式=" + this.clipboardAvailabilitySignature);
+                }
             }
             catch (Exception error)
             {
@@ -3602,17 +3610,17 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
         if (action == "paste")
         {
             if (fileTab == null) { return "当前标签不是文件列表"; }
-            // 网页端跟随桌面模式由后台线程调用，这里同步等待粘贴完成，界面刷新统一在界面线程执行
-            this.PasteFromClipboardAsync(null).GetAwaiter().GetResult();
-            return string.Empty;
+            // 这里已在界面线程：不能同步等待异步粘贴（后续续体需要回到界面线程，会自锁死）
+            _ = this.PasteFromClipboardAsync(null);
+            return "已请求粘贴，完成后自动刷新";
         }
         if (action == "pasteto")
         {
             if (fileTab == null) { return "当前标签不是文件列表"; }
             if (string.IsNullOrEmpty(argument)) { return "未指定粘贴目标文件夹"; }
-            // 网页端跟随桌面模式由后台线程调用，这里同步等待粘贴完成，界面刷新统一在界面线程执行
-            this.PasteFromClipboardAsync(argument).GetAwaiter().GetResult();
-            return string.Empty;
+            // 同上：异步粘贴不能在界面线程同步等待
+            _ = this.PasteFromClipboardAsync(argument);
+            return "已请求粘贴到指定目录，完成后自动刷新";
         }
         if (action == "deletechecked")
         {
@@ -4189,6 +4197,8 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
         state.FileCompactMode = this.Settings.FileCompactMode;
         state.FileSortField = this.Settings.FileSortField;
         state.FileSortAscending = this.Settings.FileSortAscending;
+        state.ClipboardHasFiles = this.canPasteFromClipboard;
+        state.ClipboardIsCut = this.clipboardIsCut;
         foreach (FileTaskSnapshot task in this.fileTaskCenter.Snapshot())
         {
             state.Tasks.Add(task);

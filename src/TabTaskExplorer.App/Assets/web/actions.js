@@ -661,13 +661,14 @@ function loadSystemContextMenu(host, token, targetPaths, background) {
 function buildOwnContextItems(tab, row, background, targetPaths, shiftKey) {
   const items = [];
   const canEdit = permissions.canCreateDelete;
+  const canPasteFiles = !!(state && state.clipboardHasFiles);
   const isDisk = tab.tabType === 'disk';
   const suffix = targetPaths.length > 1 ? '（' + targetPaths.length + ' 项）' : '';
   if (background) {
     items.push({ title: '刷新', action: 'refresh', enabled: true });
     items.push({ title: '返回上一级', action: 'up', enabled: !!tab.currentPath });
     items.push({ sep: true });
-    items.push({ title: '粘贴', action: 'pastebg', enabled: canEdit && !!tab.currentPath });
+    items.push({ title: '粘贴', action: 'pastebg', enabled: canEdit && !!tab.currentPath && canPasteFiles });
     items.push({ title: '新建文件夹…', action: 'newfolder', enabled: canEdit && !!tab.currentPath });
     if (isDisk) {
       items.push({ title: '新建文件…', action: 'newfile', enabled: canEdit && !!tab.currentPath });
@@ -700,7 +701,7 @@ function buildOwnContextItems(tab, row, background, targetPaths, shiftKey) {
   items.push({ title: shiftKey ? '永久删除' + suffix : '删除' + suffix, action: 'delete', enabled: canEdit && targetPaths.length > 0 && !(isDisk && row && row.type === '驱动器') });
   items.push({ title: '在资源管理器打开', action: 'openinmanager', enabled: targetPaths.length === 1 });
   if (targetPaths.length === 1 && row && row.isDirectory && !(isDisk && row.type === '驱动器')) {
-    items.push({ title: '粘贴到该文件夹', action: 'pasteto', enabled: canEdit });
+    items.push({ title: '粘贴到该文件夹', action: 'pasteto', enabled: canEdit && canPasteFiles });
     if (isDisk) {
       // 磁盘视图的目录行也要能直接新建子文件夹：此前只能对根目录空白处操作，
       // 而此电脑根视图没有根目录，导致磁盘视图完全无法新建

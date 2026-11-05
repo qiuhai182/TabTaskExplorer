@@ -49,6 +49,12 @@ public class DebugUiState
     /// <summary>文件列表共享排序方向。</summary>
     public bool FileSortAscending { get; set; } = true;
 
+    /// <summary>剪贴板是否含文件 / 文件夹（网页端粘贴按钮启用态）。</summary>
+    public bool ClipboardHasFiles { get; set; }
+
+    /// <summary>剪贴板当前是否为剪切（网页端提示用）。</summary>
+    public bool ClipboardIsCut { get; set; }
+
     /// <summary>统一任务中心快照（本地任务在前，远程传输映射在后）。</summary>
     public List<FileTaskSnapshot> Tasks { get; } = new List<FileTaskSnapshot>();
 

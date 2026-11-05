@@ -438,7 +438,7 @@ async function doAction(action, argument) {
 function clickBtn(id, action, argument) {
   const element = id ? document.getElementById(id) : null;
   if (element && element.classList.contains('disabled')) {
-    flash('该端口未放行该操作，权限方案=' + permissions.profile);
+    flash(element.getAttribute('data-disabled-reason') || ('该端口未放行该操作，权限方案=' + permissions.profile));
     return;
   }
   closeMenus();

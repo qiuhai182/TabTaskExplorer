@@ -64,6 +64,19 @@ public sealed class FileTaskCenter
         entry.ConflictPending = this.NotifyConflictPending;
         lock (this.gate)
         {
+            // 快速连续粘贴会提交完全相同的任务：已有未结束的同源同目标任务时直接复用，避免重复复制
+            for (int index = this.order.Count - 1; index >= 0; index--)
+            {
+                FileTaskEntry existing = this.order[index];
+                if (!existing.IsTerminal && existing.Request.Kind == entry.Request.Kind
+                    && string.Equals(existing.Request.DestinationPath, entry.Request.DestinationPath, StringComparison.OrdinalIgnoreCase)
+                    && FileTaskCenter.SourcesEqual(existing.Request.Sources, sources))
+                {
+                    UiLogger.Log("任务中心", "任务去重：已存在相同的未结束任务 任务=" + existing.Id
+                        + " 类型=" + entry.Request.Kind + " 目标=" + entry.Request.DestinationPath + " 结果=复用既有任务");
+                    return existing.Id;
+                }
+            }
             this.entries[entry.Id] = entry;
             this.order.Add(entry);
             this.Prune();
@@ -125,6 +138,22 @@ public sealed class FileTaskCenter
         }
         entry.Resolve(parsed, applyToAll);
         UiLogger.Log("任务中心", "冲突处理：任务=" + id + " 选择=" + parsed + " 本批统一=" + applyToAll + " 结果=已写回");
+        return true;
+    }
+
+    private static bool SourcesEqual(List<string> left, List<string> right)
+    {
+        if (left.Count != right.Count)
+        {
+            return false;
+        }
+        for (int index = 0; index < left.Count; index++)
+        {
+            if (!string.Equals(left[index], right[index], StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+        }
         return true;
     }
 
@@ -253,6 +282,7 @@ internal sealed class FileTaskEntry
     internal int Failed;
     internal int Skipped;
     internal string Message = "排队中";
+    internal string LastError = string.Empty;
     internal string ConflictPath = string.Empty;
     internal string ConflictName = string.Empty;
     internal bool ConflictIsDirectory;
@@ -355,7 +385,8 @@ internal sealed class FileTaskEntry
             this.Processed++;
             this.Failed++;
             this.failedSources.Add(source);
-            this.Message = "失败：" + Path.GetFileName(source) + " " + error;
+            this.LastError = Path.GetFileName(source) + "：" + error;
+            this.Message = "失败：" + this.LastError;
         }
     }
 
@@ -366,7 +397,8 @@ internal sealed class FileTaskEntry
             this.State = this.Failed > 0 ? FileTaskState.Failed : FileTaskState.Completed;
             this.Message = (this.Failed > 0 ? "部分失败：" : "完成：")
                 + "成功 " + Math.Max(0, this.Processed - this.Failed - this.Skipped)
-                + " 项，跳过 " + this.Skipped + " 项，失败 " + this.Failed + " 项";
+                + " 项，跳过 " + this.Skipped + " 项，失败 " + this.Failed + " 项"
+                + (this.Failed > 0 && this.LastError.Length > 0 ? "；最近失败：" + this.LastError : string.Empty);
         }
     }
 

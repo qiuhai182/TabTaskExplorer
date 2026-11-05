@@ -105,13 +105,8 @@ public class AvaloniaSystemClipboardService : ISystemClipboardService
     {
         if (OperatingSystem.IsWindows())
         {
-            // 先做 200 毫秒限时的后台探测：剪贴板被其他进程占用时直接放弃，绝不进 UI 线程等待 OpenClipboard
-            ClipboardPresence probe = await Task.Run(ProbeOnWindowsWorker).ConfigureAwait(false);
-            if (!probe.ClipboardAvailable)
-            {
-                UiLogger.Log("系统剪贴板", "读取剪贴板：剪贴板被其他进程占用 结果=放弃本次读取，按空剪贴板处理");
-                return new ClipboardContent();
-            }
+            // Windows 完全在后台 STA 线程用 OLE 读取（最多等 500 毫秒），界面线程绝不等待剪贴板
+            return await Task.Run(ReadOnWindowsBackground).ConfigureAwait(false);
         }
         return await Dispatcher.UIThread.InvokeAsync(ReadOnUIThreadAsync);
     }
@@ -330,42 +325,219 @@ public class AvaloniaSystemClipboardService : ISystemClipboardService
         return await probe.ConfigureAwait(false);
     }
 
-    /// <summary>Windows 后台探测：OpenClipboard 最多重试 200 毫秒，读取 CF_HDROP 数量与我方状态标记格式。</summary>
-    private static ClipboardPresence ProbeOnWindowsWorker()
+    private sealed class ReadHolder
     {
-        ClipboardPresence presence = new ClipboardPresence();
-        long deadline = Stopwatch.GetTimestamp() + (long)(Stopwatch.Frequency * 0.2);
-        bool opened = false;
-        for (int attempt = 0; attempt < 12; attempt++)
+        internal ClipboardContent? Value;
+    }
+
+    /// <summary>Windows 后台读取剪贴板：专用 STA 线程 + 最多 500 毫秒等待，超时返回空内容。</summary>
+    private static ClipboardContent ReadOnWindowsBackground()
+    {
+        ReadHolder holder = new ReadHolder();
+        Thread worker = new Thread(new ThreadStart(delegate
         {
-            if (OpenClipboard(IntPtr.Zero))
-            {
-                opened = true;
-                break;
-            }
-            if (Stopwatch.GetTimestamp() >= deadline)
-            {
-                break;
-            }
-            Thread.Sleep(15);
-        }
-        if (!opened)
+            holder.Value = ReadWithOleOnSta();
+        }));
+        worker.IsBackground = true;
+        worker.Name = "剪贴板读取";
+        worker.SetApartmentState(ApartmentState.STA);
+        worker.Start();
+        if (!worker.Join(500))
         {
-            presence.ClipboardAvailable = false;
-            presence.FormatDescription = "剪贴板被其他进程占用";
-            return presence;
+            UiLogger.Log("系统剪贴板", "读取剪贴板：后台 OLE 读取超时 等待毫秒=500 结果=按空剪贴板处理");
+            return new ClipboardContent();
         }
+        return holder.Value ?? new ClipboardContent();
+    }
+
+    /// <summary>在 STA 线程上用 OLE 读取文件列表、我方状态标记与剪切标记，不接触界面线程。</summary>
+    private static ClipboardContent ReadWithOleOnSta()
+    {
+        ClipboardContent content = new ClipboardContent();
+        int initResult = OleInitialize(IntPtr.Zero);
         try
         {
-            uint stateFormat = RegisterClipboardFormatW("tabtaskexplorer-cut");
-            bool hasState = stateFormat != 0 && GetClipboardData(stateFormat) != IntPtr.Zero;
-            IntPtr drop = GetClipboardData(CF_HDROP);
-            int fileCount = 0;
+            object dataObject;
+            if (OleGetClipboard(out dataObject) != 0 || dataObject == null)
+            {
+                return content;
+            }
+            System.Runtime.InteropServices.ComTypes.IDataObject? obj =
+                dataObject as System.Runtime.InteropServices.ComTypes.IDataObject;
+            if (obj == null)
+            {
+                return content;
+            }
+            content.HasTransfer = true;
+
+            List<string> files = new List<string>();
+            IntPtr drop = TryGetHandle(obj, CF_HDROP, out byte[]? dropBytes);
             if (drop != IntPtr.Zero)
             {
                 uint count = DragQueryFileW(drop, 0xFFFFFFFF, null, 0);
-                fileCount = (int)count;
+                for (uint index = 0; index < count; index++)
+                {
+                    StringBuilder buffer = new StringBuilder(4096);
+                    if (DragQueryFileW(drop, index, buffer, 4096) > 0)
+                    {
+                        files.Add(buffer.ToString());
+                    }
+                }
             }
+            content.SystemFiles = files;
+
+            byte[]? effect = TryGetBytes(obj, RegisterClipboardFormatW("Preferred DropEffect"));
+            content.SystemCutIndicated = effect != null && effect.Length >= 4 && BitConverter.ToUInt32(effect, 0) == 2;
+
+            byte[]? stateBytes = TryGetBytes(obj, RegisterClipboardFormatW("tabtaskexplorer-cut"));
+            if (stateBytes != null)
+            {
+                TryParseStateBytes(stateBytes, content);
+            }
+        }
+        catch (Exception error)
+        {
+            UiLogger.LogError("系统剪贴板", "后台 OLE 读取剪贴板失败", error);
+        }
+        finally
+        {
+            if (initResult >= 0)
+            {
+                OleUninitialize();
+            }
+        }
+        return content;
+    }
+
+    private static IntPtr TryGetHandle(System.Runtime.InteropServices.ComTypes.IDataObject obj, uint format,
+        out byte[]? bytes)
+    {
+        bytes = null;
+        System.Runtime.InteropServices.ComTypes.FORMATETC formatEtc =
+            new System.Runtime.InteropServices.ComTypes.FORMATETC
+        {
+            cfFormat = (short)format,
+            dwAspect = System.Runtime.InteropServices.ComTypes.DVASPECT.DVASPECT_CONTENT,
+            lindex = -1,
+            tymed = System.Runtime.InteropServices.ComTypes.TYMED.TYMED_HGLOBAL,
+        };
+        System.Runtime.InteropServices.ComTypes.STGMEDIUM medium;
+        try
+        {
+            obj.GetData(ref formatEtc, out medium);
+        }
+        catch (Exception)
+        {
+            return IntPtr.Zero;
+        }
+        try
+        {
+            bytes = TryReadGlobalBytes(medium.unionmember);
+            return medium.unionmember;
+        }
+        finally
+        {
+            ReleaseStgMedium(ref medium);
+        }
+    }
+
+    private static byte[]? TryGetBytes(System.Runtime.InteropServices.ComTypes.IDataObject obj, uint format)
+    {
+        IntPtr handle = TryGetHandle(obj, format, out byte[]? bytes);
+        return handle == IntPtr.Zero ? null : bytes;
+    }
+
+    private static byte[]? TryReadGlobalBytes(IntPtr handle)
+    {
+        try
+        {
+            UIntPtr size = GlobalSize(handle);
+            int length = (int)size.ToUInt64();
+            if (length <= 0 || length > 1024 * 1024)
+            {
+                return null;
+            }
+            byte[] buffer = new byte[length];
+            Marshal.Copy(handle, buffer, 0, length);
+            return buffer;
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>解析我方状态标记字节（Avalonia 写入的自定义格式可能是 UTF-16 或 UTF-8）。</summary>
+    private static void TryParseStateBytes(byte[] bytes, ClipboardContent content)
+    {
+        string text = Encoding.Unicode.GetString(bytes).TrimStart('\uFEFF').TrimEnd('\0');
+        if (!text.StartsWith("cut", StringComparison.Ordinal) && !text.StartsWith("copy", StringComparison.Ordinal))
+        {
+            text = Encoding.UTF8.GetString(bytes).TrimStart('\uFEFF').TrimEnd('\0').Trim();
+        }
+        if (text.StartsWith("cut\n", StringComparison.Ordinal) || text.StartsWith("copy\n", StringComparison.Ordinal))
+        {
+            ParseStateValue(text, content);
+        }
+    }
+
+    /// <summary>
+    /// Windows 后台探测：专用 STA 线程走 OLE 剪贴板（兼容资源管理器延迟渲染的 CF_HDROP），
+    /// 调用方最多等 200 毫秒；超时按不可用返回，界面线程完全不受影响。
+    /// </summary>
+    private static ClipboardPresence ProbeOnWindowsWorker()
+    {
+        ProbeHolder holder = new ProbeHolder();
+        Thread worker = new Thread(new ThreadStart(delegate
+        {
+            holder.Value = ProbeWithOleOnSta();
+        }));
+        worker.IsBackground = true;
+        worker.Name = "剪贴板探测";
+        worker.SetApartmentState(ApartmentState.STA);
+        worker.Start();
+        if (!worker.Join(200))
+        {
+            return new ClipboardPresence
+            {
+                ClipboardAvailable = false,
+                FormatDescription = "剪贴板探测超时（其他进程可能正持有剪贴板）",
+            };
+        }
+        return holder.Value ?? new ClipboardPresence
+        {
+            ClipboardAvailable = false,
+            FormatDescription = "剪贴板探测失败",
+        };
+    }
+
+    private sealed class ProbeHolder
+    {
+        internal ClipboardPresence? Value;
+    }
+
+    /// <summary>在 STA 线程上用 OLE 读取剪贴板文件列表；退出前释放 OLE。</summary>
+    private static ClipboardPresence ProbeWithOleOnSta()
+    {
+        ClipboardPresence presence = new ClipboardPresence();
+        int initResult = OleInitialize(IntPtr.Zero);
+        try
+        {
+            object dataObject;
+            if (OleGetClipboard(out dataObject) != 0 || dataObject == null)
+            {
+                presence.FormatDescription = "空";
+                return presence;
+            }
+            System.Runtime.InteropServices.ComTypes.IDataObject? obj =
+                dataObject as System.Runtime.InteropServices.ComTypes.IDataObject;
+            if (obj == null)
+            {
+                presence.FormatDescription = "剪贴板格式不可读";
+                return presence;
+            }
+            int fileCount = TryGetDropCount(obj);
+            bool hasState = TryHasFormat(obj, RegisterClipboardFormatW("tabtaskexplorer-cut"));
             presence.FileCount = fileCount;
             presence.HasFileData = hasState || fileCount > 0;
             presence.FormatDescription = presence.HasFileData
@@ -379,9 +551,65 @@ public class AvaloniaSystemClipboardService : ISystemClipboardService
         }
         finally
         {
-            CloseClipboard();
+            if (initResult >= 0)
+            {
+                OleUninitialize();
+            }
         }
         return presence;
+    }
+
+    private static int TryGetDropCount(System.Runtime.InteropServices.ComTypes.IDataObject obj)
+    {
+        System.Runtime.InteropServices.ComTypes.FORMATETC format =
+            new System.Runtime.InteropServices.ComTypes.FORMATETC
+        {
+            cfFormat = (short)CF_HDROP,
+            dwAspect = System.Runtime.InteropServices.ComTypes.DVASPECT.DVASPECT_CONTENT,
+            lindex = -1,
+            tymed = System.Runtime.InteropServices.ComTypes.TYMED.TYMED_HGLOBAL,
+        };
+        System.Runtime.InteropServices.ComTypes.STGMEDIUM medium;
+        try
+        {
+            obj.GetData(ref format, out medium);
+        }
+        catch (Exception)
+        {
+            return 0;
+        }
+        try
+        {
+            return (int)DragQueryFileW(medium.unionmember, 0xFFFFFFFF, null, 0);
+        }
+        finally
+        {
+            ReleaseStgMedium(ref medium);
+        }
+    }
+
+    private static bool TryHasFormat(System.Runtime.InteropServices.ComTypes.IDataObject obj, uint format)
+    {
+        if (format == 0)
+        {
+            return false;
+        }
+        System.Runtime.InteropServices.ComTypes.FORMATETC query =
+            new System.Runtime.InteropServices.ComTypes.FORMATETC
+        {
+            cfFormat = (short)format,
+            dwAspect = System.Runtime.InteropServices.ComTypes.DVASPECT.DVASPECT_CONTENT,
+            lindex = -1,
+            tymed = System.Runtime.InteropServices.ComTypes.TYMED.TYMED_HGLOBAL,
+        };
+        try
+        {
+            return obj.QueryGetData(ref query) == 0;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
     }
 
     /// <summary>探测剪贴板文件数据；纯文本 / 图片不视为可粘贴文件。</summary>
@@ -588,17 +816,23 @@ public class AvaloniaSystemClipboardService : ISystemClipboardService
         return null;
     }
 
-    /// <summary>Windows 文件拖放格式 CF_HDROP。</summary>
-    private const uint CF_HDROP = 14;
+    /// <summary>Windows 文件拖放格式 CF_HDROP（Win32 常量 15）。</summary>
+    private const uint CF_HDROP = 15;
 
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool OpenClipboard(IntPtr hWndNewOwner);
+    [DllImport("ole32.dll")]
+    private static extern int OleInitialize(IntPtr pvReserved);
 
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool CloseClipboard();
+    [DllImport("ole32.dll")]
+    private static extern void OleUninitialize();
 
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern IntPtr GetClipboardData(uint uFormat);
+    [DllImport("ole32.dll")]
+    private static extern int OleGetClipboard([MarshalAs(UnmanagedType.Interface)] out object dataObject);
+
+    [DllImport("ole32.dll")]
+    private static extern void ReleaseStgMedium(ref System.Runtime.InteropServices.ComTypes.STGMEDIUM medium);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern UIntPtr GlobalSize(IntPtr hMem);
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern uint RegisterClipboardFormatW(string lpszFormat);

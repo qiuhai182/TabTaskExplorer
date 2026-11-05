@@ -1573,6 +1573,14 @@ public class WebWorkspace
         {
             return "请先进入目标文件夹";
         }
+        if (fileTab != null && fileTab.FileSystemProvider is ArchiveFileSystemProvider)
+        {
+            string unsupported = "压缩包预览标签不支持粘贴，请在普通文件夹或远程目录中粘贴";
+            fileTab.ShowMessage(unsupported);
+            UiLogger.Log("网页端工作区", "工作区=" + this.Id + " 粘贴：目标=" + targetDirectory
+                + " 结果=压缩包预览标签不支持，已提示不可用");
+            return unsupported;
+        }
         string landedPathsText = string.Join("、", this.clipboardPaths);
         bool landedIsCut = this.clipboardIsCut;
         bool localTask = fileTab != null && fileTab.FileSystemProvider is DefaultFileSystemProvider;
@@ -2072,6 +2080,8 @@ public class WebWorkspace
         state.FileCompactMode = this.settings.FileCompactMode;
         state.FileSortField = this.settings.FileSortField;
         state.FileSortAscending = this.settings.FileSortAscending;
+        state.ClipboardHasFiles = this.clipboardPaths != null && this.clipboardPaths.Count > 0;
+        state.ClipboardIsCut = this.clipboardIsCut;
         foreach (FileTaskSnapshot task in this.fileTaskCenter.Snapshot())
         {
             state.Tasks.Add(task);

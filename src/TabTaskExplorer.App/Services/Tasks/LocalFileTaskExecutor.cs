@@ -372,32 +372,50 @@ public static class LocalFileTaskExecutor
         }
     }
 
-    /// <summary>删除路径；recycle 为真且运行在 Windows 时优先移入回收站，失败回落永久删除。</summary>
+    /// <summary>
+    /// 删除路径；recycle 为真且运行在 Windows 时优先移入回收站。
+    /// 回收站删除放到独立 STA 线程并最多等 3 秒：目标被其他进程锁住时不会把任务线程无限挂起，
+    /// 超时后回落永久删除（锁定文件会立即抛错，由上层记录失败，源保持不删）。
+    /// </summary>
     private static void DeletePath(string path, bool recycle)
     {
         if (recycle && OperatingSystem.IsWindows())
         {
-            try
+            bool recycled = false;
+            Thread recycler = new Thread(new ThreadStart(delegate
             {
-                if (Directory.Exists(path))
+                try
                 {
-                    Microsoft.VisualBasic.FileIO.FileSystem.DeleteDirectory(path,
-                        Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs,
-                        Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
-                    return;
+                    if (Directory.Exists(path))
+                    {
+                        Microsoft.VisualBasic.FileIO.FileSystem.DeleteDirectory(path,
+                            Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs,
+                            Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
+                        recycled = true;
+                    }
+                    else if (File.Exists(path))
+                    {
+                        Microsoft.VisualBasic.FileIO.FileSystem.DeleteFile(path,
+                            Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs,
+                            Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
+                        recycled = true;
+                    }
                 }
-                if (File.Exists(path))
+                catch (Exception)
                 {
-                    Microsoft.VisualBasic.FileIO.FileSystem.DeleteFile(path,
-                        Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs,
-                        Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
-                    return;
+                    // 回收站不可用时回落永久删除
                 }
-            }
-            catch (Exception)
+            }));
+            recycler.IsBackground = true;
+            recycler.Name = "回收站删除";
+            recycler.SetApartmentState(ApartmentState.STA);
+            recycler.Start();
+            if (recycler.Join(3000) && recycled)
             {
-                // 回收站不可用时回落永久删除
+                return;
             }
+            UiLogger.Log("任务中心", "回收站删除未完成：路径=" + path
+                + " 等待毫秒=3000 结果=回落永久删除或按锁定失败处理");
         }
         if (Directory.Exists(path))
         {
