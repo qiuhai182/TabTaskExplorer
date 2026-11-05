@@ -199,6 +199,10 @@ temp/
 *.code-workspace
 .directory
 
+# ---------- 本地 QA 测试数据与截图工作区（临时产物，不入库） ----------
+.qa/
+.screenshots/
+
 # ---------- 本地参考项目（克隆的开源仓库，仅供阅读，不入库） ----------
 references/
 
@@ -215,3 +219,4 @@ build_out.txt
 *_out.txt
 *-snapshot
 rea-rightclickman
+rea-winmerge
