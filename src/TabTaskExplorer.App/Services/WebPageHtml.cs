@@ -188,6 +188,9 @@ public static class WebPageHtml
   .boardItem { background:#fff; border:1px solid #E4E4E4; border-radius:4px; padding:6px 8px; margin-bottom:6px; font-size:12px; }
   .connRow td { cursor:pointer; }
   .connRow.selected { background:#E8F1FC; }
+  .connWarn { display:inline-block; margin-left:6px; padding:0 5px; border-radius:3px; font-size:11px; line-height:16px; color:#9A5B00; background:#FFF1D8; border:1px solid #F0D39A; }
+  body.dark .connWarn { color:#FFCF80; background:#3A2C14; border-color:#6A5324; }
+  body.dark .connRow.selected { background:#22344C; }
 
   /* ===== 状态栏 ===== */
   .statusbar { border-top:1px solid #E9E9E9; padding:5px 12px; color:#808080; font-size:12px; flex:none; display:flex; gap:8px; }
@@ -1865,9 +1868,11 @@ function renderConnections(tab) {
     html += '<tr><td class="hint" colspan="3">暂无连接，可点击「新建连接」或「一键导入已安装配置」</td></tr>';
   }
   for (const item of items) {
+    const needsPassword = item.protocol === 'SSH' && item.authType === 'Password' && !item.hasSecret;
     html += '<tr class="connRow' + (item.selected ? ' selected' : '') + '"'
       + ' onclick="clickBtn(null,\'connselect\',\'' + escAttr(item.id) + '\')">'
-      + '<td>' + esc(item.name) + '</td><td>' + esc(item.group) + '</td><td>' + esc(item.summary) + '</td></tr>';
+      + '<td>' + esc(item.name) + (needsPassword ? ' <span class="connWarn">需补密码</span>' : '')
+      + '</td><td>' + esc(item.group) + '</td><td>' + esc(item.summary) + '</td></tr>';
   }
   html += '</table>';
   const selected = items.find(function (item) { return item.selected; }) || null;

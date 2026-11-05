@@ -334,6 +334,27 @@ public class ConnectionManager
         {
             this.store.SaveAll(all);
         }
+        // 导入不会带入密码（Xftp 的 Password 是其自有加密格式）：统计仍需用户补填的 SSH 连接
+        foreach (string name in summary.Names)
+        {
+            foreach (RemoteConnectionProfile candidate in all)
+            {
+                if (candidate.Name != name)
+                {
+                    continue;
+                }
+                if (candidate.Protocol == RemoteProtocol.Ssh && candidate.AuthType == RemoteAuthType.Password
+                    && string.IsNullOrEmpty(candidate.ProtectedSecret))
+                {
+                    summary.NeedsPassword.Add(name);
+                }
+                break;
+            }
+        }
+        if (summary.NeedsPassword.Count > 0)
+        {
+            this.Log("一键导入：以下连接未包含密码，需要在连接管理中重新输入后才可连接：" + string.Join("、", summary.NeedsPassword));
+        }
         summary.Imported = importedCount;
         summary.Updated = updatedCount;
         return summary;

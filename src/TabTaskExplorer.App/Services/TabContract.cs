@@ -373,6 +373,7 @@ public static class TabSnapshotFiller
             mirror.Username = profile.Username;
             mirror.AuthType = profile.AuthType == RemoteAuthType.PrivateKey ? "PrivateKey" : "Password";
             mirror.PrivateKeyPath = profile.PrivateKeyPath;
+            mirror.HasSecret = !string.IsNullOrEmpty(profile.ProtectedSecret);
             mirror.KeepAliveSeconds = profile.KeepAliveSeconds;
             mirror.Summary = profile.Summary;
             mirror.JumpSummary = profile.JumpSummary;

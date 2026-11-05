@@ -50,6 +50,9 @@ public class XshellImportSummary
     /// <summary>导入（含更新）成功的会话名称，已去重。</summary>
     public List<string> Names { get; } = new List<string>();
 
+    /// <summary>导入后仍缺少密码的 SSH 连接名称：Xshell / Xftp 不导入密码，需用户手动补填。</summary>
+    public List<string> NeedsPassword { get; } = new List<string>();
+
     /// <summary>跳过的会话说明，格式为“会话名（原因）”。</summary>
     public List<string> Skipped { get; } = new List<string>();
 

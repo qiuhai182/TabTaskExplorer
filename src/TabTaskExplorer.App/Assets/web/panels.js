@@ -369,9 +369,11 @@ function renderConnections(tab) {
     html += '<tr><td class="hint" colspan="3">暂无连接，可点击「新建连接」或「一键导入已安装配置」</td></tr>';
   }
   for (const item of items) {
+    const needsPassword = item.protocol === 'SSH' && item.authType === 'Password' && !item.hasSecret;
     html += '<tr class="connRow' + (item.selected ? ' selected' : '') + '"'
       + ' onclick="clickBtn(null,\'connselect\',\'' + escAttr(item.id) + '\')">'
-      + '<td>' + esc(item.name) + '</td><td>' + esc(item.group) + '</td><td>' + esc(item.summary) + '</td></tr>';
+      + '<td>' + esc(item.name) + (needsPassword ? ' <span class="connWarn">需补密码</span>' : '')
+      + '</td><td>' + esc(item.group) + '</td><td>' + esc(item.summary) + '</td></tr>';
   }
   html += '</table>';
   const selected = items.find(function (item) { return item.selected; }) || null;

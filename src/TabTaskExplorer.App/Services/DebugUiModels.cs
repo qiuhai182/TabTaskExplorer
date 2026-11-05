@@ -567,6 +567,9 @@ public class DebugConnection
     /// <summary>私钥文件完整路径（认证方式为私钥时使用）。</summary>
     public string PrivateKeyPath { get; set; } = string.Empty;
 
+    /// <summary>是否已保存凭据；密码认证且为 false 时网页端提示“需重新输入密码”。</summary>
+    public bool HasSecret { get; set; }
+
     /// <summary>SSH 保活间隔（秒）；0 表示关闭保活。</summary>
     public int KeepAliveSeconds { get; set; } = 15;
 

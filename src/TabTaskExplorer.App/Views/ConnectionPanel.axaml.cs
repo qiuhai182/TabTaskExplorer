@@ -259,7 +259,9 @@ public partial class ConnectionPanel : UserControl
             {
                 statusText = "一键导入完成：新增 " + summary.Imported + " 个、更新 " + summary.Updated + " 个连接"
                     + (summary.Skipped.Count > 0 ? "；跳过 " + summary.Skipped.Count + " 个：" + skippedText : string.Empty)
-                    + "（Xshell 密码与私钥需补填）";
+                    + (summary.NeedsPassword.Count > 0
+                        ? "；其中 " + summary.NeedsPassword.Count + " 个连接未包含密码，需在“密码”框重新输入后保存"
+                        : "（Xshell 密码与私钥需补填）");
                 resultText = "成功，已按名称合并到连接列表";
             }
             this.StatusText.Text = statusText;

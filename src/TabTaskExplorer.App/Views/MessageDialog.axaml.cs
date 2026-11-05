@@ -30,6 +30,12 @@ public partial class MessageDialog : Window
     /// <summary>是否为任务冲突处理模式（同名文件二选一 / 同名文件夹四选一）。</summary>
     private bool conflictMode;
 
+    /// <summary>是否为密码输入模式；用户取消或关闭窗口时密码保持 null。</summary>
+    private bool passwordMode;
+
+    /// <summary>密码输入模式下用户点击“连接”后填写的值；取消或关闭为 null。</summary>
+    private string? passwordValue;
+
     /// <summary>冲突模式下的选择；默认取消任务，关闭窗口也按取消处理。</summary>
     private FileConflictAction conflictAction = FileConflictAction.Cancel;
 
@@ -198,9 +204,50 @@ public partial class MessageDialog : Window
         return (dialog.conflictAction, dialog.ApplyAllCheck.IsChecked == true);
     }
 
+    /// <summary>
+    /// 密码输入对话框：用于 Xshell / Xftp 导入连接缺少密码时要求用户现场补填。
+    /// 点“连接”返回输入值（允许空串由调用方判定），点取消或关闭返回 null。日志与界面不输出明文。
+    /// </summary>
+    public static async Task<string?> PromptPasswordAsync(Window? owner, string title, string message)
+    {
+        if (!Avalonia.Threading.Dispatcher.UIThread.CheckAccess())
+        {
+            Task<string?> inner = Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(
+                new Func<Task<string?>>(() => PromptPasswordAsync(owner, title, message)));
+            return await inner;
+        }
+        MessageDialog dialog = new MessageDialog();
+        dialog.passwordMode = true;
+        dialog.Title = title;
+        dialog.MessageText.Text = message;
+        dialog.PasswordInput.IsVisible = true;
+        dialog.OkButton.Content = "连接";
+        dialog.CancelChoiceButton.Content = "取消";
+        dialog.CancelChoiceButton.IsVisible = true;
+        dialog.Opened += delegate { dialog.PasswordInput.Focus(); };
+        TaskCompletionSource<bool> closed = new TaskCompletionSource<bool>();
+        dialog.Closed += delegate { closed.TrySetResult(true); };
+        if (owner != null)
+        {
+            dialog.ShowDialog(owner);
+        }
+        else
+        {
+            dialog.Show();
+        }
+        await closed.Task;
+        UiLogger.Log("程序行为", "密码输入对话框关闭：标题=" + title + " 结果="
+            + (dialog.passwordValue == null ? "取消或关闭，未提供密码" : "已提供密码，长度=" + dialog.passwordValue.Length));
+        return dialog.passwordValue;
+    }
+
     /// <summary>点击确定关闭。</summary>
     private void OnOkClick(object? sender, RoutedEventArgs e)
     {
+        if (this.passwordMode)
+        {
+            this.passwordValue = this.PasswordInput.Text ?? string.Empty;
+        }
         if (this.conflictMode)
         {
             this.conflictAction = this.okAction;

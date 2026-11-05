@@ -278,6 +278,12 @@ public class SshSessionFactory : IRemoteSessionFactory
         }
         else
         {
+            if (authType == RemoteAuthType.Password && string.IsNullOrEmpty(credential))
+            {
+                // 空密码认证必然被服务器拒绝：直接给出可读原因，避免暴露底层 Permission denied
+                throw new InvalidOperationException("SSH 连接缺少密码：" + host + ":" + port + " 用户名=" + username
+                    + "。Xshell / Xftp 导入不会带入密码（Xftp 密码使用其自有加密格式），请在连接管理中重新输入密码后重试。");
+            }
             PasswordAuthenticationMethod passwordMethod = new PasswordAuthenticationMethod(username, credential);
             // 部分服务器（UOS / 麒麟等 PAM 环境）只开放 keyboard-interactive，不开放 password；
             // 两种方式同时提供给 SSH.NET，由服务器协商选择，避免仅支持纯密码时认证被拒

@@ -1208,7 +1208,10 @@ public class WebWorkspace
                 return "未发现 Xshell / Xftp 配置目录";
             }
             return "一键导入完成：新增 " + summary.Imported + " 个、更新 " + summary.Updated + " 个连接"
-                + (summary.Skipped.Count > 0 ? "；跳过 " + summary.Skipped.Count + " 个：" + skippedText : string.Empty);
+                + (summary.Skipped.Count > 0 ? "；跳过 " + summary.Skipped.Count + " 个：" + skippedText : string.Empty)
+                + (summary.NeedsPassword.Count > 0
+                    ? "；其中 " + summary.NeedsPassword.Count + " 个连接未包含密码（Xftp 密码为自有加密格式），请在下方密码框重新输入并保存"
+                    : string.Empty);
         }
         if (action == "connopenfolder")
         {
@@ -1216,6 +1219,17 @@ public class WebWorkspace
             if (profile == null)
             {
                 return "请先选择要打开的连接";
+            }
+            string secret = this.services.GetRequiredService<ConnectionManager>().GetSecret(profile);
+            string? missing = RemoteCredentialCheck.DescribeMissing(profile, secret);
+            if (missing != null)
+            {
+                // 在动作层直接返回可读原因：避免“正在连接…”覆盖掉真正的失败提示
+                this.lastNotice = "无法连接：" + missing;
+                UiLogger.Log("远程连接", "网页端打开远程文件夹被阻断：工作区=" + this.Id + " 连接=" + profile.Name
+                    + " 服务器=" + profile.Host + " 端口=" + profile.GetEffectivePort()
+                    + " 失败层次=认证层 原因=" + missing + " 结果=未发起认证，等待用户补填密码");
+                return "无法连接：" + missing;
             }
             this.pendingHostKey = null;
             this.OpenRemoteFolder(profile);
@@ -1464,6 +1478,16 @@ public class WebWorkspace
     private void OpenRemoteFolder(RemoteConnectionProfile profile)
     {
         string secret = this.services.GetRequiredService<ConnectionManager>().GetSecret(profile);
+        string? missing = RemoteCredentialCheck.DescribeMissing(profile, secret);
+        if (missing != null)
+        {
+            // 导入的 Xftp 会话不含密码：先阻断并给出可读原因，避免用空密码/旧密码发起认证
+            this.lastNotice = "无法连接：" + missing;
+            UiLogger.Log("远程连接", "网页端打开远程文件夹被阻断：工作区=" + this.Id + " 连接=" + profile.Name
+                + " 服务器=" + profile.Host + " 端口=" + profile.GetEffectivePort()
+                + " 失败层次=认证层 原因=" + missing + " 结果=未发起认证，等待用户补填密码");
+            return;
+        }
         IRemoteSessionFactory factory = this.services.GetRequiredService<IRemoteSessionFactory>();
         WebWorkspace workspace = this;
         Task.Run(delegate
@@ -1476,17 +1500,15 @@ public class WebWorkspace
                 workspace.lastNotice = string.Empty;
                 Dispatcher.UIThread.Post(delegate
                 {
-                    for (int index = 0; index < workspace.tabs.Count; index++)
+                    // 旧远程标签可能停在失败的空列表并持有旧凭据的 provider：先移除，按当前凭据重建
+                    for (int index = workspace.tabs.Count - 1; index >= 0; index--)
                     {
                         FileTabViewModel? existing = workspace.tabs[index] as FileTabViewModel;
                         if (existing != null && existing.AttachedProfileId == profile.Id)
                         {
-                            workspace.selectedIndex = index;
-                            // 复用标签可能停留在上次失败的空列表：重新读取，触发真实重连
-                            existing.Refresh();
-                            UiLogger.Log("网页端工作区", "工作区=" + workspace.Id + " 远程文件夹标签已存在：重新读取并切换到该标签 连接=" + profile.Name);
-                            workspace.SyncTabForeground();
-                            return;
+                            workspace.tabs.RemoveAt(index);
+                            UiLogger.Log("网页端工作区", "工作区=" + workspace.Id + " 关闭旧的远程文件夹标签：连接="
+                                + profile.Name + " 结果=已移除，准备按当前凭据重建");
                         }
                     }
                     FileTabViewModel newTab = new FileTabViewModel(provider, workspace.settings, "/", null,
@@ -1549,9 +1571,11 @@ public class WebWorkspace
             }
             catch (Exception error)
             {
-                workspace.lastNotice = "打开远程文件夹失败：" + error.Message;
+                string reason = RemoteFailureText.Describe(error, profile);
+                workspace.lastNotice = "打开远程文件夹失败：" + reason;
                 UiLogger.LogError("网页端工作区", "打开远程文件夹失败：连接=" + profile.Name + " 服务器=" + profile.Host
-                    + " 端口=" + profile.GetEffectivePort() + " 认证方式=" + profile.AuthType, error);
+                    + " 端口=" + profile.GetEffectivePort() + " 认证方式=" + profile.AuthType
+                    + " 失败层次=" + RemoteFailureText.Layer(error) + " 原因=" + reason, error);
             }
         });
     }

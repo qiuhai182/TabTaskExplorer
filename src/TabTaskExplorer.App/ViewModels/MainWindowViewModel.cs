@@ -950,6 +950,42 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
         }
     }
 
+    /// <summary>
+    /// 连接前确认密码：SSH 密码认证连接缺少可用密码时弹窗要求现场输入并加密保存，
+    /// 返回 null 表示用户取消。全程只记录密码长度，不写明文。
+    /// </summary>
+    private async Task<string?> EnsureSecretAsync(RemoteConnectionProfile profile)
+    {
+        string secret = this.ResolveSecret(profile);
+        string? missing = RemoteCredentialCheck.DescribeMissing(profile, secret);
+        if (missing == null)
+        {
+            return secret;
+        }
+        bool mainMissing = profile.Protocol == RemoteProtocol.Ssh && profile.AuthType == RemoteAuthType.Password
+            && string.IsNullOrEmpty(secret);
+        if (!mainMissing)
+        {
+            // 缺口在跳板：提示到连接管理中补填跳板密码，不把输入错误地写进主连接
+            Views.MessageDialog.Show(this.OwnerWindow, "需要补填跳板密码", missing);
+            UiLogger.Log("远程连接", "连接前密码检查：连接=" + profile.Name + " 服务器=" + profile.Host
+                + " 结果=跳板凭据缺失，未建立连接 原因=" + missing);
+            return null;
+        }
+        string? input = await Views.MessageDialog.PromptPasswordAsync(this.OwnerWindow, "需要输入密码", missing);
+        if (input == null || input.Length == 0)
+        {
+            UiLogger.Log("远程连接", "连接前密码检查：连接=" + profile.Name + " 服务器=" + profile.Host
+                + " 结果=用户取消或未输入密码，未建立连接");
+            return null;
+        }
+        Kernel.Services.ConnectionManager manager = this.services.GetRequiredService<Kernel.Services.ConnectionManager>();
+        manager.SetSecret(profile, input);
+        UiLogger.Log("远程连接", "连接前密码检查：连接=" + profile.Name + " 服务器=" + profile.Host
+            + " 密码长度=" + input.Length + " 结果=已加密保存，继续建立连接");
+        return input;
+    }
+
     /// <summary>打开远程终端标签页（同一连接只保留一个，连接在后台线程建立）。</summary>
     public async void OpenTerminalTab(RemoteConnectionProfile profile)
     {
@@ -968,7 +1004,11 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
 
         try
         {
-            string secret = this.ResolveSecret(profile);
+            string? secret = await this.EnsureSecretAsync(profile);
+            if (secret == null)
+            {
+                return;
+            }
             IRemoteSessionFactory factory = this.services.GetRequiredService<IRemoteSessionFactory>();
             ITerminalSession session = await Task.Run(delegate
             {
@@ -1009,9 +1049,11 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
         }
         catch (Exception ex)
         {
+            string reason = RemoteFailureText.Describe(ex, profile);
             UiLogger.LogError("远程连接", "打开终端失败：连接名称=" + profile.Name + " 服务器=" + profile.Host
-                + " 端口=" + profile.GetEffectivePort() + " 认证方式=" + profile.AuthType, ex);
-            Views.MessageDialog.Show(this.OwnerWindow, "连接失败", "无法连接 " + profile.Host + "：" + ex.Message);
+                + " 端口=" + profile.GetEffectivePort() + " 认证方式=" + profile.AuthType
+                + " 失败层次=" + RemoteFailureText.Layer(ex) + " 原因=" + reason, ex);
+            Views.MessageDialog.Show(this.OwnerWindow, "连接失败", "无法连接 " + profile.Host + "：" + reason);
         }
     }
 
@@ -1022,24 +1064,33 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
         {
             return;
         }
-        foreach (object tab in this.Tabs)
-        {
-            if (tab is FileTabViewModel file && file.AttachedProfileId == profile.Id)
-            {
-                this.SelectedTab = file;
-                // 复用的远程标签可能停留在上一次连接失败的空列表：重新读取一次，便于重连与错误提示
-                file.Refresh();
-                return;
-            }
-        }
 
         try
         {
-            string secret = this.ResolveSecret(profile);
+            string? secret = await this.EnsureSecretAsync(profile);
+            if (secret == null)
+            {
+                return;
+            }
+            // 先关闭同一连接的旧远程标签：旧标签可能停在失败的空列表，且持有旧凭据的 provider，
+            // 保存新密码后继续复用会导致仍用旧凭据连接（二次连接永远失败）
+            for (int index = this.Tabs.Count - 1; index >= 0; index--)
+            {
+                if (this.Tabs[index] is FileTabViewModel oldTab && oldTab.AttachedProfileId == profile.Id)
+                {
+                    oldTab.PathChanged -= this.OnTabPathChanged;
+                    this.Tabs.RemoveAt(index);
+                    UiLogger.Log("远程连接", "关闭旧的远程文件夹标签：连接=" + profile.Name + " 路径="
+                        + oldTab.CurrentPath + " 结果=已移除，准备按当前凭据重新连接");
+                }
+            }
             IRemoteSessionFactory factory = this.services.GetRequiredService<IRemoteSessionFactory>();
             IFileSystemProvider provider = await Task.Run(delegate
             {
-                return factory.OpenFileSystem(profile, secret);
+                IFileSystemProvider opened = factory.OpenFileSystem(profile, secret);
+                // 先实际读取根目录，认证或 SFTP 不可用时直接抛错，不留下空标签
+                opened.ListDirectory("/");
+                return opened;
             });
             // 远程标签传空扫描服务：禁止对本机磁盘做目录大小回填
             FileTabViewModel newTab = new FileTabViewModel(provider, this.Settings, "/", null,
@@ -1050,6 +1101,8 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
             newTab.RetryTaskRequested = (workspaceId, taskId) => this.RetryFileTask(workspaceId, taskId);
             this.Tabs.Add(newTab);
             this.SelectedTab = newTab;
+            UiLogger.Log("远程连接", "打开远程文件夹成功：连接=" + profile.Name + " 服务器=" + profile.Host
+                + " 端口=" + profile.GetEffectivePort() + " 认证=成功 SFTP根目录=可读 结果=已创建远程文件夹标签");
         }
         catch (HostKeyUnknownException keyError)
         {
@@ -1076,9 +1129,11 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
         }
         catch (Exception ex)
         {
+            string reason = RemoteFailureText.Describe(ex, profile);
             UiLogger.LogError("远程连接", "打开远程文件夹失败：连接名称=" + profile.Name + " 服务器=" + profile.Host
-                + " 端口=" + profile.GetEffectivePort() + " 认证方式=" + profile.AuthType, ex);
-            Views.MessageDialog.Show(this.OwnerWindow, "连接失败", "无法打开远程文件夹：" + ex.Message);
+                + " 端口=" + profile.GetEffectivePort() + " 认证方式=" + profile.AuthType
+                + " 失败层次=" + RemoteFailureText.Layer(ex) + " 原因=" + reason, ex);
+            Views.MessageDialog.Show(this.OwnerWindow, "连接失败", "无法打开远程文件夹：" + reason);
         }
     }
 
@@ -1183,7 +1238,11 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
         }
         try
         {
-            string secret = this.ResolveSecret(profile);
+            string? secret = await this.EnsureSecretAsync(profile);
+            if (secret == null)
+            {
+                return;
+            }
             IRemoteSessionFactory factory = this.services.GetRequiredService<IRemoteSessionFactory>();
             IFileSystemProvider provider = await Task.Run(delegate
             {
@@ -1200,7 +1259,10 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
         }
         catch (Exception ex)
         {
-            Views.MessageDialog.Show(this.OwnerWindow, "连接失败", "无法打开远程 IDE 工作区：" + ex.Message);
+            string reason = RemoteFailureText.Describe(ex, profile);
+            UiLogger.LogError("远程连接", "打开远程 IDE 工作区失败：连接名称=" + profile.Name + " 服务器=" + profile.Host
+                + " 端口=" + profile.GetEffectivePort() + " 失败层次=" + RemoteFailureText.Layer(ex) + " 原因=" + reason, ex);
+            Views.MessageDialog.Show(this.OwnerWindow, "连接失败", "无法打开远程 IDE 工作区：" + reason);
         }
     }
 
@@ -1225,7 +1287,11 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
             IRemoteTransferService service;
             if (!this.transferServices.TryGetValue(profile.Id, out service))
             {
-                string secret = this.ResolveSecret(profile);
+                string? secret = await this.EnsureSecretAsync(profile);
+                if (secret == null)
+                {
+                    return;
+                }
                 IRemoteSessionFactory factory = this.services.GetRequiredService<IRemoteSessionFactory>();
                 service = await Task.Run(delegate
                 {
@@ -1240,7 +1306,10 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
         }
         catch (Exception ex)
         {
-            Views.MessageDialog.Show(this.OwnerWindow, "连接失败", "无法建立传输服务：" + ex.Message);
+            string reason = RemoteFailureText.Describe(ex, profile);
+            UiLogger.LogError("远程连接", "建立传输服务失败：连接名称=" + profile.Name + " 服务器=" + profile.Host
+                + " 端口=" + profile.GetEffectivePort() + " 失败层次=" + RemoteFailureText.Layer(ex) + " 原因=" + reason, ex);
+            Views.MessageDialog.Show(this.OwnerWindow, "连接失败", "无法建立传输服务：" + reason);
         }
     }
 
@@ -3359,13 +3428,17 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
         {
             XshellImportSummary summary = tab.ImportInstalled();
             UiLogger.Log("网页端访问", "一键导入已安装配置：配置目录数=" + summary.RootsScanned.Count
-                + " 新增=" + summary.Imported + " 更新=" + summary.Updated + " 跳过=" + summary.Skipped.Count);
+                + " 新增=" + summary.Imported + " 更新=" + summary.Updated + " 跳过=" + summary.Skipped.Count
+                + " 需补密码=" + summary.NeedsPassword.Count);
             if (summary.RootsScanned.Count == 0)
             {
                 return "未发现 Xshell / Xftp 配置目录";
             }
             return "一键导入完成：新增 " + summary.Imported + " 个、更新 " + summary.Updated + " 个连接"
-                + (summary.Skipped.Count > 0 ? "；跳过 " + summary.Skipped.Count + " 个" : string.Empty);
+                + (summary.Skipped.Count > 0 ? "；跳过 " + summary.Skipped.Count + " 个" : string.Empty)
+                + (summary.NeedsPassword.Count > 0
+                    ? "；其中 " + summary.NeedsPassword.Count + " 个连接未包含密码（Xftp 密码为自有加密格式），请在连接管理中重新输入并保存"
+                    : string.Empty);
         }
         if (action == "connopenfolder")
         {
