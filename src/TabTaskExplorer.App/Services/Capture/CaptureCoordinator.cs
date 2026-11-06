@@ -80,6 +80,7 @@ public class CaptureCoordinator : IDisposable
     }
 
     private readonly IScreenCaptureService screenCaptureService;
+    private readonly IScrollCaptureService scrollCaptureService;
     private readonly IScreenRecordingService screenRecordingService;
     private readonly IGlobalHotkeyService globalHotkeyService;
     private readonly ISystemClipboardService systemClipboardService;
@@ -97,6 +98,7 @@ public class CaptureCoordinator : IDisposable
     private string hotkeyStatusText = "全局快捷键：尚未注册";
 
     public CaptureCoordinator(IScreenCaptureService screenCaptureService,
+        IScrollCaptureService scrollCaptureService,
         IScreenRecordingService screenRecordingService,
         IGlobalHotkeyService globalHotkeyService,
         ISystemClipboardService systemClipboardService,
@@ -107,6 +109,7 @@ public class CaptureCoordinator : IDisposable
         IForegroundWindowService foregroundWindowService)
     {
         this.screenCaptureService = screenCaptureService;
+        this.scrollCaptureService = scrollCaptureService;
         this.screenRecordingService = screenRecordingService;
         this.globalHotkeyService = globalHotkeyService;
         this.systemClipboardService = systemClipboardService;
@@ -153,6 +156,12 @@ public class CaptureCoordinator : IDisposable
         get { return this.screenCaptureService.Capabilities; }
     }
 
+    /// <summary>当前平台是否支持滚动长截图。</summary>
+    public bool IsScrollCaptureAvailable
+    {
+        get { return this.scrollCaptureService.IsSupported; }
+    }
+
     /// <summary>当前平台是否支持系统全局快捷键。</summary>
     public bool IsGlobalHotkeySupported
     {
@@ -196,6 +205,18 @@ public class CaptureCoordinator : IDisposable
             UiLogger.Log("全局热键", "重新注册被跳过：主窗口视图模型未就绪");
             return;
         }
+        if (mainViewModel.Settings.ShortcutsDisabled)
+        {
+            // 一键清空：不能只清空配置，必须同时注销已注册热键并卸载低级键盘钩子，进程内不留残余
+            int remainingCount = mainViewModel.Settings.Shortcuts == null ? 0 : mainViewModel.Settings.Shortcuts.Count;
+            this.globalHotkeyService.DisableAll();
+            this.hotkeyStatusText = "全局快捷键：已全部停用";
+            UiLogger.Log("全局热键", "全部快捷键停用：已清空全部注册项并卸载低级键盘钩子 剩余快捷键条数="
+                + remainingCount + " 全局热键数量=0 键盘钩子=已卸载 结果=成功");
+            return;
+        }
+        // 用户已恢复快捷键：清理停用标记，允许重新安装键盘钩子
+        this.globalHotkeyService.EnableAll();
         this.globalHotkeyService.UnregisterAll();
         if (!this.globalHotkeyService.IsSupported)
         {
@@ -312,6 +333,10 @@ public class CaptureCoordinator : IDisposable
         {
             _ = this.CapturePinRegionAsync(mainViewModel.Settings.CaptureDelaySeconds);
         }
+        else if (string.Equals(actionName, "ScreenshotScroll", StringComparison.Ordinal))
+        {
+            _ = this.CaptureScrollRegionAsync(mainViewModel.Settings.CaptureDelaySeconds);
+        }
         else if (string.Equals(actionName, "RecordToggle", StringComparison.Ordinal))
         {
             _ = this.ToggleRecordingAsync(this.ResolveRecordingTargetIndex(mainViewModel.Settings.CaptureRecordTarget));
@@ -381,6 +406,148 @@ public class CaptureCoordinator : IDisposable
     }
 
     /// <summary>
+    /// 「滚动长截图」：先框选一个固定区域，之后由用户自己在目标程序里滚动，
+    /// 协调器按固定间隔采集同一区域并拼接成一张长图。
+    /// 不向目标窗口发送滚轮消息；取消沿用同一个入口（右键 / Esc），停止滚动后自动完成，
+    /// 结果按普通截图规则保存进产物历史，且不自动写剪贴板。
+    /// </summary>
+    public async Task<CaptureOutcome> CaptureScrollRegionAsync(int delaySeconds)
+    {
+        MainWindowViewModel? mainViewModel = this.viewModel;
+        if (mainViewModel == null)
+        {
+            return CaptureOutcome.CreateFailure("主窗口视图模型未就绪，无法滚动长截图");
+        }
+        if (!this.scrollCaptureService.IsSupported)
+        {
+            string unsupported = "当前平台不支持滚动长截图";
+            UiLogger.Log("截图", "滚动长截图被拒绝：" + unsupported);
+            this.ShowFailure("滚动长截图失败", unsupported);
+            return CaptureOutcome.CreateFailure(unsupported);
+        }
+        UiLogger.Log("截图", "开始滚动长截图：延迟秒数=" + delaySeconds
+            + " 模式=手动滚动（不发送滚轮消息） 取消方式=右键或 Esc 结束方式=停止滚动后自动拼接");
+        CaptureCancelSource cancelSource = await this.WaitForCancelablePhaseAsync(delaySeconds, "滚动长截图", "延迟等待");
+        if (cancelSource != CaptureCancelSource.None)
+        {
+            return this.CreateCaptureCancelOutcome(cancelSource, "滚动长截图", "延迟等待");
+        }
+        CaptureArea? selectedArea = await this.SelectRegionAreaAsync("滚动长截图", false);
+        if (selectedArea == null)
+        {
+            UiLogger.Log("截图", "滚动长截图已取消：用户没有完成框选");
+            return CaptureOutcome.CreateCancelled("已取消滚动长截图");
+        }
+        cancelSource = await this.WaitForOverlayClosedAsync("滚动长截图", "滚动长截图");
+        if (cancelSource != CaptureCancelSource.None)
+        {
+            return this.CreateCaptureCancelOutcome(cancelSource, "滚动长截图", "遮罩关闭后");
+        }
+
+        ScrollCaptureOptions options = new ScrollCaptureOptions();
+        options.Area = selectedArea.Value;
+        // 逐帧采集不画鼠标指针：鼠标停留在内容上会造成重叠匹配误差
+        options.IncludeCursor = false;
+        options.CaptureIntervalMilliseconds = 400;
+        options.MaxFrames = 90;
+        options.MaxHeight = 16000;
+        options.MinOverlapRows = 40;
+        options.MatchTolerance = 0.04;
+        options.StableFrameCount = 3;
+        options.ToolPath = mainViewModel.Settings.FfmpegPath;
+        options.Backend = ResolveCaptureBackend(mainViewModel.Settings.CaptureBackend);
+        MainWindowCaptureState? hideState = this.PrepareMainWindowForCapture(CaptureTarget.Region, selectedArea.Value, "滚动长截图");
+        UiLogger.Log("截图", "滚动长截图采集参数：区域=" + options.Area
+            + " 采集间隔毫秒=" + options.CaptureIntervalMilliseconds
+            + " 最大帧数=" + options.MaxFrames
+            + " 最大高度=" + options.MaxHeight
+            + " 最小重叠行数=" + options.MinOverlapRows
+            + " 匹配容差=" + options.MatchTolerance
+            + " 结束判定=连续" + options.StableFrameCount + "帧无新增内容");
+        this.captureCancelInput.Reset();
+        Progress<ScrollCaptureProgress> progress = new Progress<ScrollCaptureProgress>(delegate(ScrollCaptureProgress item)
+        {
+            UiLogger.Log("截图", "滚动长截图进度：" + item.StatusText);
+        });
+        ScrollCaptureResult result;
+        try
+        {
+            result = await this.scrollCaptureService.CaptureAsync(options, progress, delegate
+            {
+                return this.captureCancelInput.PollCancelRequest();
+            });
+        }
+        catch (Exception error)
+        {
+            this.RestoreMainWindowAfterCapture(hideState, "滚动长截图");
+            UiLogger.LogError("截图", "滚动长截图异常：区域=" + options.Area, error);
+            string exceptionMessage = "滚动长截图失败：" + error.Message;
+            CaptureOutcome exceptionFailure = CaptureOutcome.CreateFailure(exceptionMessage);
+            this.CaptureFinished?.Invoke(exceptionFailure);
+            this.ShowFailure("滚动长截图失败", exceptionMessage);
+            return exceptionFailure;
+        }
+        this.RestoreMainWindowAfterCapture(hideState, "滚动长截图");
+        if (result.Cancelled)
+        {
+            UiLogger.Log("截图", "滚动长截图已取消：" + result.StopReason
+                + " 已采集帧数=" + result.FrameCount + " 结果=未保存产物");
+            CaptureOutcome cancelled = CaptureOutcome.CreateCancelled("已取消滚动长截图");
+            this.CaptureFinished?.Invoke(cancelled);
+            return cancelled;
+        }
+        if (!result.Success)
+        {
+            UiLogger.Log("截图", "滚动长截图失败：已采集帧数=" + result.FrameCount
+                + " 原因=" + result.ErrorMessage);
+            CaptureOutcome failure = CaptureOutcome.CreateFailure("滚动长截图失败：" + result.ErrorMessage);
+            this.CaptureFinished?.Invoke(failure);
+            this.ShowFailure("滚动长截图失败", result.ErrorMessage);
+            return failure;
+        }
+
+        this.RememberLastRegion(selectedArea.Value);
+        string outputDirectory = CapturePaths.ResolveOutputDirectory(mainViewModel.Settings);
+        if (!CapturePaths.EnsureOutputDirectory(outputDirectory, out string directoryError))
+        {
+            UiLogger.Log("截图", "保存滚动长截图失败：目录=" + outputDirectory + " 原因=" + directoryError);
+            CaptureOutcome directoryFailure = CaptureOutcome.CreateFailure(directoryError);
+            this.CaptureFinished?.Invoke(directoryFailure);
+            this.ShowFailure("保存滚动长截图失败", directoryError);
+            return directoryFailure;
+        }
+        string scrollPath = CapturePaths.CreateScreenshotPath(outputDirectory, DateTime.Now);
+        try
+        {
+            await File.WriteAllBytesAsync(scrollPath, result.ImageBytes);
+        }
+        catch (Exception error)
+        {
+            string saveError = "写入滚动长截图文件失败：" + error.Message;
+            UiLogger.Log("截图", "写入滚动长截图文件失败：路径=" + scrollPath + " 原因=" + error.Message);
+            CaptureOutcome saveFailure = CaptureOutcome.CreateFailure(saveError);
+            this.CaptureFinished?.Invoke(saveFailure);
+            this.ShowFailure("保存滚动长截图失败", saveError);
+            return saveFailure;
+        }
+        UiLogger.Log("截图", "滚动长截图已保存：路径=" + scrollPath
+            + " 图像宽度=" + result.PixelWidth
+            + " 图像高度=" + result.PixelHeight
+            + " 帧数=" + result.FrameCount
+            + " 字节数=" + result.ImageBytes.Length
+            + " 结束原因=" + result.StopReason
+            + " 自动复制到剪贴板=否");
+        CaptureOutcome outcome = CaptureOutcome.CreateSuccess(scrollPath, "滚动长截图已保存：" + scrollPath);
+        this.CaptureFinished?.Invoke(outcome);
+        if (mainViewModel.Settings.CaptureOpenFolderAfter)
+        {
+            this.OpenOutputFolderTab(outputDirectory, false);
+        }
+        this.FinishCapturePresentation("滚动长截图");
+        return outcome;
+    }
+
+    /// <summary>
     /// 「贴图截图」：与区域截图完全相同的选区流程（窗口自动识别、Tab/滚轮层级切换），
     /// 确认后用同一份产物生成贴图。默认先按产物规则保存文件（进入产物历史），再用该文件生成贴图；
     /// 关闭设置项后则只在内存中生成贴图，不落盘、不进入历史。
@@ -417,6 +584,7 @@ public class CaptureCoordinator : IDisposable
         request.Area = selectedArea.Value;
         request.IncludeCursor = mainViewModel.Settings.CaptureIncludeCursor;
         request.ToolPath = mainViewModel.Settings.FfmpegPath;
+        request.Backend = ResolveCaptureBackend(mainViewModel.Settings.CaptureBackend);
         MainWindowCaptureState? pinHideState = this.PrepareMainWindowForCapture(CaptureTarget.Region, selectedArea.Value, "贴图截图");
         ScreenCaptureResult captureResult = await this.screenCaptureService.CaptureAsync(request);
         this.RestoreMainWindowAfterCapture(pinHideState, "贴图截图");
@@ -436,6 +604,7 @@ public class CaptureCoordinator : IDisposable
         }
         this.RememberLastRegion(selectedArea.Value);
         UiLogger.Log("截图", "贴图截图平台截图成功：区域=" + captureResult.Area
+            + " 采集后端=" + captureResult.BackendName
             + " 图像宽度=" + captureResult.PixelWidth
             + " 图像高度=" + captureResult.PixelHeight
             + " 图像字节数=" + captureResult.ImageBytes.Length);
@@ -880,6 +1049,7 @@ public class CaptureCoordinator : IDisposable
         request.Area = area;
         request.IncludeCursor = mainViewModel.Settings.CaptureIncludeCursor;
         request.ToolPath = mainViewModel.Settings.FfmpegPath;
+        request.Backend = ResolveCaptureBackend(mainViewModel.Settings.CaptureBackend);
         MainWindowCaptureState? hideState = this.PrepareMainWindowForCapture(target, area, captureMode);
         ScreenCaptureResult captureResult = await this.screenCaptureService.CaptureAsync(request);
         this.RestoreMainWindowAfterCapture(hideState, captureMode);
@@ -893,6 +1063,7 @@ public class CaptureCoordinator : IDisposable
             return failure;
         }
         UiLogger.Log("截图", "平台截图成功：目标=" + DescribeTarget(target)
+            + " 采集后端=" + captureResult.BackendName
             + " 图像宽度=" + captureResult.PixelWidth
             + " 图像高度=" + captureResult.PixelHeight
             + " 图像字节数=" + captureResult.ImageBytes.Length
@@ -1271,6 +1442,7 @@ public class CaptureCoordinator : IDisposable
         previewRequest.Area = bounds.Area;
         previewRequest.IncludeCursor = false;
         previewRequest.ToolPath = mainViewModel.Settings.FfmpegPath;
+        previewRequest.Backend = ResolveCaptureBackend(mainViewModel.Settings.CaptureBackend);
         ScreenCaptureResult preview = await this.screenCaptureService.CaptureAsync(previewRequest);
         if (!preview.Success)
         {
@@ -1341,6 +1513,7 @@ public class CaptureCoordinator : IDisposable
                 previewRequest.Area = area;
                 previewRequest.IncludeCursor = false;
                 previewRequest.ToolPath = mainViewModel.Settings.FfmpegPath;
+                previewRequest.Backend = ResolveCaptureBackend(mainViewModel.Settings.CaptureBackend);
                 ScreenCaptureResult preview = await this.screenCaptureService.CaptureAsync(previewRequest);
                 if (!preview.Success)
                 {
@@ -1832,6 +2005,7 @@ public class CaptureCoordinator : IDisposable
         request.Area = area;
         request.IncludeCursor = false;
         request.ToolPath = mainViewModel.Settings.FfmpegPath;
+        request.Backend = ResolveCaptureBackend(mainViewModel.Settings.CaptureBackend);
         UiLogger.Log("屏幕取色", "正在获取整屏画面：屏幕区域=" + area
             + " 缩放比例=" + screen.Scaling);
         ScreenCaptureResult captureResult = await this.screenCaptureService.CaptureAsync(request);
@@ -2154,6 +2328,20 @@ public class CaptureCoordinator : IDisposable
             return "活动窗口";
         }
         return "全部屏幕";
+    }
+
+    /// <summary>把设置中的后端字符串映射为内核枚举；无法识别时按自动处理。</summary>
+    public static CaptureBackend ResolveCaptureBackend(string? backend)
+    {
+        if (string.Equals(backend, "wgc", StringComparison.OrdinalIgnoreCase))
+        {
+            return CaptureBackend.WindowsGraphicsCapture;
+        }
+        if (string.Equals(backend, "gdi", StringComparison.OrdinalIgnoreCase))
+        {
+            return CaptureBackend.Gdi;
+        }
+        return CaptureBackend.Auto;
     }
 
     /// <summary>返回当前录制的已用时长文字（时:分:秒）。</summary>

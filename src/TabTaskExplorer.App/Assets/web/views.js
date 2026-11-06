@@ -68,7 +68,9 @@ function renderBookmarks() {
   }
   let html = '';
   for (const item of state.navPinned) {
-    html += '<div class="bmItem" onclick="openPath(' + JSON.stringify(item.path).replace(/"/g, '&quot;') + ')">'
+    html += '<div class="bmItem" onclick="openPath(' + JSON.stringify(item.path).replace(/"/g, '&quot;') + ')"'
+      + ' oncontextmenu="return sidebarMenu(event,' + JSON.stringify(item.path).replace(/"/g, '&quot;') + ','
+      + JSON.stringify(item.name || '').replace(/"/g, '&quot;') + ')">'
       + '<span class="fIco" style="width:15px;height:15px">' + fileIcon(item.iconCategory || 'folder', item.iconColor || '#F2B23E', 15) + '</span><span>' + esc(item.name) + '</span>'
       + '<span class="bmX" title="取消固定" onclick="event.stopPropagation();clickBtn(null,\'unpin\','
       + JSON.stringify(item.path).replace(/"/g, '&quot;') + ')">&times;</span></div>';
@@ -82,11 +84,13 @@ function renderSidebar() {
   html += navSection('此电脑', 'monitor', state.navPc, true);
   html += '<div class="navsec"><span class="ico">' + uiIcon('globe', 14, '#2F6FD0') + '</span>网络</div>'
     + '<div class="navitem" onclick="clickBtn(null,\'openconnections\')"><span class="ico">' + uiIcon('globe', 15, '#E8A317') + '</span>连接管理</div>'
-    + '<div class="navitem" onclick="clickBtn(null,\'opencompare\')"><span class="ico">' + uiIcon('compare', 15, '#2F6FD0') + '</span>文件比对</div>'
     + '<div class="navitem" onclick="clickBtn(null,\'opensearch\')"><span class="ico">' + uiIcon('search', 15, '#E8A317') + '</span>全局搜索</div>'
+    + '<div class="navitem" onclick="clickBtn(null,\'opencompare\')"><span class="ico">' + uiIcon('compare', 15, '#2F6FD0') + '</span>文件比对</div>'
     + '<div class="navitem" onclick="clickBtn(null,\'opendisk\')"><span class="ico">' + uiIcon('donut', 15, '#E8A317') + '</span>磁盘视图</div>'
     + '<div class="navitem" onclick="clickBtn(null,\'openprocess\')"><span class="ico">' + uiIcon('activity', 15, '#E8A317') + '</span>进程监控</div>'
     + '<div class="navitem" onclick="clickBtn(null,\'openstartup\')"><span class="ico">' + uiIcon('power', 15, '#E8A317') + '</span>启动项管理</div>'
+    + '<div class="navitem" title="该功能仅桌面端可用" style="opacity:.45;cursor:not-allowed" onclick="desktopOnly(\'右键管理\')"><span class="ico">' + uiIcon('sliders', 15, '#8A8F99') + '</span>右键管理</div>'
+    + '<div class="navitem" title="该功能仅桌面端可用" style="opacity:.45;cursor:not-allowed" onclick="desktopOnly(\'截图与录屏\')"><span class="ico">' + uiIcon('camera', 15, '#8A8F99') + '</span>截图与录屏</div>'
     + '<div class="navitem" onclick="clickBtn(null,\'openboard\')"><span class="ico">' + uiIcon('board', 15, '#E8A317') + '</span>任务看板</div>';
   document.getElementById('sidebar').innerHTML = html;
 }
@@ -101,7 +105,9 @@ function navSection(title, iconKind, items, clickable) {
   }
   for (const item of items) {
     html += '<div class="navitem' + (item.selected ? ' selected' : '') + '" onclick="navOpen('
-      + JSON.stringify(item.path).replace(/"/g, '&quot;') + ',' + (item.selected ? 1 : 0) + ')">'
+      + JSON.stringify(item.path).replace(/"/g, '&quot;') + ',' + (item.selected ? 1 : 0) + ')"'
+      + ' oncontextmenu="return sidebarMenu(event,' + JSON.stringify(item.path).replace(/"/g, '&quot;') + ','
+      + JSON.stringify(item.name || '').replace(/"/g, '&quot;') + ')">'
       + '<span class="fIco" style="width:15px;height:15px">' + fileIcon(item.iconCategory || 'folder', item.iconColor || '#F2B23E', 15) + '</span>'
       + '<span>' + esc(item.name) + '</span></div>';
   }

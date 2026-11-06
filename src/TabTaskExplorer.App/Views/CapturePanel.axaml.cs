@@ -111,6 +111,20 @@ public partial class CapturePanel : UserControl
         await viewModel.CapturePinRegionAsync();
     }
 
+    private async void OnCaptureScrollClick(object? sender, RoutedEventArgs e)
+    {
+        CaptureTabViewModel? viewModel = this.ViewModel;
+        if (viewModel == null)
+        {
+            UiLogger.Log("截图录屏", "按钮=滚动长截图 被点击：视图模型未就绪，结果=失败，未执行滚动长截图");
+            return;
+        }
+        UiLogger.Log("截图录屏", "按钮=滚动长截图 被点击：结果=已请求滚动长截图"
+            + " 延迟索引=" + viewModel.DelayIndex
+            + " 取消方式=右键或 Esc");
+        await viewModel.CaptureScrollRegionAsync();
+    }
+
     private async void OnCaptureWindowClick(object? sender, RoutedEventArgs e)
     {
         CaptureTabViewModel? viewModel = this.ViewModel;
@@ -178,6 +192,19 @@ public partial class CapturePanel : UserControl
             + " 画质参数=" + viewModel.Settings.CaptureRecordQuality
             + " 麦克风设备=" + (string.IsNullOrEmpty(viewModel.Settings.CaptureMicrophoneDevice) ? "未启用" : viewModel.Settings.CaptureMicrophoneDevice));
         await viewModel.ToggleRecordingAsync();
+    }
+
+    /// <summary>下拉切换采集后端后立即落盘，下一次截图生效（无需重启）。</summary>
+    private void OnCaptureBackendChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        CaptureTabViewModel? viewModel = this.ViewModel;
+        if (viewModel == null)
+        {
+            UiLogger.Log("截图录屏", "采集后端发生变化：视图模型未就绪，结果=未保存");
+            return;
+        }
+        viewModel.PersistSettings("截图录屏标签页切换采集后端");
+        UiLogger.Log("截图录屏", "采集后端已更新：" + viewModel.Settings.CaptureBackend + " 结果=已保存到设置");
     }
 
     private void OnCaptureOptionChanged(object? sender, RoutedEventArgs e)

@@ -254,9 +254,11 @@ public partial class FileListPanel : UserControl
             UiLogger.Log("程序行为", "快速预览打开：文件=" + selected.FullPath + " 条目标识=文件路径 结果=已打开预览窗");
             return;
         }
+        // 已一键停用全部快捷键时，文件操作类组合键与单键全部不再触发；方向键与快速预览等导航操作保留
+        bool shortcutsDisabled = this.MainViewModel != null && this.MainViewModel.Settings.ShortcutsDisabled;
         bool control = e.KeyModifiers.HasFlag(KeyModifiers.Control);
         bool shift = e.KeyModifiers.HasFlag(KeyModifiers.Shift);
-        if (control && e.Key == Key.C)
+        if (!shortcutsDisabled && control && e.Key == Key.C)
         {
             MainWindowViewModel? main = this.MainViewModel;
             if (main != null)
@@ -267,7 +269,7 @@ public partial class FileListPanel : UserControl
             }
             return;
         }
-        if (control && e.Key == Key.X)
+        if (!shortcutsDisabled && control && e.Key == Key.X)
         {
             MainWindowViewModel? main = this.MainViewModel;
             if (main != null)
@@ -278,13 +280,13 @@ public partial class FileListPanel : UserControl
             }
             return;
         }
-        if (control && e.Key == Key.V)
+        if (!shortcutsDisabled && control && e.Key == Key.V)
         {
             this.PasteFromKeyboard();
             e.Handled = true;
             return;
         }
-        if (control && e.Key == Key.A)
+        if (!shortcutsDisabled && control && e.Key == Key.A)
         {
             viewModel.SelectAll();
             viewModel.RefreshSelectionSummary();
@@ -293,13 +295,13 @@ public partial class FileListPanel : UserControl
             UiLogger.Log("程序行为", "键盘全选：组合键=Ctrl+A 结果=已选中当前目录全部条目");
             return;
         }
-        if (e.Key == Key.F2)
+        if (!shortcutsDisabled && e.Key == Key.F2)
         {
             this.RenameFocusedRow();
             e.Handled = true;
             return;
         }
-        if (e.Key == Key.Delete)
+        if (!shortcutsDisabled && e.Key == Key.Delete)
         {
             viewModel.DeleteChecked();
             viewModel.RefreshSelectionSummary();

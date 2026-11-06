@@ -213,6 +213,12 @@ public class CaptureTabViewModel : INotifyPropertyChanged, ITabView
         get { return this.coordinator.CaptureCapabilities.ActiveWindow; }
     }
 
+    /// <summary>是否具备滚动长截图能力（仅 Windows 支持）。</summary>
+    public bool CanCaptureScroll
+    {
+        get { return this.coordinator.CaptureCapabilities.Region && this.coordinator.IsScrollCaptureAvailable; }
+    }
+
     /// <summary>是否可以使用上次区域。</summary>
     public bool CanCaptureLastRegion
     {
@@ -290,6 +296,14 @@ public class CaptureTabViewModel : INotifyPropertyChanged, ITabView
     {
         this.StatusText = "请选择要贴到屏幕的区域（移动鼠标预选窗口 / Tab 切换层级）……";
         CaptureOutcome outcome = await this.coordinator.CapturePinRegionAsync(this.ResolveDelaySeconds());
+        this.ApplyOutcome(outcome);
+    }
+
+    /// <summary>执行滚动长截图：选区后由用户手动滚动，自动采集并拼接；右键 / Esc 取消。</summary>
+    public async Task CaptureScrollRegionAsync()
+    {
+        this.StatusText = "请选择要滚动截图的区域，然后在该区域内滚动内容（右键或 Esc 取消）……";
+        CaptureOutcome outcome = await this.coordinator.CaptureScrollRegionAsync(this.ResolveDelaySeconds());
         this.ApplyOutcome(outcome);
     }
 
@@ -454,6 +468,7 @@ public class CaptureTabViewModel : INotifyPropertyChanged, ITabView
         this.RaisePropertyChanged(nameof(this.CanCaptureRegion));
         this.RaisePropertyChanged(nameof(this.CanCaptureWindow));
         this.RaisePropertyChanged(nameof(this.CanCaptureLastRegion));
+        this.RaisePropertyChanged(nameof(this.CanCaptureScroll));
         this.RaisePropertyChanged(nameof(this.CanRecord));
     }
 

@@ -1,0 +1,58 @@
+/* 由 tools/gen-design-tokens.ps1 从 design/tokens/ui-tokens.json 生成，请勿手工编辑。 */
+:root {
+  --tte-chrome: #F1F1F1;
+  --tte-content: #FFFFFF;
+  --tte-separator: #EBEBEC;
+  --tte-border: #E9E9E9;
+  --tte-text-primary: #1C1C1C;
+  --tte-text-muted: #808080;
+  --tte-accent: #4A8FD0;
+  --tte-row-hover: #F5F7FA;
+  --tte-row-selected: #DCE9F5;
+  --tte-row-selected-text: #4A8FD0;
+  --tte-tab-hover: #E4E4E4;
+  --tte-tab-active: #FFFFFF;
+  --tte-bookmark-bar: #FFFFFF;
+  --tte-input-border: #DCDDDE;
+  --tte-input-surface: #FFFFFF;
+  --tte-toolbar-text: #808080;
+  --tte-status-bar: #F1F1F1;
+  --tte-menu-surface: #F1F1F1;
+  --tte-surface-raised: #FFFFFF;
+  --tte-overlay-scrim: #00000073;
+  --tte-row-selected-border: #BBD7F5;
+  --tte-on-accent: #FFFFFF;
+  --tte-danger: #D9534F;
+  --tte-warning: #E8A317;
+  --tte-success: #3FA45B;
+  --tte-focus-ring: #4A8FD0;
+}
+
+body.dark {
+  --tte-chrome: #212121;
+  --tte-content: #191919;
+  --tte-separator: #515151;
+  --tte-border: #323232;
+  --tte-text-primary: #E8E8E8;
+  --tte-text-muted: #808080;
+  --tte-accent: #4CC2FF;
+  --tte-row-hover: #2E2E2E;
+  --tte-row-selected: #37373D;
+  --tte-row-selected-text: #4CC2FF;
+  --tte-tab-hover: #2E2E2E;
+  --tte-tab-active: #191919;
+  --tte-bookmark-bar: #3B3B3B;
+  --tte-input-border: #525252;
+  --tte-input-surface: #202020;
+  --tte-toolbar-text: #FFFFFF;
+  --tte-status-bar: #212121;
+  --tte-menu-surface: #212121;
+  --tte-surface-raised: #242424;
+  --tte-overlay-scrim: #00000073;
+  --tte-row-selected-border: #3D5A78;
+  --tte-on-accent: #FFFFFF;
+  --tte-danger: #FF6B6B;
+  --tte-warning: #E8A317;
+  --tte-success: #3FA45B;
+  --tte-focus-ring: #4CC2FF;
+}

@@ -135,6 +135,7 @@ public class WindowsGlobalHotkeyService : IGlobalHotkeyService, IDisposable
     private uint hookThreadIdentifier;
     private volatile bool running;
     private volatile bool disposed;
+    private volatile bool disabled;
     private bool ctrlDown;
     private bool altDown;
     private bool shiftDown;
@@ -153,7 +154,7 @@ public class WindowsGlobalHotkeyService : IGlobalHotkeyService, IDisposable
     {
         get
         {
-            if (this.disposed)
+            if (this.disposed || this.disabled)
             {
                 return false;
             }
@@ -165,7 +166,7 @@ public class WindowsGlobalHotkeyService : IGlobalHotkeyService, IDisposable
     /// <inheritdoc />
     public bool Register(string actionName, string keyText, bool ctrl, bool alt, bool shift, bool win, Action callback)
     {
-        if (this.disposed)
+        if (this.disposed || this.disabled)
         {
             return false;
         }
@@ -212,6 +213,58 @@ public class WindowsGlobalHotkeyService : IGlobalHotkeyService, IDisposable
         {
             this.registrations.Clear();
         }
+    }
+
+    /// <summary>
+    /// 完全停用全局快捷键：先清空注册项，再停止钩子线程并通过 UnhookWindowsHookEx 摘除低级键盘钩子，
+    /// 最后兜底按句柄卸载一次，保证进程内不再残留任何全局按键拦截。
+    /// </summary>
+    public void DisableAll()
+    {
+        this.disabled = true;
+        lock (this.registrationLock)
+        {
+            this.registrations.Clear();
+        }
+        this.running = false;
+        if (this.hookThreadIdentifier != 0)
+        {
+            PostThreadMessageW(this.hookThreadIdentifier, (uint)MessageQuit, IntPtr.Zero, IntPtr.Zero);
+        }
+        Thread? thread = this.hookThread;
+        if (thread != null)
+        {
+            if (!thread.Join(1500))
+            {
+                // 消息队列可能刚建立，补投一次退出消息，确保钩子线程能回到卸载钩子的收尾逻辑
+                if (this.hookThreadIdentifier != 0)
+                {
+                    PostThreadMessageW(this.hookThreadIdentifier, (uint)MessageQuit, IntPtr.Zero, IntPtr.Zero);
+                }
+                thread.Join(500);
+            }
+            this.hookThread = null;
+        }
+        if (this.hookHandle != IntPtr.Zero)
+        {
+            UnhookWindowsHookEx(this.hookHandle);
+            this.hookHandle = IntPtr.Zero;
+        }
+        this.hookThreadIdentifier = 0;
+        this.pressedKeys.Clear();
+        this.suppressedKeys.Clear();
+        this.ctrlDown = false;
+        this.altDown = false;
+        this.shiftDown = false;
+        this.winDown = false;
+        this.winUsedInCombination = false;
+        this.altUsedInCombination = false;
+    }
+
+    /// <summary>重新启用全局快捷键：清理停用标记，下次注册或查询能力时重新安装键盘钩子。</summary>
+    public void EnableAll()
+    {
+        this.disabled = false;
     }
 
     /// <summary>确保低级键盘钩子线程已经启动。</summary>

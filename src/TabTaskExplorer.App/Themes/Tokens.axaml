@@ -1,0 +1,65 @@
+﻿<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <!-- 由 tools/gen-design-tokens.ps1 从 design/tokens/ui-tokens.json 生成，请勿手工编辑。 -->
+  <ResourceDictionary.ThemeDictionaries>
+
+    <ResourceDictionary x:Key="Dark">
+      <SolidColorBrush x:Key="ChromeBrush" Color="#212121"/>
+      <SolidColorBrush x:Key="ContentBrush" Color="#191919"/>
+      <SolidColorBrush x:Key="SeparatorBrush" Color="#515151"/>
+      <SolidColorBrush x:Key="SubtleBorderBrush" Color="#323232"/>
+      <SolidColorBrush x:Key="TextPrimaryBrush" Color="#E8E8E8"/>
+      <SolidColorBrush x:Key="TextMutedBrush" Color="#808080"/>
+      <SolidColorBrush x:Key="AccentGlyphBrush" Color="#4CC2FF"/>
+      <SolidColorBrush x:Key="RowHoverBrush" Color="#2E2E2E"/>
+      <SolidColorBrush x:Key="RowSelectedBrush" Color="#37373D"/>
+      <SolidColorBrush x:Key="RowSelectedTextBrush" Color="#4CC2FF"/>
+      <SolidColorBrush x:Key="TabHoverBrush" Color="#2E2E2E"/>
+      <SolidColorBrush x:Key="TabActiveBrush" Color="#191919"/>
+      <SolidColorBrush x:Key="BookmarkBarBrush" Color="#3B3B3B"/>
+      <SolidColorBrush x:Key="AddressBarBorderBrush" Color="#525252"/>
+      <SolidColorBrush x:Key="InputSurfaceBrush" Color="#202020"/>
+      <SolidColorBrush x:Key="ToolbarTextBrush" Color="#FFFFFF"/>
+      <SolidColorBrush x:Key="StatusBarBrush" Color="#212121"/>
+      <SolidColorBrush x:Key="MenuSurfaceBrush" Color="#212121"/>
+      <SolidColorBrush x:Key="SurfaceRaisedBrush" Color="#242424"/>
+      <SolidColorBrush x:Key="OverlayScrimBrush" Color="#00000073"/>
+      <SolidColorBrush x:Key="RowSelectedBorderBrush" Color="#3D5A78"/>
+      <SolidColorBrush x:Key="OnAccentBrush" Color="#FFFFFF"/>
+      <SolidColorBrush x:Key="DangerBrush" Color="#FF6B6B"/>
+      <SolidColorBrush x:Key="WarningBrush" Color="#E8A317"/>
+      <SolidColorBrush x:Key="SuccessBrush" Color="#3FA45B"/>
+      <SolidColorBrush x:Key="FocusRingBrush" Color="#4CC2FF"/>
+    </ResourceDictionary>
+
+    <ResourceDictionary x:Key="Light">
+      <SolidColorBrush x:Key="ChromeBrush" Color="#F1F1F1"/>
+      <SolidColorBrush x:Key="ContentBrush" Color="#FFFFFF"/>
+      <SolidColorBrush x:Key="SeparatorBrush" Color="#EBEBEC"/>
+      <SolidColorBrush x:Key="SubtleBorderBrush" Color="#E9E9E9"/>
+      <SolidColorBrush x:Key="TextPrimaryBrush" Color="#1C1C1C"/>
+      <SolidColorBrush x:Key="TextMutedBrush" Color="#808080"/>
+      <SolidColorBrush x:Key="AccentGlyphBrush" Color="#4A8FD0"/>
+      <SolidColorBrush x:Key="RowHoverBrush" Color="#F5F7FA"/>
+      <SolidColorBrush x:Key="RowSelectedBrush" Color="#DCE9F5"/>
+      <SolidColorBrush x:Key="RowSelectedTextBrush" Color="#4A8FD0"/>
+      <SolidColorBrush x:Key="TabHoverBrush" Color="#E4E4E4"/>
+      <SolidColorBrush x:Key="TabActiveBrush" Color="#FFFFFF"/>
+      <SolidColorBrush x:Key="BookmarkBarBrush" Color="#FFFFFF"/>
+      <SolidColorBrush x:Key="AddressBarBorderBrush" Color="#DCDDDE"/>
+      <SolidColorBrush x:Key="InputSurfaceBrush" Color="#FFFFFF"/>
+      <SolidColorBrush x:Key="ToolbarTextBrush" Color="#808080"/>
+      <SolidColorBrush x:Key="StatusBarBrush" Color="#F1F1F1"/>
+      <SolidColorBrush x:Key="MenuSurfaceBrush" Color="#F1F1F1"/>
+      <SolidColorBrush x:Key="SurfaceRaisedBrush" Color="#FFFFFF"/>
+      <SolidColorBrush x:Key="OverlayScrimBrush" Color="#00000073"/>
+      <SolidColorBrush x:Key="RowSelectedBorderBrush" Color="#BBD7F5"/>
+      <SolidColorBrush x:Key="OnAccentBrush" Color="#FFFFFF"/>
+      <SolidColorBrush x:Key="DangerBrush" Color="#D9534F"/>
+      <SolidColorBrush x:Key="WarningBrush" Color="#E8A317"/>
+      <SolidColorBrush x:Key="SuccessBrush" Color="#3FA45B"/>
+      <SolidColorBrush x:Key="FocusRingBrush" Color="#4A8FD0"/>
+    </ResourceDictionary>
+  </ResourceDictionary.ThemeDictionaries>
+</ResourceDictionary>

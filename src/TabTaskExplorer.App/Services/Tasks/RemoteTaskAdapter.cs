@@ -49,7 +49,7 @@ public static class RemoteTaskAdapter
             Progress = progress,
             SourceText = download ? job.RemotePath : job.LocalPath,
             DestinationText = download ? job.LocalPath : job.RemotePath,
-            Message = job.ErrorMessage.Length > 0 ? job.ErrorMessage : row.StatusText,
+            Message = job.ErrorMessage.Length > 0 ? RemoteFailureText.DescribeTransfer(job.ErrorMessage) : row.StatusText,
             CanCancel = row.CanCancel,
             CanRetry = row.CanResume,
             CreatedAt = string.Empty,

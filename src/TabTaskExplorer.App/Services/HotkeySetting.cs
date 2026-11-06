@@ -18,6 +18,7 @@ public class HotkeySetting : INotifyPropertyChanged
     private bool shift;
     private bool win;
     private string scope = "Local";
+    private bool capturing;
 
     /// <inheritdoc />
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -52,6 +53,7 @@ public class HotkeySetting : INotifyPropertyChanged
             }
             this.keyText = normalized;
             this.RaisePropertyChanged(nameof(this.KeyText));
+            this.RaisePropertyChanged(nameof(this.ShortcutText));
         }
     }
 
@@ -67,6 +69,7 @@ public class HotkeySetting : INotifyPropertyChanged
             }
             this.ctrl = value;
             this.RaisePropertyChanged(nameof(this.Ctrl));
+            this.RaisePropertyChanged(nameof(this.ShortcutText));
         }
     }
 
@@ -82,6 +85,7 @@ public class HotkeySetting : INotifyPropertyChanged
             }
             this.alt = value;
             this.RaisePropertyChanged(nameof(this.Alt));
+            this.RaisePropertyChanged(nameof(this.ShortcutText));
         }
     }
 
@@ -97,6 +101,7 @@ public class HotkeySetting : INotifyPropertyChanged
             }
             this.shift = value;
             this.RaisePropertyChanged(nameof(this.Shift));
+            this.RaisePropertyChanged(nameof(this.ShortcutText));
         }
     }
 
@@ -112,6 +117,42 @@ public class HotkeySetting : INotifyPropertyChanged
             }
             this.win = value;
             this.RaisePropertyChanged(nameof(this.Win));
+            this.RaisePropertyChanged(nameof(this.ShortcutText));
+        }
+    }
+
+    /// <summary>是否正在等待用户按下组合键（仅界面状态，不写入配置文件）。</summary>
+    [JsonIgnore]
+    public bool IsCapturing
+    {
+        get { return this.capturing; }
+        set
+        {
+            if (this.capturing == value)
+            {
+                return;
+            }
+            this.capturing = value;
+            this.RaisePropertyChanged(nameof(this.IsCapturing));
+            this.RaisePropertyChanged(nameof(this.ShortcutText));
+        }
+    }
+
+    /// <summary>
+    /// 界面按钮上显示的组合键文本：捕获中显示提示，未设置显示引导文字，
+    /// 已设置按 Ctrl、Alt、Shift、Win 的固定顺序规范化显示。
+    /// </summary>
+    [JsonIgnore]
+    public string ShortcutText
+    {
+        get
+        {
+            if (this.capturing)
+            {
+                return "请按下快捷键…（Esc 取消）";
+            }
+            string text = FormatCombination(this.ctrl, this.alt, this.shift, this.win, this.keyText);
+            return string.IsNullOrEmpty(text) ? "未设置：点击后按下组合键" : text;
         }
     }
 
@@ -161,8 +202,54 @@ public class HotkeySetting : INotifyPropertyChanged
         }
     }
 
-    /// <summary>可选主键列表（设置界面下拉框使用）；第一项为空，表示尚未设置按键。</summary>
-    public static readonly List<string> KeyOptions = BuildKeyOptions();
+    /// <summary>
+    /// 把修饰键与主键规范化为界面显示文本：固定按 Ctrl、Alt、Shift、Win 的顺序输出，主键放在最后。
+    /// 主键为空时返回空字符串，表示尚未设置。
+    /// </summary>
+    public static string FormatCombination(bool ctrl, bool alt, bool shift, bool win, string keyText)
+    {
+        if (string.IsNullOrEmpty(keyText))
+        {
+            return string.Empty;
+        }
+        System.Text.StringBuilder builder = new System.Text.StringBuilder();
+        if (ctrl)
+        {
+            builder.Append("Ctrl+");
+        }
+        if (alt)
+        {
+            builder.Append("Alt+");
+        }
+        if (shift)
+        {
+            builder.Append("Shift+");
+        }
+        if (win)
+        {
+            builder.Append("Win+");
+        }
+        builder.Append(FormatKeyName(keyText));
+        return builder.ToString();
+    }
+
+    /// <summary>把程序内部主键名转换为界面显示名（数字键 D1 显示为 1，Escape 显示为 Esc）。</summary>
+    public static string FormatKeyName(string keyText)
+    {
+        if (string.IsNullOrEmpty(keyText))
+        {
+            return string.Empty;
+        }
+        if (keyText.Length == 2 && keyText[0] == 'D' && keyText[1] >= '0' && keyText[1] <= '9')
+        {
+            return keyText.Substring(1);
+        }
+        if (string.Equals(keyText, "Escape", StringComparison.Ordinal))
+        {
+            return "Esc";
+        }
+        return keyText;
+    }
 
     /// <summary>创建默认的应用内快捷键配置（每条对应一个动作，作用域为 Local）。</summary>
     public static List<HotkeySetting> CreateDefaults()
@@ -196,6 +283,8 @@ public class HotkeySetting : INotifyPropertyChanged
         defaults.Add(Create("ScreenshotLastRegion", "PrintScreen", true, false, true, false, "Global"));
         // 贴图截图使用 Shift+PrintScreen，与普通截图、全屏、活动窗口、上次区域四组默认键互不冲突
         defaults.Add(CreatePinShotDefault());
+        // 滚动长截图使用 Ctrl+Alt+Shift+PrintScreen，与上述五组默认键互不冲突
+        defaults.Add(CreateScrollShotDefault());
         defaults.Add(Create("RecordToggle", "R", true, false, true, false, "Global"));
         return defaults;
     }
@@ -204,6 +293,12 @@ public class HotkeySetting : INotifyPropertyChanged
     public static HotkeySetting CreatePinShotDefault()
     {
         return Create("ScreenshotPin", "PrintScreen", false, false, true, false, "Global");
+    }
+
+    /// <summary>创建默认的「滚动长截图」全局快捷键：Ctrl+Alt+Shift+PrintScreen。</summary>
+    public static HotkeySetting CreateScrollShotDefault()
+    {
+        return Create("ScreenshotScroll", "PrintScreen", true, true, true, false, "Global");
     }
 
     /// <summary>创建完整的默认快捷键清单：应用内默认项 + 系统全局默认项。</summary>
@@ -232,41 +327,6 @@ public class HotkeySetting : INotifyPropertyChanged
         setting.Win = win;
         setting.Scope = scope;
         return setting;
-    }
-
-    private static List<string> BuildKeyOptions()
-    {
-        List<string> keys = new List<string>();
-        keys.Add(string.Empty);
-        for (char letter = 'A'; letter <= 'Z'; letter++)
-        {
-            keys.Add(letter.ToString());
-        }
-        for (int number = 0; number <= 9; number++)
-        {
-            keys.Add("D" + number);
-        }
-        for (int function = 1; function <= 12; function++)
-        {
-            keys.Add("F" + function);
-        }
-        keys.Add("Tab");
-        keys.Add("Enter");
-        keys.Add("Space");
-        keys.Add("Delete");
-        keys.Add("Insert");
-        keys.Add("Backspace");
-        keys.Add("Home");
-        keys.Add("End");
-        keys.Add("PageUp");
-        keys.Add("PageDown");
-        keys.Add("PrintScreen");
-        keys.Add("Escape");
-        keys.Add("Left");
-        keys.Add("Right");
-        keys.Add("Up");
-        keys.Add("Down");
-        return keys;
     }
 
     private void RaisePropertyChanged(string propertyName)

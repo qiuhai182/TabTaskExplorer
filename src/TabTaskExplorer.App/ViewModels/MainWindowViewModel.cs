@@ -816,6 +816,13 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
             _ = this.captureCoordinator.CapturePinRegionAsync(delaySeconds);
             return;
         }
+        if (string.Equals(actionName, "ScreenshotScroll", StringComparison.Ordinal))
+        {
+            UiLogger.Log("截图录屏", "快捷键触发滚动长截图：延迟秒数=" + delaySeconds
+                + " 取消方式=右键或 Esc");
+            _ = this.captureCoordinator.CaptureScrollRegionAsync(delaySeconds);
+            return;
+        }
         if (string.Equals(actionName, "RecordToggle", StringComparison.Ordinal))
         {
             int targetIndex = this.captureCoordinator.ResolveRecordingTargetIndex(this.Settings.CaptureRecordTarget);
@@ -826,11 +833,20 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
         UiLogger.Log("截图录屏", "截图录屏快捷键动作被忽略：无法识别的动作标识=" + actionName);
     }
 
-    /// <summary>按最新设置重新注册全部全局快捷键；设置窗口关闭后调用。</summary>
+    /// <summary>按最新设置重新注册全部全局快捷键；设置窗口关闭后与设置内即时停用时调用。</summary>
     public void ReloadGlobalHotkeys()
     {
         this.captureCoordinator.ReloadGlobalHotkeys();
-        UiLogger.Log("全局热键", "设置窗口关闭后重新注册全局快捷键：状态=" + this.captureCoordinator.HotkeyStatusText);
+        UiLogger.Log("全局热键", "按最新设置重新注册全局快捷键：状态=" + this.captureCoordinator.HotkeyStatusText);
+    }
+
+    /// <summary>只把当前设置写入磁盘，不触发界面整体刷新；用于设置窗口内「一键清空」等需要立即持久化的操作。</summary>
+    public void PersistSettings()
+    {
+        this.settingsStore.Save(this.Settings);
+        int shortcutCount = this.Settings.Shortcuts == null ? 0 : this.Settings.Shortcuts.Count;
+        UiLogger.Log("配置更改", "即时保存设置：快捷键是否全部停用=" + (this.Settings.ShortcutsDisabled ? "是" : "否")
+            + " 快捷键条数=" + shortcutCount + " 结果=成功");
     }
 
     /// <summary>跟随桌面：网页端请求打开桌面磁盘视图标签。</summary>
@@ -935,6 +951,12 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
 
     /// <summary>各连接的传输服务缓存：同一连接复用同一个传输队列。</summary>
     private readonly Dictionary<string, IRemoteTransferService> transferServices = new Dictionary<string, IRemoteTransferService>();
+
+    /// <summary>剪切上传的任务编号 → 本地源路径：上传成功后才删除源，失败保留。</summary>
+    private readonly Dictionary<Guid, string> cutUploadSources = new Dictionary<Guid, string>();
+
+    /// <summary>已挂过上传完成/失败监听的连接：同一传输服务只订阅一次。</summary>
+    private readonly HashSet<string> uploadNoticeProfiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>解密连接凭据；解密失败返回空文本。</summary>
     private string ResolveSecret(RemoteConnectionProfile profile)
@@ -1096,6 +1118,7 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
             FileTabViewModel newTab = new FileTabViewModel(provider, this.Settings, "/", null,
                 this.services.GetRequiredService<IArchiveService>(), this.settingsStore);
             newTab.AttachedProfileId = profile.Id;
+            newTab.RemoteRootTitle = profile.Name;
             newTab.PathChanged += this.OnTabPathChanged;
             newTab.RemoteFileOpenRequested += this.OnRemoteFileOpenRequested;
             newTab.RetryTaskRequested = (workspaceId, taskId) => this.RetryFileTask(workspaceId, taskId);
@@ -1310,6 +1333,129 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
             UiLogger.LogError("远程连接", "建立传输服务失败：连接名称=" + profile.Name + " 服务器=" + profile.Host
                 + " 端口=" + profile.GetEffectivePort() + " 失败层次=" + RemoteFailureText.Layer(ex) + " 原因=" + reason, ex);
             Views.MessageDialog.Show(this.OwnerWindow, "连接失败", "无法建立传输服务：" + reason);
+        }
+    }
+
+    /// <summary>
+    /// 本地条目粘贴到远程目录：必须走传输队列上传（远程提供者直接 Copy 读不到本地路径）。
+    /// 远端同名直接覆盖，不触发桌面冲突对话框；失败按传输层给中文原因。
+    /// </summary>
+    private async Task UploadLocalPathsToRemoteAsync(FileTabViewModel tab, string targetDirectory, IReadOnlyList<string> paths, bool isCut)
+    {
+        foreach (string candidate in paths)
+        {
+            if (!File.Exists(candidate) && !Directory.Exists(candidate))
+            {
+                tab.ShowMessage("远程目录暂不支持从远程来源直接复制或移动，请先下载到本地再上传");
+                UiLogger.Log("程序行为", "远程粘贴：来源不是本地路径 来源=" + candidate + " 结果=未提交，已提示先下载到本地");
+                return;
+            }
+        }
+        RemoteConnectionProfile? profile = this.services.GetRequiredService<Kernel.Services.ConnectionManager>().FindById(tab.AttachedProfileId);
+        if (profile == null)
+        {
+            tab.ShowMessage("找不到该远程标签对应的连接配置，请重新打开远程文件夹");
+            UiLogger.Log("程序行为", "远程粘贴：连接配置=未找到 连接编号=" + tab.AttachedProfileId + " 结果=未提交");
+            return;
+        }
+        try
+        {
+            IRemoteTransferService? service;
+            if (!this.transferServices.TryGetValue(profile.Id, out service))
+            {
+                string? secret = await this.EnsureSecretAsync(profile);
+                if (secret == null)
+                {
+                    return;
+                }
+                IRemoteSessionFactory factory = this.services.GetRequiredService<IRemoteSessionFactory>();
+                IRemoteTransferService created = await Task.Run(delegate
+                {
+                    return factory.OpenTransferService(profile, secret);
+                });
+                this.transferServices[profile.Id] = created;
+                service = created;
+            }
+            if (this.uploadNoticeProfiles.Add(profile.Id))
+            {
+                service.JobChanged += this.OnUploadJobChanged;
+            }
+            int submitted = 0;
+            string trimmedTarget = targetDirectory.TrimEnd('/');
+            foreach (string source in paths)
+            {
+                string remotePath = trimmedTarget + "/" + Path.GetFileName(source);
+                RemoteTransferJob job = service.EnqueueUpload(source, remotePath);
+                if (isCut)
+                {
+                    this.cutUploadSources[job.Id] = source;
+                }
+                submitted++;
+            }
+            if (isCut)
+            {
+                this.clipboardPaths = null;
+                _ = this.RefreshClipboardAvailabilityAsync(true);
+            }
+            tab.ShowMessage("已提交上传任务：" + submitted + " 项 → " + targetDirectory + "（可在传输列表与任务中心查看进度）");
+            UiLogger.Log("程序行为", "远程粘贴提交上传：连接=" + profile.Name + " 目标=" + targetDirectory
+                + " 路径总数=" + submitted + " 方式=" + (isCut ? "移动（上传成功后删除源）" : "复制")
+                + " 冲突策略=远端同名直接覆盖，不弹本地冲突对话框");
+        }
+        catch (Exception error)
+        {
+            string reason = RemoteFailureText.Describe(error, profile);
+            tab.ShowMessage("上传提交失败：" + reason);
+            UiLogger.LogError("远程传输", "提交上传失败：连接=" + profile.Name + " 目标=" + targetDirectory
+                + " 失败层次=" + RemoteFailureText.Layer(error) + " 原因=" + reason, error);
+        }
+    }
+
+    /// <summary>上传完成/失败：成功的剪切删除本地源；失败给中文原因并保留源文件。</summary>
+    private void OnUploadJobChanged(RemoteTransferJob job)
+    {
+        if (job.Status == RemoteTransferStatus.Completed)
+        {
+            string? source;
+            if (this.cutUploadSources.TryGetValue(job.Id, out source))
+            {
+                this.cutUploadSources.Remove(job.Id);
+                try
+                {
+                    if (Directory.Exists(source)) { Directory.Delete(source, true); }
+                    else if (File.Exists(source)) { File.Delete(source); }
+                }
+                catch (Exception error)
+                {
+                    UiLogger.LogError("远程传输", "上传成功但删除本地源失败：源=" + source + " 远端=" + job.RemotePath, error);
+                }
+            }
+            Avalonia.Threading.Dispatcher.UIThread.Post(delegate
+            {
+                foreach (object item in this.Tabs)
+                {
+                    if (item is FileTabViewModel fileTab
+                        && fileTab.FileSystemProvider is not TabTaskExplorer.Kernel.Services.DefaultFileSystemProvider)
+                    {
+                        fileTab.Refresh();
+                    }
+                }
+            });
+            return;
+        }
+        if (job.Status == RemoteTransferStatus.Failed)
+        {
+            this.cutUploadSources.Remove(job.Id);
+            string reason = RemoteFailureText.DescribeTransfer(job.ErrorMessage);
+            Avalonia.Threading.Dispatcher.UIThread.Post(delegate
+            {
+                if (this.SelectedFileTab != null)
+                {
+                    this.SelectedFileTab.ShowMessage("上传失败：" + reason + "（远端路径：" + job.RemotePath + "）");
+                }
+            });
+            UiLogger.LogError("远程传输", "上传失败", "任务=" + job.Id + " 本地=" + job.LocalPath
+                + " 远端=" + job.RemotePath + " 失败层次=传输层 原因=" + reason);
         }
     }
 
@@ -1857,6 +2003,13 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
         bool isCut = decision.IsCut;
         IReadOnlyList<string> paths = decision.Paths;
         bool usedStateFormat = decision.Category == ClipboardPasteCategory.StateFormat;
+        // 远程标签且目标是远端路径（不是已存在的本地目录）：走上传队列；远端没有本地冲突概念，不弹冲突对话框。
+        // 用 Directory.Exists 区分落点：远程标签下粘贴到本地书签/导航目录时仍按本地任务中心处理。
+        if (tab != null && !string.IsNullOrEmpty(tab.AttachedProfileId) && !Directory.Exists(target))
+        {
+            await this.UploadLocalPathsToRemoteAsync(tab, target, paths, isCut);
+            return;
+        }
         // 目标是否为真实本地目录与当前标签类型无关：导航 / 书签 / 磁盘视图落点到本地目录时也应进入本地任务中心
         bool localTask = paths.Count > 0 && Directory.Exists(target);
         if (localTask)
@@ -2582,10 +2735,10 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
         string name = string.IsNullOrEmpty(snapshot.ConflictName) ? snapshot.ConflictPath : snapshot.ConflictName;
         string text = snapshot.ConflictIsDirectory
             ? "目标已存在同名文件夹：" + name
-                + "。请选择：合并（保留两边内容）、替换（清空目标后写入源内容，删除走回收站）、"
-                + "逐项处理文件夹内同名项，或改名共存。关闭窗口=取消任务，不会自动跳过。"
+                + "。替换=清空目标后写入源内容（删除走回收站）；逐项处理会逐个询问文件夹内同名项；"
+                + "合并会保留两边内容；改名共存让两边都保留。关闭窗口=取消任务，不会自动跳过。"
             : "目标已存在同名文件：" + name
-                + "。请选择替换（删除目标文件后写入源文件，删除走回收站）或改名共存（两边都保留）。"
+                + "。替换会删除目标文件（走回收站）后写入源文件；改名共存让两边都保留。"
                 + "关闭窗口=取消任务，不会自动跳过。";
         FileTabViewModel? tab = this.SelectedFileTab;
         if (tab != null)

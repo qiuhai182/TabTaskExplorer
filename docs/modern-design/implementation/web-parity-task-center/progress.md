@@ -1,10 +1,10 @@
 # Web 对齐 + 统一任务中心 进度
 
-状态：待实测
-卡点：远程 134 认证失败（Permission denied），无法验证成功连接与 SFTP 路径；浏览器矩阵 7 项未实测；桌面完整任务中心面板尚未实现。
-下一步：用户提供正确凭据后复测远程成功路径；补齐未实测落点与桌面入口。
+状态：待构建
+卡点：`WebPageHtml.cs` 内联回退页未同步侧边栏右键与书签数据；桌面冲突对话框、桌面远程标签粘贴未实测；桌面完整任务中心面板未实现。
+下一步：补齐回退页 → 重新发布 → 做桌面冲突对话框与远程标签粘贴验证（完整任务中心面板另行排期）。
 
-更新时间：2026-11-05
+更新时间：2026-11-06
 
 ## 已完成（代码落地）
 
@@ -161,6 +161,155 @@
 - **复测**：重启最新产物后再次执行打开远程文件夹，提示变为「打开远程文件夹失败：认证失败：用户名/密码或私钥被拒绝（Permission denied (password).）。请检查凭据后重试。」；`pendingHostKey` 仍为 null。
 - **未实测**：正确凭据下的成功连接、主机密钥首次确认、SFTP 目录读取。
 
+### 11. 134 认证对照定论（2026-11-06）
+
+**前置：主机原本是关机状态。** `vmrun list` 为 `Total running VMs: 0`，`arp -a` 无 192.168.1.134 条目，ping 100% 丢包，系统 `ssh` 报 `connect to address 192.168.1.134 port 22: Connection timed out`。已用 `vmrun -T ws start "D:\VMSystems\134 - Uos Pro\134 - Uos Pro.vmx" nogui` 无界面启动，启动后 0 秒内 TCP 22 就绪。
+
+**系统 OpenSSH 对照（`ssh -vv -o BatchMode=yes`，仅尝试 publickey）**
+
+| 账号 | 服务器版本 | 协商 | 服务端可用认证 | 结果 |
+| --- | --- | --- | --- | --- |
+| nk8500 | OpenSSH_7.9p1 Uos-deepin1 UOS_Desktop_104* | kex curve25519-sha256 / hostkey ssh-ed25519 | `publickey,password` | `Permission denied (publickey,password).` |
+| root | 同上 | 同上 | `publickey,password` | `Permission denied (publickey,password).` |
+
+两账号服务端均接受 `password`，协商算法完全一致，排除“认证方法不被允许”。
+
+**SSH.NET 独立控制台（不经过 App / Web / 本项目配置）**
+
+| 账号 + 密码 | Password 模式 | HostKeyReceived | 说明 |
+| --- | --- | --- | --- |
+| root + root123 | **成功** `IsConnected=True` | 触发，ssh-ed25519，`cIhG+LXadOVuJKVOkwCSIb9g9utSV0DraVoQhaN8wlA` | SFTP 可用，根目录 30 项 |
+| root + root123（Password+KeyboardInteractive） | **成功** | 同上 | — |
+| nk8500 + 已保存密码（DPAPI 解出 11 位、全可打印） | 失败 `SshOperationTimeoutException: Session operation has timed out` | 触发，指纹同上 | 不是拒绝，是认证阶段挂起 |
+| nk8500 + root123 | 失败，同样超时 | 触发 | 与密码内容无关 |
+| nosuchuser + 任意密码 | 失败 `SshAuthenticationException: Permission denied (password).` | 触发 | 错误口令会立即被拒 |
+
+**结论**
+
+1. **不是 SSH.NET 库/算法兼容问题**：同一份 SSH.NET 用 `root/root123` 可以连通并列出目录，协商、主机密钥、SFTP 子系统全部正常。
+2. **不是主机密钥问题**：指纹与 known_hosts 记录一致（`cIhG+LXadOVuJKVOkwCSIb9g9utSV0DraVoQhaN8wlA`），从未进入 mismatch。
+3. **不是密码内容问题**：同一账号换任何密码都是“超时”；而不存在的账号会立刻 `Permission denied`，说明 `nk8500` 是服务端该账号的认证/PAM 挂起（账号被锁定、shell/PAM 配置或家目录异常），只能在服务端修。
+4. **可用凭据是 `root/root123`**（主题账号），此前“被拒”是因为把它填进了 `nk8500` 用户名下。
+
+### 12. App 全链路实测（root/root123，网页通道）
+
+- 在网页「连接管理」新建连接 `134-root`（SSH / 192.168.1.134 / 22 / root / Password），保存成功。
+- 点「打开远程文件夹」→ 标签出现并列出根目录 **28 个条目**（`boot`、`data`、`dev`、`etc`、`home`、`lost+found` …），证明 App 侧 DPAPI 解密 → `ConnectionInfo` → SFTP 全链路可用。
+- **主机密钥未弹确认**：该主机的 `ssh-ed25519` 记录已在 known_hosts 中且指纹一致，走“已信任”分支；不是被跳过。
+- **二次连接不提示**：再次点「打开远程文件夹」，日志为
+  `关闭旧的远程文件夹标签：连接=134-root 结果=已移除，准备按当前凭据重建` → `打开远程文件夹标签：连接=134-root 标签总数=3`，标签数仍为 3，无重复、无空标签、无密码/指纹提示。
+- **发现并修复的显示缺陷**：远程根路径 `/` 的标签标题曾显示为 `本地磁盘 ()`（沿用本地盘符逻辑）。已改为远程提供者根路径使用连接名（新增 `FileTabViewModel.RemoteRootTitle`，桌面与 Web 创建标签时传入 `profile.Name`），回退文案为「远程根目录」。新构建复测：标签显示 `134-root`，列表 28 项。
+
+### 13. 本地 → 远程粘贴（矩阵 #12，已修并实测）
+
+- 原实现：远程目录标签里粘贴本地文件时，直接把本地路径交给**远程提供者**的 `Copy`，必然失败；且只回一句「粘贴完成：成功 0 项，失败 1 项」，没有原因。
+- 修复：`WebWorkspace.UploadLocalPathsToRemote` —— 目标为远程标签且源全是本地路径时，改走 `IRemoteTransferService.EnqueueUpload` 上传队列；连接缓存复用；剪切模式在上传成功后删除本地源、失败保留；失败把 `job.ErrorMessage + 远端路径` 写进提示与日志；远程来源 → 远程目标给出明确“请先下载再上传”的提示。
+- 实测（`/tmp`）：复制 `D:\ttx-paste\src\a.txt` → 远程标签 `/tmp` → 粘贴，提示
+  `已提交上传任务：本地 1 项 → /tmp（可在任务中心查看进度）`；刷新后 `/tmp` 出现 `a.txt 14 B`。
+
+### 14. 本地粘贴矩阵：文件夹行（#7 通过）/ 磁盘视图（#8 修完待复测）
+
+**#7 文件夹行右键「粘贴到该文件夹」：通过。**
+- 操作：勾选 `D:\ttx-paste\src\a.txt` → 复制 → 在 `D:\ttx-paste` 列表中对 `dst` 文件夹行右键 →「粘贴到该文件夹」。
+- 前端链路：`runOwnContextAction('pasteto')` → `doAction('pasteto', 'D:\\ttx-paste\\dst')` → `WebWorkspace.PasteClipboard(fileTab, path)`。
+- 结果：提示「已提交复制任务…」，落地 `D:\ttx-paste\dst\a.txt`（14 B，内容 `A-CONTENT`）。
+
+**#8 磁盘视图粘贴：发现真实缺陷，已改代码，待重建复测。**
+- 现象：磁盘视图（`diskpasteinto`）里粘贴，返回「任务提交失败：请检查源路径与目标目录」，无任何文件落地，也没有可读原因。
+- 根因：`diskpasteinto` 调用 `PasteClipboard(null, lines[0])`，而粘贴入口的分流条件是
+  `bool localTask = fileTab != null && fileTab.FileSystemProvider is DefaultFileSystemProvider;`
+  `fileTab == null` 时该值为 false，本地任务中心与远程上传两条路都不进，直接在末尾返回失败提示。
+- 修复（`WebWorkspace.cs` 粘贴入口）：
+  `bool localTask = fileTab == null || fileTab.FileSystemProvider is DefaultFileSystemProvider;`
+  磁盘视图没有文件标签但目标仍是本地目录，必须走本地任务中心。
+- 复测结果：见 §15（通过）。
+
+### 15. 矩阵复测：磁盘视图（#8）、导航/此电脑（#9）、书签栏（#10）、跨设备剪切（#24）、只读目录（#28）——全部通过
+
+**#8 磁盘视图粘贴（重建后复测）：通过。**
+- 重建产物 `2026-11-06 09:11:35`，网页通道打开磁盘视图标签，等快照加载完（约 3 秒，423861 条）后 `diskNav("D:\")` 展开；
+  日志：`展开目标不在当前列表中，已忽略：路径=D:\`（首次调用太早）→ 第二次 `磁盘视图切换展开：目标=D:\`。
+- `doAction('diskpasteinto','D:\ttx-paste')` → 日志 `粘贴开始：源数量=1 目标=D:\ttx-paste` → `已提交复制任务…任务=ft-43422b40f869`；
+  落地 `D:\ttx-paste\a.txt`（14 B），任务状态 completed。
+
+**#9 导航/此电脑、#10 书签栏：此前完全没有右键入口，已补。**
+- 原状：`views.js` 的 `navitem`（此电脑各行）与 `bmItem`（书签）只有 `onclick`，没有任何 `oncontextmenu`，矩阵两项无法执行。
+- 新增前端：
+  - `views.js` 两处模板加 `oncontextmenu="return sidebarMenu(event, path, name)"`；
+  - `actions.js` 新增 `sidebarMenu(event, path, name)`：按当前标签/权限/剪贴板算出不可粘贴原因，渲染「打开」「粘贴到该文件夹」两项；
+  - `actions.js` 的 `runOwnContextAction` 增加 `sidebaropen`（`openPath`）与 `sidebarpaste`（`doAction('pasteto', 目标路径)`）分支。
+- 实测（旧构建，仅菜单可弹）：右键「本地磁盘 (D:)」弹出 `目标文件夹：本地磁盘 (D:)`，菜单 `[打开, 粘贴到该文件夹]`。
+  点击粘贴无请求——**发现 JS 缺陷**：`runOwnContextAction(action, arg, state)` 的形参 `state` 遮蔽全局 `state`，
+  在分支里读 `state.clipboardHasFiles` 恒为空，被误判为“剪贴板里没有可粘贴的文件…”而直接返回。
+  修复：把前置条件在 `sidebarMenu` 构造菜单时算好，存入 `ctxMenuState.pasteReason`，分支只读该字段。
+  直接调用 `doAction('pasteto','D:\')` 已证明后端可用（`D:\a.txt` 14 B，任务 `ft-6f31b6bd325e` completed）。
+- **#9 复测（重建后）：通过。** 网页通道复制 `D:\ttx-paste\src\a.txt` → 右键侧边栏「本地磁盘 (D:)」→ 菜单 `[打开, 粘贴到该文件夹]`
+  → 点「粘贴到该文件夹」，落地 `D:\a.txt`（14 B），任务中心 completed。
+- **#10 书签栏：发现独立工作区根本没有书签数据。** `WebWorkspace.BuildState` 只填 `NavPc`（磁盘），从不填 `NavPinned`；
+  且 `pin/unpin` 直接返回「独立工作区不与桌面共享书签」。因此网页端的书签栏永远是空白提示，右键入口无对象可测。
+  已补：`BuildState` 按 `settings.PinnedPaths` 生成 `NavPinned`（名称取目录名，文件夹图标，当前路径命中则高亮）；
+  `pin/unpin` 改为直接增删 `settings.PinnedPaths` 并保存，与桌面共用同一份书签。
+- **#10 复测（重建后）：通过。** 书签栏出现既有书签 `output`（`D:\TabTaskExplorer\output`），左侧「快捷访问」也同步列出；
+  网页通道复制 `D:\ttx-paste\src\a.txt` → 右键书签 `output` → 菜单 `[打开, 粘贴到该文件夹]`，标题 `目标文件夹：output`
+  → 点粘贴，落地 `D:\TabTaskExplorer\output\a.txt`（任务 `ft-6c2080517590` completed）。测试文件已清理。
+- 备注：当前 15919 端口方案 `AllowModify=false`，`pin/unpin` 会在动作鉴权层被拒（`该端口未放行修改权限`），
+  属于权限方案既有约束，不是缺陷；书签增删需在放行修改的端口或桌面端操作。
+
+**#24 跨设备剪切（C: → D:）：通过。**
+- `C:\ttx-paste\cut.txt` 剪切 → 粘贴到 `D:\ttx-paste\dst`。
+- 提示 `已提交移动任务：C:\ttx-paste\cut.txt → D:\ttx-paste\dst，冲突时在任务中心选择处理方式（不会自动跳过）`，任务 `ft-b516adcc77fb` completed；
+  校验 `C:\ttx-paste\cut.txt` 已不存在、`D:\ttx-paste\dst\cut.txt` 存在。
+
+**#28 只读目录（`D:\ttx-paste\ro`，已 deny WD/AD）：通过，但原文混英文。**
+- 粘贴后任务 `ft-1cea4b222663` 状态 `failed`，`canRetry=true`，没有静默跳过；
+  原文 `部分失败：成功 0 项，跳过 0 项，失败 1 项；最近失败：a.txt：Access to the path '…ttex-tmp-…' is denied.`
+- 改进：`LocalFileTaskExecutor.DescribeError` 把 `UnauthorizedAccessException` / Win32 错误码 5 统一转成
+  `拒绝访问：目标目录不可写（只读、被占用或权限不足）`，不再直接暴露英文系统文本。
+- 新文案复测（重建后）：`部分失败：成功 0 项，跳过 0 项，失败 1 项；最近失败：a.txt：拒绝访问：目标目录不可写（只读、被占用或权限不足）`，
+  任务 `ft-07f457ec80af` 状态 `failed`、`canRetry=true`，全中文、无静默跳过。
+
+### 16. 桌面冲突对话框与网页策略对齐（2026-11-06）
+
+**逐项对比（`MessageDialog.AskTaskConflictAsync` ↔ 网页任务中心 `renderTasks`）**
+
+| 维度 | 网页 | 桌面 | 结论 |
+|---|---|---|---|
+| 同名文件夹选项 | 合并 / 替换 / 逐项处理 / 改名共存（顺序一致） | 同左（`okAction/saveAction/dontSaveAction/cancelAction`） | 一致，未改 |
+| 同名文件选项 | 替换 / 改名共存 | 同左，另有「取消任务」按钮（等价网页任务行上的「取消」） | 集合一致，保留取消入口 |
+| 本批统一 | 复选框，默认不勾选 | `ApplyAllCheck`，默认不勾选 | 一致 |
+| 默认焦点 | 无模态焦点（行内按钮） | 文件夹=`CancelChoiceButton`、文件=`SaveButton`，都是「改名共存」 | 安全默认一致 |
+
+**文案改动（两边改为同一句，回收站语义保留在里）**
+
+- 同名文件夹
+  - 旧（桌面）：`请选择：合并（保留两边内容）、替换（清空目标后写入源内容，删除走回收站）、逐项处理文件夹内同名项，或改名共存。关闭窗口=取消任务，不会自动跳过。`
+  - 新（桌面/网页一致）：`目标已存在同名文件夹：X。替换=清空目标后写入源内容（删除走回收站）；逐项处理会逐个询问文件夹内同名项；合并会保留两边内容；改名共存让两边都保留。关闭窗口=取消任务，不会自动跳过。`
+- 同名文件
+  - 旧（桌面）：`请选择替换（删除目标文件后写入源文件，删除走回收站）或改名共存（两边都保留）。关闭窗口=取消任务，不会自动跳过。`
+  - 新（桌面/网页一致）：`目标已存在同名文件：X。替换会删除目标文件（走回收站）后写入源文件；改名共存让两边都保留。关闭窗口=取消任务，不会自动跳过。`
+- 网页端 `actions.js`：文件夹提示补上「合并会保留两边内容；改名共存让两边都保留。」，文件提示由「改名共存保留两边内容」改为「改名共存让两边都保留」。
+
+**没变的默认值**：两个对话框仍默认聚焦「改名共存」，「本批统一」仍默认不勾选；`MessageDialog.AskTaskConflictAsync` 的选项与动作映射未改动，只改提示文案。本轮另把桌面复选框文案 `本批统一按此处理` 改为 `本批统一`，与网页逐字一致。
+
+**验证方式**：桌面模态对话框需要抢前台点击，按本轮约束未做桌面交互实测；网页侧文案已实测（见 §17）。
+
+### 17. 两项收边验证（2026-11-06）
+
+**构建**：`2026-11-06 09:39:00` 产物（含 `FileTaskCenter` 冲突消息、`MessageDialog` 复选框文案、远程粘贴分流、`DescribeTransfer`）。
+
+**网页任务中心冲突文案实测（DOM 原文）**
+- 同名文件：hint = `替换会删除目标文件（走回收站）后写入源文件；改名共存让两边都保留。`
+- 同名文件夹：hint = `替换=清空目标后写入源内容（删除走回收站）；逐项处理会逐个询问文件夹内同名项；合并会保留两边内容；改名共存让两边都保留。`
+- 任务行 meta 同步为：`目标已存在同名文件：a.txt。请选择替换（删除走回收站）或改名共存，不会自动跳过` / `目标已存在同名文件夹：folder1。请选择合并 / 替换（删除走回收站）/ 逐项处理 / 改名共存，不会自动跳过`（与桌面提示同源同句）。
+- 任务编号：`ft-10cc2bcbaf2f`（文件）、`ft-efe4516eda6f`（文件夹），均 `waitingConflict` → 手动 `cancel`，未自动跳过；夹具已恢复。
+
+**远程标签下的任务/冲突路径**
+- 分流：`MainWindowViewModel.PasteFromClipboardAsync` 在进入任务中心前判断「远程标签（`AttachedProfileId` 非空）且落点不是已存在的本地目录」→ `UploadLocalPathsToRemoteAsync` 后直接返回。条件由原来的「仅当前目录粘贴」放宽为「落点非本地目录」，覆盖远程标签下右键文件夹行「粘贴到该文件夹」；远程标签下粘贴到本地书签/导航目录仍按本地任务中心处理（`Directory.Exists(target)` 判定）。网页端 `WebWorkspace.PasteClipboard` 的 `localTask` 判定与上传分支保持一致。
+- 冲突对话框不会误触发：桌面对话框唯一来源是 `FileTaskCenter.ConflictPending`；远程粘贴只调 `IRemoteTransferService.EnqueueUpload`，不提交 `FileTaskRequest`，因此不会产生 `waitingConflict`，远端同名直接覆盖（SFTP 写同名路径）。网页端同样在 `localTask=false` 时先返回上传队列。
+- 失败原因中文分层：新增 `RemoteFailureText.DescribeTransfer(string?)`（路径不存在 / 权限不足 / 空间不足 / 超时 / 连接中断 / 兜底「传输失败：…」），三处共用：桌面 `MainWindowViewModel.OnUploadJobChanged`、网页 `WebWorkspace.OnUploadJobChanged`、远程任务快照 `RemoteTaskAdapter`（网页任务中心显示同一条中文原因）。提交阶段异常仍用 `RemoteFailureText.Describe` + `Layer`（网络 / 主机密钥 / 认证 / SFTP / 其他）。
+- 日志：`远程粘贴提交上传：连接=… 目标=… 路径总数=… 方式=… 冲突策略=远端同名直接覆盖，不弹本地冲突对话框`；失败 `上传失败：任务=… 本地=… 远端=… 失败层次=传输层 原因=…`。
+- 实测范围：网页端远程上传链路已在 §13 实测（`/tmp` 落地、提示「已提交上传任务」）；本轮桌面远程标签分支为代码级确认，**未实测**（按约束不驱动桌面窗口）；桌面提示语 `已提交上传任务：N 项 → 目标（可在传输列表与任务中心查看进度）`。
+
 ## 接口清单
 
 | 接口 | 说明 |
@@ -176,10 +325,10 @@
 
 ## 构建与验证
 
-- 构建：**待用户手动执行**（本会话 Shell / RunCommand 均报 `sandbox backend failed`，不再重试）。构建顺序：`stop.bat` → `build.bat`；若仍报 `ConnectionPanel.axaml` 的 AVLN2000/AVLN3000，需贴出完整错误与行号（该文件本轮未改动）。
-- 浏览器验证：**未执行**（依赖可运行产物）。
-- 桌面集中验证：**未执行**（缩略图滚动、空格预览、列菜单勾选、冲突对话框四选一 + 本批统一、失败任务「重试失败项」按钮）。
-- 文件操作冲突增强验收：**未执行**，清单见 §7「构建后验收清单」。
+- 构建：已通过（最近产物 `2026-11-06 09:39:00`，`dotnet publish -c Release -r win-x64` 退出码 0，仅既有警告）。
+- 浏览器验证：冲突文案与任务快照已实测（见 §17）；§9 的 21 项粘贴矩阵为前序实测结果。
+- 桌面集中验证：**未实测**（缩略图滚动、空格预览、列菜单勾选、冲突对话框四选一 + 本批统一、失败任务「重试失败项」按钮；按约束不驱动桌面窗口）。
+- 文件操作冲突增强验收：网页侧已覆盖，桌面交互项**未实测**，清单见 §7「构建后验收清单」。
 - 构建后补跑日志测试：`src/TabTaskExplorer.Tests/UiLoggerRotationTests.cs`
   - 1MB 裁剪：`Log_ShouldTrimOldestAndKeepWholeLinesWhenExceedingLimit`（`UiLogger.MaxFileBytesOverride = 1024L * 1024`）；
   - 跨天切换：`Log_ShouldCreateNewFileNextDayAndKeepOldFile`（`UiLogger.NowProvider` 模拟 23:59 → 次日 00:01）；

@@ -172,31 +172,42 @@ public static class CompositionRoot
         // 媒体播放引擎：每个媒体标签一个实例；libvlc 缺失时引擎自动降级为不可用
         services.AddTransient<Kernel.Media.IMediaPlaybackEngine, Services.Media.VlcPlaybackEngine>();
 
-        // 截图、录屏与全局快捷键：Windows 使用 GDI 截图与 RegisterHotKey，Linux / macOS 使用系统工具或 FFmpeg；
-        // 不提供平台适配的操作系统统一降级为空实现，界面按能力清单禁用入口
+        // 截图、录屏与全局快捷键：Windows 使用 WGC 主路径（失败回退 GDI）与 RegisterHotKey，
+        // Linux / macOS 使用系统工具或 FFmpeg；不提供平台适配的操作系统统一降级为空实现，界面按能力清单禁用入口
         if (OperatingSystem.IsWindows())
         {
-            services.AddSingleton<Kernel.Capture.IScreenCaptureService, WindowsScreenCaptureService>();
+            // 采集主路径：WGC 优先，不可用或无帧时逐帧回退 GDI，回退原因写入界面日志
+            services.AddSingleton<Kernel.Capture.IScreenCaptureService>(provider =>
+            {
+                WindowsGraphicsCaptureService capture = new WindowsGraphicsCaptureService();
+                capture.Log = message => UiLogger.Log("截图", message);
+                return capture;
+            });
             services.AddSingleton<Kernel.Capture.IScreenRecordingService, WindowsScreenRecordingService>();
             services.AddSingleton<Kernel.Capture.IGlobalHotkeyService, WindowsGlobalHotkeyService>();
+            // 滚动长截图：Windows 用区域逐帧采集 + 重叠匹配拼接；其他平台为空实现
+            services.AddSingleton<Kernel.Capture.IScrollCaptureService, WindowsScrollCaptureService>();
         }
         else if (OperatingSystem.IsLinux())
         {
             services.AddSingleton<Kernel.Capture.IScreenCaptureService, LinuxScreenCaptureService>();
             services.AddSingleton<Kernel.Capture.IScreenRecordingService, LinuxScreenRecordingService>();
             services.AddSingleton<Kernel.Capture.IGlobalHotkeyService, NullGlobalHotkeyService>();
+            services.AddSingleton<Kernel.Capture.IScrollCaptureService, Kernel.Capture.NullScrollCaptureService>();
         }
         else if (OperatingSystem.IsMacOS())
         {
             services.AddSingleton<Kernel.Capture.IScreenCaptureService, MacScreenCaptureService>();
             services.AddSingleton<Kernel.Capture.IScreenRecordingService, MacScreenRecordingService>();
             services.AddSingleton<Kernel.Capture.IGlobalHotkeyService, NullGlobalHotkeyService>();
+            services.AddSingleton<Kernel.Capture.IScrollCaptureService, Kernel.Capture.NullScrollCaptureService>();
         }
         else
         {
             services.AddSingleton<Kernel.Capture.IScreenCaptureService, NullScreenCaptureService>();
             services.AddSingleton<Kernel.Capture.IScreenRecordingService, NullScreenRecordingService>();
             services.AddSingleton<Kernel.Capture.IGlobalHotkeyService, NullGlobalHotkeyService>();
+            services.AddSingleton<Kernel.Capture.IScrollCaptureService, Kernel.Capture.NullScrollCaptureService>();
         }
 
         // 区域截图预选：Windows 枚举可见窗口与 Win32 子视图；其他平台留空，框选窗口回落为全屏与手工拖动

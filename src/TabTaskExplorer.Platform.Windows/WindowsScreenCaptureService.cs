@@ -118,7 +118,10 @@ public class WindowsScreenCaptureService : IScreenCaptureService
                 using (MemoryStream stream = new MemoryStream())
                 {
                     bitmap.Save(stream, ImageFormat.Png);
-                    return ScreenCaptureResult.CreateSuccess(stream.ToArray(), area.Width, area.Height, area);
+                    ScreenCaptureResult result = ScreenCaptureResult.CreateSuccess(stream.ToArray(),
+                        area.Width, area.Height, area);
+                    result.BackendName = "GDI";
+                    return result;
                 }
             }
         }

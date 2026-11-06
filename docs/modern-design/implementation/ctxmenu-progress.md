@@ -1,8 +1,8 @@
 ﻿# 右键菜单单例与主题修复进度
 
-状态：等你决策
-卡点：WinMerge（以及 TortoiseGit / 7-Zip）扩展项枚举不到，是否继续排查 Shell 扩展加载需你拍板；菜单单例与主题修复本身仍待人工实测。
-下一步：你确认取舍后，按「待人工验证」4 条做实测（连续右键、失焦关闭、深浅主题、扩展子菜单）。
+状态：待实测
+卡点：WinMerge 根因（MTA 套间）已修复，独立探针三种目标全命中；应用内「多选 10 次 + 新建文件夹」未验，因旧实例 TabXExplorer64（pid 23248）占用单实例互斥且无法结束。
+下一步：你手动退出旧实例后重启 2026-11-06 09:55 产物，做应用内复测与「待人工验证」4 条。
 
 更新时间：2026-11-04
 
@@ -71,3 +71,109 @@
 ## 下一步
 
 - 人工实测上面 4 条，确认后把结果回填本文件；若出现扩展子菜单为空，再检查 `WM_INITMENUPOPUP` 时机。
+
+## 2026-11-06 系统扩展项枚举不到：根因已定位（WinMerge / TortoiseGit / TortoiseSVN）
+
+### 验证方式（未打扰用户）
+
+- 用独立的 `%TEMP%\ctxmenu-probe` 控制台探针，直接走 COM 与注册表，不启动应用、不弹窗、不抢焦点、不切换用户标签；用完即停。
+- 桌面交互（右键、失焦、主题观感）本轮未做，仍待人工空闲时批量验证。
+
+### 注册表逐键核对结果（环境正常）
+
+| 位置 | WinMerge | TortoiseGit | TortoiseSVN |
+| --- | --- | --- | --- |
+| `HKLM64\*\shellex\ContextMenuHandlers` | 有 | 有 | 有 |
+| `HKLM64\Directory\shellex\ContextMenuHandlers` | 有 | 有 | 有 |
+| `HKLM64\Directory\Background\shellex\ContextMenuHandlers` | 有 | 有 | 有 |
+| `HKLM64\Drive\shellex\ContextMenuHandlers` | 有 | 有 | 有 |
+| `HKLM64\Folder\shellex\ContextMenuHandlers` | 无 | 有 | 有 |
+| `HKLM64\AllFilesystemObjects\shellex\ContextMenuHandlers` | 无 | 无 | 无 |
+| `HKCU\*\shellex` 等 | 无 | 无 | 无 |
+| `WOW6432Node`（32 位视图） | 无 | 无 | 无 |
+
+- WinMerge CLSID `{4E716236-AA30-4C65-B225-D68BBA81E9C2}` → `C:\Program Files\WinMerge\ShellExtensionX64.dll`，`ThreadingModel=Apartment`，PE 位数 = **x64**。
+- `Shell Extensions\Blocked` 两套根键均不存在；`Approved` 里含全部 TortoiseSVN / TortoiseGit 项，**没有 WinMerge**（默认不启用 `EnforceShellExtensionSecurity`，不影响加载）。
+- 结论：**注册位置、CLSID、位数、阻止列表全部正常，不是环境问题，也不是"漏枚举某类 handler"。**
+
+### 决定性差异：线程套间（Apartment）
+
+同一个探针、同一段生产代码 `WindowsShellContextMenuService.EnumerateShellMenu`，只改调用线程套间：
+
+| 线程套间 | 目标 | 顶层项 | 叶子项 | WinMerge |
+| --- | --- | --- | --- | --- |
+| MTA | 文件夹 | 26 | 21 | 无 |
+| STA | 文件夹 | 52 | 43 | **有（id=112）** |
+| MTA | 空白处 | 12 | 26 | 无 |
+| STA | 空白处 | 24 | 32 | **有（id=1）** |
+| MTA | 两个 txt 多选 | 16 | 11 | 无 |
+| STA | 两个 txt 多选 | 43 | 38 | **有（id=83/134/135）** |
+
+- MTA 下 `OleInitialize` 返回 `0x80010106`（`RPC_E_CHANGED_MODE`），所有 `ThreadingModel=Apartment` 的外壳扩展被 COM 静默拒绝加载，菜单项凭空消失；STA 下全部出现（含 TortoiseGit / TortoiseSVN 完整子菜单）。
+- `WM_INITMENUPOPUP` 对顶层菜单项数无影响（51→51、24→24、43→43），说明不需要额外消息，子菜单项在 `QueryContextMenu` 时已填充；原有的"读子菜单前发 `WM_INITMENUPOPUP`"保持不动。
+- 补充：`Get-Content` 等读注册表时，`HKCU` 下的商业网盘扩展（坚果云、Quark 等）在 MTA 下同样整体缺失，进一步印证是套间导致，而非某个 DLL 特例。
+
+### 修复
+
+- `WindowsShellContextMenuReader` 新增 `RunOnStaThread<T>`：`Enumerate` / `EnumerateMultiple` / `Invoke` / `InvokeByCommandId` 四个入口先判断 `Thread.CurrentThread.GetApartmentState()`，为 MTA 时自动切到内部 STA 线程执行再返回，保证无论调用方是 UI 线程、HTTP 线程还是线程池，都不会静默丢扩展。
+- 不改变桌面端 UI 线程（`[STAThread]`）与网页端 `WebContextMenuBuilder` 既有 STA 路径的行为；仅消除 MTA 调用路径的缺失。
+- 未触碰全局菜单单例、失焦/移动/Esc 关闭、主题跟随；未引入原生菜单与自绘菜单并存。
+- 未修改 `Services/Capture/*`、`FileDropPolicy.cs`、`Assets/web/app.css`。
+
+### 修复后回归（同一探针，MTA 线程调用生产代码）
+
+| 线程套间 | 目标 | 顶层项 | 叶子项 | WinMerge |
+| --- | --- | --- | --- | --- |
+| MTA（修复后） | 文件夹 | 52 | 43 | 有（id=112） |
+| STA | 文件夹 | 52 | 43 | 有（id=112） |
+| MTA（修复后） | 空白处 | 24 | 32 | 有（id=1） |
+| STA | 空白处 | 24 | 32 | 有（id=1） |
+| MTA（修复后） | 两个 txt 多选 | 43 | 38 | 有（id=83/134/135） |
+| STA | 两个 txt 多选 | 43 | 38 | 有（id=83/134/135） |
+
+- 修复后 MTA 与 STA 结果完全一致，说明套间自愈生效。
+- `TabTaskExplorer.App` 编译：`dotnet build -c Release` → **exit 0，0 个错误**（126 个既有警告，均为 `Watermark` 过时与 XAML 无公共构造函数提示，与本改动无关）。
+- `build.bat` 发布：**exit 0**，`output\TabTaskExplorer.exe` 更新时间 2026-11-06 09:55:22，大小 361,769,072 字节。
+
+### 应用内 HTTP 复测（阻塞）
+
+- 已启动 `output\TabTaskExplorer.exe`，`/api/session` 一度就绪；随后新进程自行退出——旧实例 `TabXExplorer64`（pid 23248，2026-11-04 09:54 启动）持有单实例互斥量。
+- 尝试 `Stop-Process -Id 23248 -Force` → **Access denied**（该进程属于其他用户 / 提权会话），当前会话无法结束。
+- 因此"HTTP 多选 10 次不崩"与"`/api/ctxmenu/run` 新建文件夹"两项应用内复测**未完成**，需用户手动退出 `TabXExplorer64` 后重启新版本再测。
+- 已验证的替代证据：生产代码 `WindowsShellContextMenuService.EnumerateShellMenu` 在独立控制台中 MTA / STA 结果一致且 WinMerge 全部命中（见上表）。
+
+### 2026-11-06 10:30 套间自愈线程加 3 秒超时上限
+
+- `WindowsShellContextMenuReader.RunOnStaThread<T>(Func<T>, T fallback, string caller)`：
+  - 无限 `thread.Join()` 改为 `thread.Join(TimeSpan.FromSeconds(3))`；超时直接返回 fallback（空列表 / false），不阻塞调用方。
+  - 超时写诊断：调用方（`Enumerate` / `EnumerateMultiple` / `Invoke` / `InvokeByCommandId` + 目标路径或命令号）、最后阶段、等待时长（3000ms）。
+  - 最后阶段由 `diagnosticsStage` 记录：`QueryContextMenu 构建系统菜单` → `读取菜单项 '<标题>' 深度=n`，可区分卡在菜单构建还是某个具体扩展的子菜单。
+  - 后台 STA 线程无法安全中止，继续收尾（`IsBackground=true`），其结果被丢弃。
+- 新增 `WindowsSystemContextMenuService.TimeoutReporter`（public 静态 `Action<string>`）；`App.axaml.cs` 启动时注入 `UiLogger.Log("右键菜单", message)`，未注入时退回 `Trace.TraceWarning`。
+- 回归：独立控制台探针（直接调用生产代码）MTA / STA 双跑，文件夹、空白处、两个 txt 多选三种目标 WinMerge 全部命中，均在 3 秒内完成，无超时误伤。
+- `TabTaskExplorer.App` 编译：**0 个错误**（128 个既有警告）。
+- 应用内 HTTP 复测本轮仍未做：`TabXExplorer64`（pid 23248，2026-11-04 09:54:56 启动）仍在运行，按要求未强杀；**应用内未验**。
+
+### 2026-11-06 15:15 应用内 HTTP 复测（通过）
+
+- 环境：`TabXExplorer64`（pid 23248，2026-11-04 09:54:56 启动）仍在运行，但单实例互斥量未被占用；启动 15:07:33 发布的 `output\TabTaskExplorer.exe` 成功，新进程 pid 39880，Web 服务 `http://127.0.0.1:15919/`，`/api/session` → HTTP 200。
+- 路径白名单：跟随桌面模式下右键目标必须落在已打开标签内；启动默认只有"此电脑"标签，首轮测试目录全部 403。改用 `/api/tabs/new?p=<测试目录>` 打开成标签后通过。右键"目录本身"仍需其父目录为已打开标签，本次父目录 `D:\TabTaskExplorer` 未单独开标签，故那一次 403 属策略预期，用条目与空白处覆盖。
+
+| 项目 | 结果 | 关键数据 |
+| --- | --- | --- |
+| 空白处枚举 | 通过 | 顶层 22，叶子 31，系统项可用，WinMerge 命中 |
+| 单条目枚举 | 通过 | 顶层 39，叶子 44，WinMerge 命中 |
+| 双条目多选枚举 | 通过 | 顶层 39，叶子 34，WinMerge 命中 |
+| 多选连续 10 次 | 通过 10/10 | 每次 593–691ms，WinMerge 10/10，0 失败 |
+| 新建文件夹 | 通过 | 命令"新建文件夹(N)" id=149，`/api/ctxmenu/run` 返回 ok，目录实际创建 |
+| 进程存活 | 通过 | pid 39880，89 线程，约 270MB，无崩溃 |
+| 菜单单例 | 通过 | 网页端枚举只构建数据、不弹 UI 菜单；日志无"右键菜单单例"冲突记录；可见弹层窗口数 0 |
+
+- `ui.log` 证据：
+  - 每次枚举都记录「枚举系统外壳菜单完成：目标数=2 落点=条目 顶层条目数=37 全部条目数=36 耗时毫秒=593~691 结果=成功，系统项与第三方扩展已随层级返回」。
+  - 「执行桌面系统外壳命令：命令编号=149 落点=空白处 目标=D:\TabTaskExplorer\.ctxmenu-app-test 结果=成功，已交给外壳扩展执行」。
+  - 全量检索无「外壳右键菜单枚举超时」「未处理异常」「崩溃」记录。
+- 清理：测试目录与新建的"新建文件夹"已删除，测试标签已导航回 `D:\TabTaskExplorer`，无残留。
+
+
+

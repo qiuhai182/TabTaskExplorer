@@ -2,10 +2,13 @@
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Threading.Tasks;
+using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Platform;
 using Avalonia.Platform.Storage;
+using Avalonia.VisualTree;
 using TabTaskExplorer.App.Services;
 using TabTaskExplorer.Kernel.Abstractions;
 using TabTaskExplorer.Kernel.Media;
@@ -43,6 +46,18 @@ public partial class SettingsWindow : Window
 
     // 快捷键编辑副本：窗口内增删改只作用于副本，点击确定后才写回共享设置
     private readonly ObservableCollection<HotkeySetting> shortcutRows = new ObservableCollection<HotkeySetting>();
+
+    // 是否已一键停用全部快捷键：为真时保存后持久化为停用状态，重启不会回填默认快捷键
+    private bool shortcutsCleared;
+
+    // 快捷键变更立即生效回调：由主窗口注入，用于即时注销全局热键与低级键盘钩子并落盘
+    private readonly Action? applyShortcutsImmediately;
+
+    // 当前正在等待用户按下组合键的快捷键行；为空表示未处于捕获状态
+    private HotkeySetting? capturingShortcut;
+
+    // 已记录过「拦下滚轮」日志的下拉框，避免每一次滚轮都刷日志
+    private readonly HashSet<ComboBox> wheelGuardedComboBoxes = new HashSet<ComboBox>();
 
     // 网页端配置的编辑副本：窗口内改动只作用于副本，点击确定后才写回共享设置
     private List<WebPortSetting> webPorts = new List<WebPortSetting>();
@@ -86,6 +101,9 @@ public partial class SettingsWindow : Window
     public SettingsWindow()
     {
         this.InitializeComponent();
+        // 快捷键捕获与下拉框滚轮拦截都走窗口级的隧道阶段处理，可覆盖数据模板动态生成的下拉框
+        this.AddHandler(KeyDownEvent, this.OnShortcutCaptureKeyDown, RoutingStrategies.Tunnel, true);
+        this.AddHandler(InputElement.PointerWheelChangedEvent, this.OnSettingsPointerWheelChanged, RoutingStrategies.Tunnel, true);
         // 设置窗口是主窗口的模态附属窗口，不单独占用任务栏按钮
         WindowHostStyler.MakeAuxiliary(this);
         UiLogger.AttachWindow(this);
@@ -105,10 +123,11 @@ public partial class SettingsWindow : Window
     /// 初始分页序号用于侧边栏「右键管理」等入口直接定位到对应分页。
     /// </summary>
     public SettingsWindow(AppSettings settings, ISystemContextMenuService systemContextMenus, string captureEnvironmentText,
-        int initialSectionIndex = 0, Action? openStartupManager = null) : this()
+        int initialSectionIndex = 0, Action? openStartupManager = null, Action? applyShortcutsImmediately = null) : this()
     {
         this.systemContextMenus = systemContextMenus;
         this.openStartupManager = openStartupManager;
+        this.applyShortcutsImmediately = applyShortcutsImmediately;
         this.DataContext = settings;
         this.LogLevelBox.SelectedIndex = (int)UiLogger.ParseLevel(settings.LogLevel, LogLevel.Info);
         this.LogDirectoryText.Text = "日志目录=" + UiLogger.LogDirectory;
@@ -159,6 +178,10 @@ public partial class SettingsWindow : Window
             return;
         }
         UiLogger.Log("设置窗口", "分页切换：index=" + index);
+        if (this.capturingShortcut != null && index != 1)
+        {
+            this.CancelShortcutCapture("切换到其他设置分页");
+        }
         this.BasicPage.IsVisible = index == BasicSectionIndex;
         this.MousePage.IsVisible = index == 1;
         this.FilePage.IsVisible = index == 2;
@@ -223,8 +246,12 @@ public partial class SettingsWindow : Window
         row.ActionName = "NewTab";
         row.Scope = "Local";
         row.KeyText = string.Empty;
+        // 手动添加说明用户需要快捷键，解除「全部停用」状态
+        this.shortcutsCleared = false;
+        this.UpdateShortcutDisabledHint();
         this.shortcutRows.Add(row);
-        UiLogger.Log("设置窗口", "添加快捷键：已新增一条待配置记录 当前快捷键条数=" + this.shortcutRows.Count);
+        UiLogger.Log("设置窗口", "添加快捷键：已新增一条待配置记录 当前快捷键条数=" + this.shortcutRows.Count
+            + " 是否全部停用=否");
     }
 
     /// <summary>删除按钮所在行的快捷键记录。</summary>
@@ -237,6 +264,10 @@ public partial class SettingsWindow : Window
             UiLogger.Log("设置窗口", "删除快捷键失败：未取到快捷键记录 结果=未删除");
             return;
         }
+        if (ReferenceEquals(this.capturingShortcut, row))
+        {
+            this.CancelShortcutCapture("删除正在捕获的快捷键记录");
+        }
         this.shortcutRows.Remove(row);
         UiLogger.Log("设置窗口", "删除快捷键：功能=" + row.DisplayName
             + " 主键=" + (string.IsNullOrEmpty(row.KeyText) ? "未设置" : row.KeyText)
@@ -244,17 +275,274 @@ public partial class SettingsWindow : Window
             + " 结果=成功");
     }
 
-    /// <summary>把快捷键配置恢复为默认值（应用内默认项 + 全局截图录屏默认项）。</summary>
+    /// <summary>把快捷键配置恢复为默认值（应用内默认项 + 全局截图录屏默认项），并立即重新启用全局热键。</summary>
     private void OnResetHotkeysClick(object? sender, RoutedEventArgs e)
     {
+        bool wasDisabled = this.shortcutsCleared;
+        this.CancelShortcutCapture("恢复默认快捷键");
+        this.shortcutsCleared = false;
         this.shortcutRows.Clear();
         foreach (HotkeySetting setting in HotkeySetting.CreateDefaultShortcuts())
         {
             this.shortcutRows.Add(CloneShortcut(setting));
         }
+        this.UpdateShortcutDisabledHint();
+        // 恢复默认是「一键清空」的对向操作，立即写回并重新注册，用户无需再点确定才生效
+        this.ApplyShortcutsNow();
         UiLogger.Log("设置窗口", "恢复默认快捷键：已重建默认项"
+            + " 恢复前是否全部停用=" + (wasDisabled ? "是" : "否")
             + " 快捷键条数=" + this.shortcutRows.Count
+            + " 全局条数=" + CountGlobalShortcuts(this.shortcutRows)
             + " 结果=成功");
+    }
+
+    /// <summary>
+    /// 一键清空全部快捷键：二次确认后清空配置，并立即注销已注册的全局热键与低级键盘钩子，
+    /// 同时把停用状态写入设置文件，重启后不会因默认值回填而恢复。
+    /// </summary>
+    private async void OnClearAllShortcutsClick(object? sender, RoutedEventArgs e)
+    {
+        int beforeCount = this.shortcutRows.Count;
+        int beforeGlobalCount = CountGlobalShortcuts(this.shortcutRows);
+        bool confirmed = await MessageDialog.ConfirmAsync(this, "清空全部快捷键",
+            "确定要清空全部快捷键吗？\n\n"
+            + "后果：所有快捷键（应用内与系统全局，含截图、录屏、滚动长截图、贴图、取色、IDE 与标签操作）都会立即失效，"
+            + "进程内的全局热键与低级键盘钩子也会一并注销；需要重新设置或点击「恢复默认快捷键」才能恢复。",
+            "清空并立即停用", "取消");
+        if (!confirmed)
+        {
+            UiLogger.Log("设置窗口", "一键清空快捷键：用户取消 原有快捷键条数=" + beforeCount
+                + " 原有全局条数=" + beforeGlobalCount + " 结果=未停用");
+            return;
+        }
+        this.CancelShortcutCapture("一键清空全部快捷键");
+        this.shortcutRows.Clear();
+        this.shortcutsCleared = true;
+        this.UpdateShortcutDisabledHint();
+        // 立即写回共享设置并触发全局热键注销与钩子卸载，避免用户还要等点击确定才生效
+        this.ApplyShortcutsNow();
+        UiLogger.Log("设置窗口", "一键清空快捷键：原有快捷键条数=" + beforeCount
+            + " 原有全局条数=" + beforeGlobalCount
+            + " 清空后快捷键条数=0"
+            + " 是否全部停用=是"
+            + " 全局热键=已注销 低级键盘钩子=已卸载"
+            + " 结果=成功");
+    }
+
+    /// <summary>把快捷键编辑副本立即写回共享设置并触发全局热键重新注册；用于清空与恢复默认的即时生效。</summary>
+    private void ApplyShortcutsNow()
+    {
+        AppSettings? settings = this.DataContext as AppSettings;
+        if (settings != null)
+        {
+            this.CommitShortcuts(settings);
+        }
+        if (this.applyShortcutsImmediately != null)
+        {
+            this.applyShortcutsImmediately();
+        }
+    }
+
+    /// <summary>刷新「全部快捷键已停用」提示文字的可见性。</summary>
+    private void UpdateShortcutDisabledHint()
+    {
+        if (this.ShortcutDisabledHint != null)
+        {
+            this.ShortcutDisabledHint.IsVisible = this.shortcutsCleared;
+        }
+    }
+
+    /// <summary>点击组合键按钮：进入捕获状态；再次点击同一条则取消捕获。</summary>
+    private void OnCaptureShortcutClick(object? sender, RoutedEventArgs e)
+    {
+        Button? button = sender as Button;
+        HotkeySetting? row = button != null ? button.DataContext as HotkeySetting : null;
+        if (row == null)
+        {
+            UiLogger.Log("设置窗口", "快捷键捕获：未能识别对应的快捷键行 结果=已忽略");
+            return;
+        }
+        if (ReferenceEquals(this.capturingShortcut, row))
+        {
+            this.CancelShortcutCapture("用户再次点击组合键按钮");
+            return;
+        }
+        this.CancelShortcutCapture("切换到另一条快捷键");
+        this.capturingShortcut = row;
+        row.IsCapturing = true;
+        UiLogger.Log("设置窗口", "进入快捷键捕获：功能=" + row.DisplayName
+            + " 作用域=" + (row.IsGlobal ? "系统全局" : "应用内")
+            + " 当前组合=" + HotkeySetting.FormatCombination(row.Ctrl, row.Alt, row.Shift, row.Win, row.KeyText)
+            + " 提示=请按下快捷键，按 Esc 取消捕获");
+    }
+
+    /// <summary>
+    /// 捕获状态下的按键处理：Esc 取消，仅修饰键不结束，其余按键组合直接成为该功能的快捷键；
+    /// 与同作用域已有快捷键重复时给出提示并继续等待输入。
+    /// </summary>
+    private void OnShortcutCaptureKeyDown(object? sender, KeyEventArgs e)
+    {
+        HotkeySetting? row = this.capturingShortcut;
+        if (row == null)
+        {
+            return;
+        }
+        if (e.Key == Key.Escape)
+        {
+            e.Handled = true;
+            this.CancelShortcutCapture("用户按下 Esc");
+            return;
+        }
+        if (e.Key == Key.None || IsModifierOnlyKey(e.Key))
+        {
+            // 只按住修饰键时不结束捕获，等待用户按下真正的主键
+            e.Handled = true;
+            return;
+        }
+        bool ctrl = e.KeyModifiers.HasFlag(KeyModifiers.Control);
+        bool alt = e.KeyModifiers.HasFlag(KeyModifiers.Alt);
+        bool shift = e.KeyModifiers.HasFlag(KeyModifiers.Shift);
+        bool win = e.KeyModifiers.HasFlag(KeyModifiers.Meta);
+        string keyText = e.Key.ToString();
+        if (string.IsNullOrEmpty(keyText) || string.Equals(keyText, "None", StringComparison.Ordinal))
+        {
+            e.Handled = true;
+            return;
+        }
+        HotkeySetting? conflict = this.FindShortcutConflict(row, ctrl, alt, shift, win, keyText);
+        if (conflict != null)
+        {
+            e.Handled = true;
+            string combination = HotkeySetting.FormatCombination(ctrl, alt, shift, win, keyText);
+            string scopeText = row.IsGlobal ? "系统全局" : "应用内";
+            UiLogger.Log("设置窗口", "快捷键捕获冲突：功能=" + row.DisplayName
+                + " 组合=" + combination
+                + " 作用域=" + scopeText
+                + " 冲突功能=" + conflict.DisplayName
+                + " 结果=已提示，继续等待用户重新按下组合键");
+            MessageDialog.Show(this, "快捷键冲突",
+                "组合「" + combination + "」已被「" + conflict.DisplayName + "」使用（同为" + scopeText
+                + "），请按下其他组合键，或按 Esc 取消捕获。");
+            return;
+        }
+        string previousText = HotkeySetting.FormatCombination(row.Ctrl, row.Alt, row.Shift, row.Win, row.KeyText);
+        row.Ctrl = ctrl;
+        row.Alt = alt;
+        row.Shift = shift;
+        row.Win = win;
+        row.KeyText = keyText;
+        row.IsCapturing = false;
+        this.capturingShortcut = null;
+        e.Handled = true;
+        UiLogger.Log("设置窗口", "快捷键捕获完成：功能=" + row.DisplayName
+            + " 作用域=" + (row.IsGlobal ? "系统全局" : "应用内")
+            + " 原组合=" + (string.IsNullOrEmpty(previousText) ? "未设置" : previousText)
+            + " 新组合=" + row.ShortcutText
+            + " 结果=成功");
+    }
+
+    /// <summary>结束当前捕获状态并记录原因，不修改该行原有组合。</summary>
+    private void CancelShortcutCapture(string reason)
+    {
+        HotkeySetting? row = this.capturingShortcut;
+        if (row == null)
+        {
+            return;
+        }
+        row.IsCapturing = false;
+        this.capturingShortcut = null;
+        UiLogger.Log("设置窗口", "结束快捷键捕获：功能=" + row.DisplayName
+            + " 保留组合=" + HotkeySetting.FormatCombination(row.Ctrl, row.Alt, row.Shift, row.Win, row.KeyText)
+            + " 原因=" + reason
+            + " 结果=未修改");
+    }
+
+    /// <summary>判断按键是否只是修饰键或锁定键：这类按键不作为组合键的主键。</summary>
+    private static bool IsModifierOnlyKey(Key key)
+    {
+        switch (key)
+        {
+            case Key.LeftCtrl:
+            case Key.RightCtrl:
+            case Key.LeftAlt:
+            case Key.RightAlt:
+            case Key.LeftShift:
+            case Key.RightShift:
+            case Key.LWin:
+            case Key.RWin:
+            case Key.CapsLock:
+            case Key.NumLock:
+            case Key.Scroll:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    /// <summary>查找同作用域下已占用该组合的其他快捷键行。</summary>
+    private HotkeySetting? FindShortcutConflict(HotkeySetting row, bool ctrl, bool alt, bool shift, bool win, string keyText)
+    {
+        foreach (HotkeySetting other in this.shortcutRows)
+        {
+            if (ReferenceEquals(other, row) || string.IsNullOrEmpty(other.KeyText))
+            {
+                continue;
+            }
+            if (other.IsGlobal != row.IsGlobal)
+            {
+                continue;
+            }
+            if (other.Ctrl != ctrl || other.Alt != alt || other.Shift != shift || other.Win != win)
+            {
+                continue;
+            }
+            if (string.Equals(other.KeyText, keyText, StringComparison.OrdinalIgnoreCase))
+            {
+                return other;
+            }
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// 下拉框未展开时拦截滚轮：不改变下拉框选中值，改为滚动最近的外层页面；
+    /// 下拉框展开时不做拦截，滚轮仍用于切换选项。
+    /// </summary>
+    private void OnSettingsPointerWheelChanged(object? sender, PointerWheelEventArgs e)
+    {
+        Visual? source = e.Source as Visual;
+        if (source == null)
+        {
+            return;
+        }
+        ComboBox? comboBox = source.FindAncestorOfType<ComboBox>(true);
+        if (comboBox == null || comboBox.IsDropDownOpen)
+        {
+            return;
+        }
+        ScrollViewer? viewer = comboBox.FindAncestorOfType<ScrollViewer>();
+        if (viewer == null)
+        {
+            return;
+        }
+        double maximumOffset = Math.Max(0.0, viewer.Extent.Height - viewer.Viewport.Height);
+        double targetOffset = viewer.Offset.Y - (e.Delta.Y * 48.0);
+        if (targetOffset < 0.0)
+        {
+            targetOffset = 0.0;
+        }
+        if (targetOffset > maximumOffset)
+        {
+            targetOffset = maximumOffset;
+        }
+        viewer.Offset = new Vector(viewer.Offset.X, targetOffset);
+        e.Handled = true;
+        if (this.wheelGuardedComboBoxes.Add(comboBox))
+        {
+            UiLogger.Log("设置窗口", "下拉框未展开时拦截滚轮：已阻止滚动改值并转交外层页面滚动 当前值="
+                + (comboBox.SelectedItem != null ? comboBox.SelectedItem.ToString() : "空")
+                + " 结果=成功");
+        }
     }
 
     /// <summary>把共享设置里的快捷键复制到窗口内编辑副本。</summary>
@@ -271,8 +559,11 @@ public partial class SettingsWindow : Window
                 }
             }
         }
+        this.shortcutsCleared = settings.ShortcutsDisabled;
+        this.UpdateShortcutDisabledHint();
         UiLogger.Log("设置窗口", "快捷键分页初始化：快捷键条数=" + this.shortcutRows.Count
-            + " 其中全局条数=" + CountGlobalShortcuts(this.shortcutRows));
+            + " 其中全局条数=" + CountGlobalShortcuts(this.shortcutRows)
+            + " 是否全部停用=" + (this.shortcutsCleared ? "是" : "否"));
     }
 
     /// <summary>把窗口内编辑副本写回共享设置。</summary>
@@ -285,11 +576,15 @@ public partial class SettingsWindow : Window
         settings.Shortcuts.Clear();
         foreach (HotkeySetting row in this.shortcutRows)
         {
+            // 捕获状态仅为界面提示，不随设置写入
+            row.IsCapturing = false;
             settings.Shortcuts.Add(row);
         }
         settings.ShortcutsMigrated = true;
+        settings.ShortcutsDisabled = this.shortcutsCleared;
         UiLogger.Log("配置更改", "快捷键设置：快捷键条数=" + settings.Shortcuts.Count
-            + " 其中全局条数=" + CountGlobalShortcuts(settings.Shortcuts));
+            + " 其中全局条数=" + CountGlobalShortcuts(settings.Shortcuts)
+            + " 是否全部停用=" + (settings.ShortcutsDisabled ? "是" : "否"));
     }
 
     /// <summary>复制一条快捷键配置，避免窗口内修改直接影响磁盘设置。</summary>
@@ -322,6 +617,7 @@ public partial class SettingsWindow : Window
 
     private void OnOkClick(object? sender, RoutedEventArgs e)
     {
+        this.CancelShortcutCapture("点击确定保存设置");
         this.CommitShortcuts(this.DataContext as AppSettings ?? new AppSettings());
         this.CommitWebSettings();
         this.CommitEditorSettings();

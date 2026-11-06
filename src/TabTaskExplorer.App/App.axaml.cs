@@ -32,6 +32,10 @@ public class App : Application
             IServiceProvider services = CompositionRoot.BuildServices();
             this.appServices = services;
 
+            // 外壳菜单枚举超时写入统一日志：MTA 调用自动切 STA 时有 3 秒上限，超时记录调用方与卡住的阶段
+            TabTaskExplorer.Platform.Windows.WindowsSystemContextMenuService.TimeoutReporter =
+                delegate (string message) { Services.UiLogger.Log("右键菜单", message); };
+
             // 进程 AppUserModelID 必须在任何窗口显示前设置，保证任务栏归入同一个应用分组；
             // 此时主窗口尚未创建，只做进程级设置与宿主服务登记
             WindowHostStyler.Initialize(services.GetRequiredService<IWindowHostService>(), null);

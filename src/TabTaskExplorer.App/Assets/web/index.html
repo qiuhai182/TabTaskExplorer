@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Crect%20width='24'%20height='24'%20rx='5.4'%20fill='%232F7CF6'/%3E%3Cpath%20d='M4.2%2018.8V8.1c0-.8.6-1.4%201.4-1.4h3.6l1.6%201.7h7.6c.8%200%201.4.6%201.4%201.4v1.3H4.2z'%20fill='%23fff'%20opacity='.33'/%3E%3Crect%20x='4.2'%20y='11'%20width='15.6'%20height='8.6'%20rx='2.2'%20fill='%23fff'/%3E%3Crect%20x='6.6'%20y='13.5'%20width='8'%20height='1.4'%20rx='.7'%20fill='%232F7CF6'/%3E%3Crect%20x='6.6'%20y='16'%20width='5.2'%20height='1.4'%20rx='.7'%20fill='%232B6FE0'/%3E%3C/svg%3E">
 <title>TabTaskExplorer 网页端</title>
+<link rel="stylesheet" href="/assets/web/tokens.css?v=__VERSION__">
 <link rel="stylesheet" href="/assets/web/app.css?v=__VERSION__">
 </head>
 <body>
@@ -27,10 +28,12 @@
     <div class="tabs" id="tabs"></div>
     <span class="iconBtn" title="新建标签" onclick="newTab()"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M12 4.6 L12 19.4 M4.6 12 L19.4 12"/></svg></span>
     <span class="iconBtn" title="任务看板" onclick="clickBtn(null,'openboard')"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4.4 5.6 L19.6 5.6 L19.6 18.4 L4.4 18.4 Z M4.4 9.2 L19.6 9.2 M8.2 8.6 L8.2 15.4 M12 8.6 L12 12.6 M15.8 8.6 L15.8 14.4"/></svg></span>
+    <span class="iconBtn" id="captureEntry" title="截图与录屏：该功能仅桌面端可用" aria-disabled="true" style="opacity:.45;cursor:not-allowed" onclick="desktopOnly('截图与录屏')"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4.2 7.4 L8.2 7.4 L9.6 5.2 L14.4 5.2 L15.8 7.4 L19.8 7.4 C20.9 7.4 21.8 8.3 21.8 9.4 L21.8 17.4 C21.8 18.5 20.9 19.4 19.8 19.4 L4.2 19.4 C3.1 19.4 2.2 18.5 2.2 17.4 L2.2 9.4 C2.2 8.3 3.1 7.4 4.2 7.4 Z M8.6 12.6 A3.4 3.4 0 1 0 15.4 12.6 A3.4 3.4 0 1 0 8.6 12.6"/></svg></span>
     <span class="iconBtn" id="ideIconBtn" title="IDE 模式 / 资源管理器模式" onclick="toggleIdeMode()"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M8.2 7.2 L3.2 12 L8.2 16.8 M15.8 7.2 L20.8 12 L15.8 16.8 M13.8 5.6 L10.2 18.4"/></svg></span>
     <div class="spacer"></div>
     <span class="iconBtn" title="切换深浅色主题" onclick="toggleTheme()"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8 A4 4 0 1 0 12 16 A4 4 0 1 0 12 8 M12 2.2 L12 4.2 M12 19.8 L12 21.8 M2.2 12 L4.2 12 M19.8 12 L21.8 12 M5.1 5.1 L6.5 6.5 M17.5 17.5 L18.9 18.9 M18.9 5.1 L17.5 6.5 M6.5 17.5 L5.1 18.9"/></svg></span>
     <button class="modeBtn" id="modeBtn" title="默认使用独立新页面" onclick="toggleMode()">当前网页内容：独立新页面</button>
+    <span class="iconBtn" id="settingsBtn" title="设置" onclick="openSettings()"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3.4 7 L20.6 7 M3.4 12 L20.6 12 M3.4 17 L20.6 17 M7.4 5.4 A1.6 1.6 0 1 0 10.6 5.4 A1.6 1.6 0 1 0 7.4 5.4 M13.8 10.4 A1.6 1.6 0 1 0 17 10.4 A1.6 1.6 0 1 0 13.8 10.4 M5.6 15.4 A1.6 1.6 0 1 0 8.8 15.4 A1.6 1.6 0 1 0 5.6 15.4"/></svg></span>
   </div>
 
   <!-- 书签栏：桌面快捷访问固定项 -->
@@ -278,6 +281,20 @@
     </div>
     <div class="taskList" id="taskList"></div>
     <div class="taskFoot" id="taskFoot">本地复制 / 移动 / 删除与远程传输共用同一任务模型</div>
+  </div>
+
+  <!-- 设置：分组与桌面 SettingsWindow 一致；网页未接的分组保留并置灰说明 -->
+  <div class="modal hidden" id="settings">
+    <div class="panel">
+      <div class="panelHead">
+        <div class="panelTitle">设置</div>
+        <span class="btn" onclick="closeSettings()">关闭</span>
+      </div>
+      <div style="display:flex;flex:1;min-height:0;border-top:1px solid var(--tte-border)">
+        <div id="settingsNav" style="width:178px;padding:6px;overflow:auto;border-right:1px solid var(--tte-border)"></div>
+        <div id="settingsPane" style="flex:1;padding:12px 16px;overflow:auto"></div>
+      </div>
+    </div>
   </div>
 
   <!-- 行右键菜单（与桌面列表右键菜单同构） -->

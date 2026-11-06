@@ -1,8 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
 using TabTaskExplorer.Kernel.Models;
 
 namespace TabTaskExplorer.Platform.Windows;
@@ -35,6 +37,78 @@ internal static class WindowsShellContextMenuReader
     private const int ShowNormal = 1;
     private const uint BackgroundItem = 0;
 
+    /// <summary>STA 自愈线程的有界等待上限：超时即返回空结果，避免调用方被单个扩展卡死。</summary>
+    private static readonly TimeSpan StaEnumerationTimeout = TimeSpan.FromSeconds(3);
+
+    /// <summary>当前枚举阶段（供超时日志定位最后处理到的菜单项），同一时刻只允许一个枚举线程写入。</summary>
+    private static volatile string diagnosticsStage = "空闲";
+
+
+    /// <summary>
+    /// 当前线程是 MTA 时切到独立 STA 线程执行再返回：WinMerge / TortoiseGit / TortoiseSVN 等
+    /// ThreadingModel=Apartment 的外壳扩展在 MTA 上会被 COM 静默拒绝加载，菜单项会凭空消失。
+    /// 最多等待 3 秒：超时丢弃结果并写诊断日志，避免单个扩展卡死调用方。
+    /// </summary>
+    private static T RunOnStaThread<T>(Func<T> action, T fallback, string caller)
+    {
+        T result = fallback;
+        Thread thread = new Thread(delegate ()
+        {
+            try
+            {
+                result = action();
+            }
+            catch (Exception)
+            {
+                result = fallback;
+            }
+        });
+        thread.IsBackground = true;
+        thread.Name = "外壳右键菜单 STA 枚举";
+        try
+        {
+            thread.SetApartmentState(ApartmentState.STA);
+        }
+        catch (Exception)
+        {
+            // 平台不支持设置套间时保持当前线程执行
+            return action();
+        }
+        diagnosticsStage = "准备枚举(" + caller + ")";
+        thread.Start();
+        if (!thread.Join(StaEnumerationTimeout))
+        {
+            ReportStaTimeout(caller);
+            return fallback;
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// 记录 STA 枚举超时：调用方、最后处理到的菜单项与等待时长。
+    /// 后台线程无法安全中止，会继续收尾，但其结果被丢弃。
+    /// </summary>
+    private static void ReportStaTimeout(string caller)
+    {
+        string message = "外壳右键菜单枚举超时：调用方=" + caller
+            + " 最后阶段=" + diagnosticsStage
+            + " 等待=" + (int)StaEnumerationTimeout.TotalMilliseconds + "ms"
+            + "，已返回空结果；后台 STA 线程仍在收尾（通常是某个第三方外壳扩展在 QueryContextMenu 内阻塞）";
+        Action<string>? reporter = WindowsSystemContextMenuService.TimeoutReporter;
+        if (reporter != null)
+        {
+            try
+            {
+                reporter(message);
+            }
+            catch (Exception)
+            {
+                // 日志回调自身异常不影响枚举返回
+            }
+        }
+        Trace.TraceWarning(message);
+    }
+
     /// <summary>取当前目标适用的系统外壳菜单项；失败时返回空列表，由调用方回退到注册表静态清单。</summary>
     public static IReadOnlyList<SystemContextMenuEntry> Enumerate(string targetPath, bool isBackground)
     {
@@ -42,6 +116,13 @@ internal static class WindowsShellContextMenuReader
         if (string.IsNullOrEmpty(targetPath))
         {
             return result;
+        }
+        if (Thread.CurrentThread.GetApartmentState() == ApartmentState.MTA)
+        {
+            // MTA 上 Apartment 模型的外壳扩展会被 COM 拒绝加载，切到 STA 线程重新枚举
+            return RunOnStaThread<IReadOnlyList<SystemContextMenuEntry>>(
+                delegate { return Enumerate(targetPath, isBackground); }, result,
+                "Enumerate 目标=" + targetPath + " 空白处=" + isBackground);
         }
         int initResult = OleInitialize(IntPtr.Zero);
         bool initialized = initResult >= 0;
@@ -90,6 +171,7 @@ internal static class WindowsShellContextMenuReader
             }
             menuHandle = CreatePopupMenu();
             uint flags = ContextMenuNormal | ContextMenuExplore;
+            diagnosticsStage = "QueryContextMenu 构建系统菜单";
             int queryResult = contextMenu.QueryContextMenu(menuHandle, 0, CommandFirst, CommandLast, flags);
             if (queryResult < 0)
             {
@@ -131,6 +213,11 @@ internal static class WindowsShellContextMenuReader
         if (entry == null || !entry.IsShellMenuEntry || entry.ShellCommandId < 0 || string.IsNullOrEmpty(targetPath))
         {
             return false;
+        }
+        if (Thread.CurrentThread.GetApartmentState() == ApartmentState.MTA)
+        {
+            return RunOnStaThread<bool>(delegate { return Invoke(entry, targetPath, isBackground); }, false,
+                "Invoke 命令=" + entry.ShellCommandId + " 目标=" + targetPath);
         }
         int initResult = OleInitialize(IntPtr.Zero);
         bool initialized = initResult >= 0;
@@ -227,6 +314,12 @@ internal static class WindowsShellContextMenuReader
         if (paths == null || paths.Count == 0)
         {
             return result;
+        }
+        if (Thread.CurrentThread.GetApartmentState() == ApartmentState.MTA)
+        {
+            return RunOnStaThread<IReadOnlyList<SystemContextMenuEntry>>(
+                delegate { return EnumerateMultiple(paths, isBackground); }, result,
+                "EnumerateMultiple 项数=" + paths.Count + " 空白处=" + isBackground);
         }
         int initResult = OleInitialize(IntPtr.Zero);
         bool initialized = initResult >= 0;
@@ -384,6 +477,11 @@ internal static class WindowsShellContextMenuReader
         if (paths == null || paths.Count == 0 || commandId < (int)CommandFirst || commandId > CommandLast)
         {
             return false;
+        }
+        if (Thread.CurrentThread.GetApartmentState() == ApartmentState.MTA)
+        {
+            return RunOnStaThread<bool>(delegate { return InvokeByCommandId(commandId, paths, isBackground); }, false,
+                "InvokeByCommandId 命令=" + commandId + " 项数=" + paths.Count);
         }
         int initResult = OleInitialize(IntPtr.Zero);
         bool initialized = initResult >= 0;
@@ -566,6 +664,7 @@ internal static class WindowsShellContextMenuReader
             GetMenuString(menuHandle, (uint)index, textBuilder, 512, MenuByPosition);
             string rawText = textBuilder.ToString();
             string displayName = NormalizeMenuText(rawText);
+            diagnosticsStage = "读取菜单项 '" + (displayName.Length > 0 ? displayName : rawText) + "' 深度=" + depth;
             SystemContextMenuEntry entry = new SystemContextMenuEntry();
             entry.DisplayName = displayName.Length > 0 ? displayName : "更多命令";
             entry.IsShellMenuEntry = true;
@@ -663,6 +762,7 @@ internal static class WindowsShellContextMenuReader
             StringBuilder textBuilder = new StringBuilder(512);
             GetMenuString(menuHandle, (uint)index, textBuilder, 512, MenuByPosition);
             string displayName = NormalizeMenuText(textBuilder.ToString());
+            diagnosticsStage = "读取菜单项 '" + (displayName.Length > 0 ? displayName : "<空>") + "' 深度=" + depth;
             if (displayName.Length == 0 && subMenuHandle == IntPtr.Zero)
             {
                 continue;

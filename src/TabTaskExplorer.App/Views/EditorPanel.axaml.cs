@@ -43,6 +43,12 @@ public partial class EditorPanel : UserControl
     {
         if (e.Key == Key.S && e.KeyModifiers == KeyModifiers.Control)
         {
+            MainWindowViewModel? mainViewModel = TopLevel.GetTopLevel(this)?.DataContext as MainWindowViewModel;
+            if (mainViewModel != null && mainViewModel.Settings.ShortcutsDisabled)
+            {
+                // 已一键停用全部快捷键：Ctrl+S 不触发保存，交给编辑器默认处理
+                return;
+            }
             EditorTabViewModel? viewModel = this.ViewModel;
             if (viewModel == null)
             {

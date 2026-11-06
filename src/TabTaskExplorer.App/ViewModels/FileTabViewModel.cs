@@ -72,6 +72,7 @@ public class FileTabViewModel : INotifyPropertyChanged, IColumnWidthViewModel, I
 
     private string currentPath = string.Empty;
     private string title = "此电脑";
+    private string remoteRootTitle = string.Empty;
     private string searchText = string.Empty;
     private string sortField = "Name";
     private bool sortAscending = true;
@@ -354,6 +355,24 @@ public class FileTabViewModel : INotifyPropertyChanged, IColumnWidthViewModel, I
         {
             this.currentPath = value;
             this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CurrentPath)));
+        }
+    }
+
+    /// <summary>远程根目录的标题（连接名称）：远程标签停在根路径时用它，避免显示成「本地磁盘 ()」。</summary>
+    public string RemoteRootTitle
+    {
+        get { return this.remoteRootTitle; }
+        set
+        {
+            this.remoteRootTitle = value ?? string.Empty;
+            if (!string.IsNullOrEmpty(this.currentPath))
+            {
+                string trimmed = this.currentPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                if ((trimmed.Length == 0 || trimmed == "/") && this.fileSystemProvider is not DefaultFileSystemProvider)
+                {
+                    this.Title = this.remoteRootTitle.Length == 0 ? "远程根目录" : this.remoteRootTitle;
+                }
+            }
         }
     }
 
@@ -1595,17 +1614,26 @@ public class FileTabViewModel : INotifyPropertyChanged, IColumnWidthViewModel, I
         return row.DisplayName.IndexOf(this.searchText, StringComparison.OrdinalIgnoreCase) >= 0;
     }
 
-    /// <summary>根据路径计算标签标题。</summary>
-    private static string GetTitleFor(string path)
+    /// <summary>根据路径计算标签标题：远程提供者的根路径用连接名，避免出现「本地磁盘 ()」。</summary>
+    private string GetTitleFor(string path)
     {
         if (string.IsNullOrEmpty(path))
         {
             return "此电脑";
         }
-        string? name = Path.GetFileName(path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        string trimmed = path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        if (trimmed.Length == 0 || trimmed == "/")
+        {
+            if (this.fileSystemProvider is not DefaultFileSystemProvider)
+            {
+                return this.remoteRootTitle.Length == 0 ? "远程根目录" : this.remoteRootTitle;
+            }
+            return "本地磁盘 (" + trimmed + ")";
+        }
+        string? name = Path.GetFileName(trimmed);
         if (string.IsNullOrEmpty(name))
         {
-            return "本地磁盘 (" + path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + ")";
+            return "本地磁盘 (" + trimmed + ")";
         }
         return name;
     }

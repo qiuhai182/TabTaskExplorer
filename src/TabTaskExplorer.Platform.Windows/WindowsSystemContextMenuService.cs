@@ -1,4 +1,5 @@
-﻿using System.Diagnostics;
+﻿using System;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using System.Security;
@@ -92,6 +93,12 @@ public class WindowsSystemContextMenuService : ISystemContextMenuService
 
     /// <summary>扫描结果缓存：首次枚举或刷新时生成，启停成功后就地同步对应条目。</summary>
     private List<SystemContextMenuEntry>? cache;
+
+    /// <summary>
+    /// 外壳菜单枚举超时的诊断日志回调：由宿主注入写入应用日志；未注入时仅写 Trace。
+    /// 超时来自 MTA 调用自动切 STA 的 3 秒有界等待。
+    /// </summary>
+    public static Action<string>? TimeoutReporter { get; set; }
 
     public bool IsSupported
     {

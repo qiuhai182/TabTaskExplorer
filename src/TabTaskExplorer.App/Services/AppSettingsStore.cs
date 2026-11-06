@@ -102,6 +102,12 @@ public class AppSettings
     /// <summary>是否已完成旧快捷键配置迁移；用于区分「尚未迁移」与「用户主动删除了全部快捷键」。</summary>
     public bool ShortcutsMigrated { get; set; } = false;
 
+    /// <summary>
+    /// 是否已一键停用全部快捷键。为真时应用内快捷键分派与系统全局热键全部关闭，
+    /// 重启后保持停用，默认值不会回填；用户点击「恢复默认快捷键」或手动添加后自动恢复为假。
+    /// </summary>
+    public bool ShortcutsDisabled { get; set; } = false;
+
     /// <summary>截图与录屏产物保存目录；留空表示使用「我的图片\TabTaskExplorer\截图录屏」。</summary>
     public string CaptureSaveDirectory { get; set; } = string.Empty;
 
@@ -183,11 +189,53 @@ public class AppSettings
     /// <summary>是否已为既有配置补入「贴图截图」的默认快捷键；只补一次，用户删除后不再重复添加。</summary>
     public bool PinShotShortcutSeeded { get; set; } = false;
 
+    /// <summary>是否已为既有配置补入「滚动长截图」的默认快捷键；只补一次，用户删除后不再重复添加。</summary>
+    public bool ScrollShotShortcutSeeded { get; set; } = false;
+
     /// <summary>文字识别语言；留空表示 Windows 使用系统已安装语言，Tesseract 使用 eng+chi_sim 默认值。</summary>
     public string OcrLanguage { get; set; } = string.Empty;
 
     /// <summary>Tesseract 可执行文件完整路径；留空表示自动查找（与 FFmpeg 相同的查找策略）。</summary>
     public string OcrTesseractPath { get; set; } = string.Empty;
+
+    /// <summary>
+    /// 截图采集后端：auto（自动：优先 Windows Graphics Capture，失败回退 GDI）/
+    /// wgc（强制 WGC，仍失败时回退）/ gdi（强制 GDI，用于对照与排查）。
+    /// </summary>
+    public string CaptureBackend { get; set; } = "auto";
+
+    /// <summary>截图后端下拉框索引：0 自动、1 强制 WGC、2 强制 GDI；读写 <see cref="CaptureBackend"/>。</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public int CaptureBackendIndex
+    {
+        get
+        {
+            if (this.CaptureBackend == "wgc")
+            {
+                return 1;
+            }
+            if (this.CaptureBackend == "gdi")
+            {
+                return 2;
+            }
+            return 0;
+        }
+        set
+        {
+            if (value == 1)
+            {
+                this.CaptureBackend = "wgc";
+            }
+            else if (value == 2)
+            {
+                this.CaptureBackend = "gdi";
+            }
+            else
+            {
+                this.CaptureBackend = "auto";
+            }
+        }
+    }
 
     /// <summary>截图与录屏是否包含鼠标指针。</summary>
     public bool CaptureIncludeCursor { get; set; } = true;
@@ -408,6 +456,17 @@ public class AppSettingsStore
     /// </summary>
     private static void EnsureShortcuts(AppSettings settings)
     {
+        if (settings.ShortcutsDisabled)
+        {
+            // 用户已一键停用全部快捷键：保持空清单，禁止迁移默认项与后续补种默认键，避免重启后又「活过来」
+            settings.Shortcuts = new List<HotkeySetting>();
+            settings.ShortcutsMigrated = true;
+            settings.PinShotShortcutSeeded = true;
+            settings.ScrollShotShortcutSeeded = true;
+            settings.Hotkeys = new List<HotkeySetting>();
+            settings.GlobalHotkeys = new List<HotkeySetting>();
+            return;
+        }
         if (!settings.ShortcutsMigrated)
         {
             List<HotkeySetting> migrated = new List<HotkeySetting>();
@@ -467,6 +526,24 @@ public class AppSettingsStore
                 settings.Shortcuts.Add(HotkeySetting.CreatePinShotDefault());
             }
             settings.PinShotShortcutSeeded = true;
+        }
+        // 既有配置补入「滚动长截图」默认快捷键：只补一次，用户后续删除不会反复出现
+        if (!settings.ScrollShotShortcutSeeded)
+        {
+            bool exists = false;
+            foreach (HotkeySetting shortcut in settings.Shortcuts)
+            {
+                if (string.Equals(shortcut.ActionName, "ScreenshotScroll", StringComparison.Ordinal))
+                {
+                    exists = true;
+                    break;
+                }
+            }
+            if (!exists)
+            {
+                settings.Shortcuts.Add(HotkeySetting.CreateScrollShotDefault());
+            }
+            settings.ScrollShotShortcutSeeded = true;
         }
         // 迁移完成后清空旧字段，避免后续保存继续写入两份重复配置
         settings.Hotkeys = new List<HotkeySetting>();

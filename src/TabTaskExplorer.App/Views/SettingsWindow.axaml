@@ -42,12 +42,15 @@
             <TextBlock Text="快捷键自定义" FontWeight="Medium" Margin="0,8,0,0" />
             <StackPanel Orientation="Horizontal" Spacing="8">
               <Button Content="添加快捷键" Click="OnAddShortcutClick" />
+              <Button Content="一键清空" Click="OnClearAllShortcutsClick" />
               <Button Content="恢复默认快捷键" Click="OnResetHotkeysClick" />
             </StackPanel>
+            <TextBlock x:Name="ShortcutDisabledHint" IsVisible="False" TextWrapping="Wrap" Opacity="0.8"
+                       Text="当前已停用全部快捷键：应用内与系统全局快捷键均不响应，点击「恢复默认快捷键」可重新启用。" />
             <ItemsControl x:Name="ShortcutList">
               <ItemsControl.ItemTemplate>
                 <DataTemplate>
-                  <Grid ColumnDefinitions="200,60,Auto,Auto,Auto,Auto,130,60" Margin="0,3">
+                  <Grid ColumnDefinitions="200,60,Auto,60" Margin="0,3">
                     <ComboBox Grid.Column="0" Width="190" ItemsSource="{x:Static svc:ShortcutActionCatalog.All}"
                               SelectedItem="{Binding ActionOption, Mode=TwoWay}" VerticalAlignment="Center">
                       <ComboBox.ItemTemplate>
@@ -57,19 +60,16 @@
                       </ComboBox.ItemTemplate>
                     </ComboBox>
                     <CheckBox Grid.Column="1" Content="全局" IsChecked="{Binding IsGlobal, Mode=TwoWay}" VerticalAlignment="Center" />
-                    <CheckBox Grid.Column="2" Content="Ctrl" IsChecked="{Binding Ctrl, Mode=TwoWay}" Margin="0,0,8,0" VerticalAlignment="Center" />
-                    <CheckBox Grid.Column="3" Content="Alt" IsChecked="{Binding Alt, Mode=TwoWay}" Margin="0,0,8,0" VerticalAlignment="Center" />
-                    <CheckBox Grid.Column="4" Content="Shift" IsChecked="{Binding Shift, Mode=TwoWay}" Margin="0,0,8,0" VerticalAlignment="Center" />
-                    <CheckBox Grid.Column="5" Content="Win" IsChecked="{Binding Win, Mode=TwoWay}" Margin="0,0,8,0" VerticalAlignment="Center" />
-                    <ComboBox Grid.Column="6" Width="120" ItemsSource="{x:Static svc:HotkeySetting.KeyOptions}"
-                              SelectedItem="{Binding KeyText, Mode=TwoWay}" VerticalAlignment="Center" />
-                    <Button Grid.Column="7" Content="删除" Click="OnRemoveShortcutClick" VerticalAlignment="Center" />
+                    <Button Grid.Column="2" Width="240" HorizontalAlignment="Left" VerticalAlignment="Center"
+                            Content="{Binding ShortcutText}" Click="OnCaptureShortcutClick"
+                            ToolTip.Tip="点击后直接按下组合键即可设置；Esc 取消捕获" />
+                    <Button Grid.Column="3" Content="删除" Click="OnRemoveShortcutClick" VerticalAlignment="Center" />
                   </Grid>
                 </DataTemplate>
               </ItemsControl.ItemTemplate>
             </ItemsControl>
             <TextBlock TextWrapping="Wrap" Opacity="0.7" Margin="0,8,0,0"
-                       Text="说明：同一个功能可以通过「添加快捷键」绑定任意多条组合；「全局」勾选后由系统级键盘拦截触发，可覆盖其他程序注册的快捷键。「Ctrl+Alt+Del」「Win+L」等系统保留组合无法覆盖；以管理员身份运行时可覆盖以管理员身份运行的程序。文件操作类快捷键在输入框内不会触发。Linux / macOS 目前仅支持应用内快捷键。" />
+                       Text="说明：点击按钮后直接按下想要的组合键即可设置，Esc 取消捕获；组合键统一按 Ctrl、Alt、Shift、Win 的顺序显示，同一个功能绑定的组合在同作用域内不能重复。同一个功能可以通过「添加快捷键」绑定任意多条组合；「全局」勾选后由系统级键盘拦截触发，可覆盖其他程序注册的快捷键。「Ctrl+Alt+Del」「Win+L」等系统保留组合无法覆盖；以管理员身份运行时可覆盖以管理员身份运行的程序。文件操作类快捷键在输入框内不会触发。Linux / macOS 目前仅支持应用内快捷键。" />
           </StackPanel>
           <StackPanel x:Name="FilePage" Spacing="12" IsVisible="False">
             <CheckBox Content="显示隐藏的文件/文件夹" IsChecked="{Binding ShowHiddenFiles, Mode=TwoWay}" />
@@ -313,6 +313,13 @@
               </ComboBox>
             </StackPanel>
             <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,6,0,0">
+              <TextBlock Text="截图采集后端" VerticalAlignment="Center" />
+              <ComboBox Width="200" SelectedIndex="{Binding CaptureBackendIndex, Mode=TwoWay}"
+                        ToolTip.Tip="自动：优先 Windows Graphics Capture，不可用或失败时逐次回退 GDI；强制项用于对照与排查问题">
+                <ComboBoxItem Content="自动（推荐）" />
+                <ComboBoxItem Content="强制 WGC" />
+                <ComboBoxItem Content="强制 GDI" />
+              </ComboBox>
               <TextBlock Text="截图延迟" VerticalAlignment="Center" />
               <ComboBox x:Name="CaptureDelayBox" Width="120">
                 <ComboBoxItem Content="立即截图" />

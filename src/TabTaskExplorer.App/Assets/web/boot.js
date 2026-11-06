@@ -2,8 +2,47 @@
 
 // ======== 快捷键（与桌面主窗口快捷键一致） ========
 
+// 与桌面 HotkeySetting.CreateDefaultShortcuts() 同一套动作名与按键；web 列表示网页端可用性，
+// 设置面板「快捷操作」按此表渲染，未实现的条目保留并标注，不静默消失。
+const WEB_SHORTCUTS = [
+  { action: 'NewTab', label: '新建标签', keys: 'Ctrl+T', scope: '应用内', web: '可用' },
+  { action: 'CloseTab', label: '关闭当前标签', keys: 'Ctrl+W', scope: '应用内', web: '可用（独立新页面）' },
+  { action: 'NextTab', label: '切换到下一个标签', keys: 'Ctrl+Tab', scope: '应用内', web: '可用' },
+  { action: 'PreviousTab', label: '切换到上一个标签', keys: 'Ctrl+Shift+Tab', scope: '应用内', web: '可用' },
+  { action: 'Refresh', label: '刷新', keys: 'F5', scope: '应用内', web: '可用' },
+  { action: 'Rename', label: '重命名', keys: 'F2', scope: '应用内', web: '可用' },
+  { action: 'Delete', label: '删除', keys: 'Delete', scope: '应用内', web: '可用' },
+  { action: 'Copy', label: '复制', keys: 'Ctrl+C', scope: '应用内', web: '可用' },
+  { action: 'Cut', label: '剪切', keys: 'Ctrl+X', scope: '应用内', web: '可用' },
+  { action: 'Paste', label: '粘贴', keys: 'Ctrl+V', scope: '应用内', web: '可用' },
+  { action: 'SelectAll', label: '全选', keys: 'Ctrl+A', scope: '应用内', web: '可用（桌面无默认键）' },
+  { action: 'Save', label: '保存（编辑器）', keys: 'Ctrl+S', scope: '应用内', web: '仅 IDE 模式' },
+  { action: 'SaveAll', label: '全部保存（编辑器）', keys: 'Ctrl+Shift+S', scope: '应用内', web: '仅 IDE 模式' },
+  { action: 'CloseEditor', label: '关闭编辑器', keys: 'Ctrl+F4', scope: '应用内', web: '仅桌面端' },
+  { action: 'QuickOpen', label: '快速打开（IDE 模式）', keys: 'Ctrl+P', scope: '应用内', web: '仅 IDE 模式' },
+  { action: 'Find', label: '查找（IDE 模式）', keys: 'Ctrl+F', scope: '应用内', web: '仅 IDE 模式' },
+  { action: 'Back', label: '后退', keys: 'Alt+←', scope: '应用内', web: '可用' },
+  { action: 'Forward', label: '前进', keys: 'Alt+→', scope: '应用内', web: '可用' },
+  { action: 'ScreenshotRegion', label: '区域截图', keys: 'PrintScreen', scope: '系统全局', web: '仅桌面端' },
+  { action: 'ScreenshotFull', label: '全屏截图', keys: 'Ctrl+PrintScreen', scope: '系统全局', web: '仅桌面端' },
+  { action: 'ScreenshotWindow', label: '活动窗口截图', keys: 'Ctrl+Shift+PrintScreen', scope: '系统全局', web: '仅桌面端' },
+  { action: 'ScreenshotLastRegion', label: '上次区域截图', keys: 'Ctrl+Alt+PrintScreen', scope: '系统全局', web: '仅桌面端' },
+  { action: 'ScreenshotPin', label: '贴图截图', keys: 'Shift+PrintScreen', scope: '系统全局', web: '仅桌面端' },
+  { action: 'ScreenshotScroll', label: '滚动长截图', keys: 'Ctrl+Alt+Shift+PrintScreen', scope: '系统全局', web: '仅桌面端' },
+  { action: 'RecordToggle', label: '开始 / 结束录屏', keys: 'Ctrl+Alt+R', scope: '系统全局', web: '仅桌面端' }
+];
+
 function isTyping(element) {
   return element && (element.tagName === 'INPUT' || element.tagName === 'TEXTAREA');
+}
+
+// 按桌面 NextTab / PreviousTab 语义在标签间循环切换
+function switchTabBy(step) {
+  if (!state || !state.tabs || state.tabs.length < 2) { return; }
+  const count = state.tabs.length;
+  const found = state.tabs.findIndex(function (tab) { return tab.selected; });
+  const current = found < 0 ? 0 : found;
+  selectTab(((current + step) % count + count) % count);
 }
 
 function moveFocus(step, extend) {
@@ -29,6 +68,8 @@ function handleKeyDown(event) {
     if (previewPane && !previewPane.classList.contains('hidden')) { closePreview(); return; }
     const taskPanel = document.getElementById('taskPanel');
     if (taskPanel && !taskPanel.classList.contains('hidden')) { toggleTaskPanel(false); return; }
+    const settingsPanel = document.getElementById('settings');
+    if (settingsPanel && !settingsPanel.classList.contains('hidden')) { closeSettings(); return; }
     // IDE 模式浮层优先关闭：确认弹窗 → 快速打开 → 查找面板
     if (!document.getElementById('idePrompt').classList.contains('hidden')) { idePromptChoice('cancel'); return; }
     if (state && state.isIdeMode) {
@@ -61,6 +102,8 @@ function handleKeyDown(event) {
   }
   if (isTyping(target)) { return; }
 
+  // 标签切换（桌面 NextTab / PreviousTab 默认键）
+  if (ctrl && event.key === 'Tab') { event.preventDefault(); switchTabBy(event.shiftKey ? -1 : 1); return; }
   if (ctrl && event.key.toLowerCase() === 't') { event.preventDefault(); newTab(); return; }
   if (ctrl && event.key.toLowerCase() === 'w') {
     event.preventDefault();
@@ -79,6 +122,12 @@ function handleKeyDown(event) {
   if (event.altKey && event.key === 'ArrowRight') { event.preventDefault(); clickBtn('btnFwd', 'forward'); return; }
   if (event.key === 'F5') { event.preventDefault(); clickBtn(null, 'refresh'); return; }
   if (event.key === 'Delete') { event.preventDefault(); deleteChecked(); return; }
+  if (event.key === 'F2' && currentTab && currentTab.tabType === 'file' && focusIndex >= 0) {
+    event.preventDefault();
+    const renameRow = currentRows[focusIndex];
+    if (renameRow) { renameEntry(renameRow.fullPath); }
+    return;
+  }
 
   if (currentTab && (currentTab.tabType !== 'file' && currentTab.tabType !== 'search')) { return; }
   if (event.key === 'ArrowDown') { event.preventDefault(); moveFocus(1, event.shiftKey); }

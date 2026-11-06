@@ -23,6 +23,7 @@
        使用固定 LogicalName，运行时按 web.* 名称读取，不依赖工程根命名空间。 -->
   <ItemGroup>
     <EmbeddedResource Include="Assets\web\index.html" LogicalName="web.index.html" />
+    <EmbeddedResource Include="Assets\web\tokens.css" LogicalName="web.tokens.css" />
     <EmbeddedResource Include="Assets\web\app.css" LogicalName="web.app.css" />
     <EmbeddedResource Include="Assets\web\core.js" LogicalName="web.core.js" />
     <EmbeddedResource Include="Assets\web\views.js" LogicalName="web.views.js" />

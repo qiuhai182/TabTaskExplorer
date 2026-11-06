@@ -1,11 +1,11 @@
 ﻿# 采集链路优化进度（P0 截图相关）
 
-状态：待构建
-卡点：剪贴板双格式、默认不复制、主窗口避让、失败气泡、完成后激活等改动未编译；滚动长截图与 WGC 主路径未开始。
-下一步：构建后集中做一次桌面验证（剪贴板粘贴、主窗口避让、失败气泡），再排期 WGC 与滚动长截图。
+状态：待实测
+卡点：1.0–1.10 + WGC 主路径已进 2026-11-06 15:07 发布包，后台采集验证通过；桌面交互项仍未实测。
+下一步：等用户空闲，按文末 11 项清单集中做一次桌面验证。
 
 > 更新规则：每完成一个子项就追加一节，只记录「做了什么 / 改了哪些文件 / 待构建项 / 下一步」。
-> 构建由用户双击 `D:\TabTaskExplorer\build.bat` 执行；本会话内 Trae Shell 后端不可用，无法自行编译。
+> 构建由用户双击 `D:\TabTaskExplorer\build.bat` 执行；本会话可用 `dotnet build` 做编译校验，但不代替发布包。
 
 ## 2026-11-04 子项 0：核对上次改动
 
@@ -13,7 +13,7 @@
   延迟等待、截图后、保存后、写剪贴板前四段均有取消轮询），无需补全。
 - 未触碰：`src/TabTaskExplorer.App/Views/FileListPanel.axaml.cs` 的右键菜单函数、`src/TabTaskExplorer.App/Services/FileDropPolicy.cs`。
 
-## 2026-11-04 子项 1：剪贴板 PNG + DIB 双格式（代码完成，待构建验证）
+## 2026-11-04 子项 1：剪贴板 PNG + DIB 双格式（已构建，待实测验证）
 
 ### 做了什么
 
@@ -86,7 +86,7 @@
   应用随后按设置「关闭最后一个窗口→最小化到托盘」退出窗口，未触发任何截图；已用 `taskkill` 结束残留进程，
   验证结束无进程残留。
 
-## 2026-11-04 子项 1.5：Web 截图接口（代码完成，待构建与浏览器实测）
+## 2026-11-04 子项 1.5：Web 截图接口（已构建，待浏览器实测）
 
 ### `GET /api/capture/state` 返回字段
 
@@ -127,7 +127,7 @@
 - 待补：构建通过后，在浏览器依次验证 `state` 初始值 → `action fullscreen` 后 `count+1` 且 `items[0].thumbnailUrl` 可加载 →
   `pinSave` 切换后 `state.pinSave` 变化且落盘到设置 → `delete` 后文件真实消失、`count-1`。
 
-## 2026-11-04 子项 1.6：截图不再默认复制到剪贴板（代码完成，待构建）
+## 2026-11-04 子项 1.6：截图不再默认复制到剪贴板（已构建，待实测）
 
 ### 默认值与迁移
 
@@ -167,7 +167,7 @@
 - 待构建后验证：启动应用不改设置直接截图 → 剪贴板应保持为空；点「复制最近一张」→ 剪贴板出现图片与文件；
   多选两条 → 资源管理器粘贴得到两个文件；网页端 `a=copy` 返回 `ok=true`。
 
-## 2026-11-04 子项 1.7：截图不抢焦点 / 主窗口避让（代码完成，待构建）
+## 2026-11-04 子项 1.7：截图不抢焦点 / 主窗口避让（已构建，待实测）
 
 ### 改动点
 
@@ -202,7 +202,7 @@
 - `CaptureEditorWindow.Open`：需用户显式打开「自动打开标注编辑器」开关（现默认关闭）才会激活编辑器窗口。
 - `ExecuteGlobalAction` 非截图动作分支、`App.axaml.cs` 单实例 FOCUS：均为用户/外部主动唤起。
 
-## 2026-11-04 子项 1.8：失败提示三档 + 编辑器默认关闭（代码完成，待构建）
+## 2026-11-04 子项 1.8：失败提示三档 + 编辑器默认关闭（已构建，待实测）
 
 | # | 改动 | 位置 |
 | --- | --- | --- |
@@ -220,7 +220,7 @@
   点击气泡不夺焦点、不激活主窗口；多显示器按鼠标所在屏的工作区定位；4 秒后 `Close()` 并释放实例，日志记「失败气泡已关闭」。
 - 平台接口 `IWindowHostService.ApplyNoActivateWindow` 已补齐：Windows 实现 Win32 样式，其余平台为空实现。
 
-## 2026-11-04 子项 1.9：按目标判定隐藏 + 完成后激活截图页（代码完成，待构建）
+## 2026-11-04 子项 1.9：按目标判定隐藏 + 完成后激活截图页（已构建，待实测）
 
 ### 目标判定逻辑（`PrepareMainWindowForCapture`）
 
@@ -250,4 +250,176 @@
 | 贴图窗口 | `ShowActivated=false` + `WS_EX_NOACTIVATE`（既有实现） |
 
 - **未新增任何全局抑制标志**；托盘点击、任务栏点击、热键打开面板、单实例 FOCUS、用户主动打开产物文件夹等路径保持原有激活行为。
+
+## 2026-11-06 构建覆盖核对（以产物与代码现状为准）
+
+- `output\TabTaskExplorer.exe` 最后写入时间 `2026-11-06 10:27:33`；同批源码时间戳 `10:27:10`（`build.bat` 第 0 步编码归一化先写文件、再发布），说明这次发布发生在本轮改动之后。
+- 在该 exe 中按 UTF-16 检索到以下新增字符串，确认 1.5 / 1.6 / 1.8 / 1.9 均已编进产物：
+  `失败气泡已关闭`、`主窗口避让判定`、`完成后不激活主窗口`、`截图剪贴板默认值迁移`、`网页端截图完成`、`截图完成后切到截图页`。
+- 运行时日志 `%APPDATA%\TabTaskExplorer\logs\ui-2026-11-06.log` 显示 10:26:39 启动的是 `src\...\bin\Debug` 的调试版，且 6 秒后退出、没有任何截图动作；
+  因此**发布包本身还没有做过运行时验证**，之前所有「待构建」项已全部被构建覆盖，剩下的都是「待实测」。
+- 本轮新增的滚动长截图代码**尚未发布**：`dotnet build -c Debug` 已 0 错误，仍需再跑一次 `build.bat`。
+
+## 2026-11-06 子项 1.10：滚动长截图（手动滚动 + 自动拼接，代码完成，待构建）
+
+### 形态与取舍
+
+- 独立入口：截图面板新增「滚动长截图」按钮 + 动作标识 `ScreenshotScroll`（快捷键目录可配，默认 `Ctrl+Alt+Shift+PrintScreen`，仅给既有配置补一次）。
+- **手动滚动模式**：选区后由用户自己在目标程序里滚轮滚动，工具只按 400ms 间隔采集同一区域，不向目标窗口发送任何滚轮消息
+  （遵守「不要驱动桌面窗口做自动化」的约束）。停止滚动约 3 帧（约 1.2 秒）后自动完成。
+- 取消沿用同一个入口：`ICaptureCancelInput` 轮询右键 / Esc，取消后不保存产物、不写剪贴板。
+- 结果按普通截图规则保存进产物历史（PNG），不自动写剪贴板；完成后按 1.9 的规则激活主窗口并切到截图页。
+
+### 拼接算法（`ScrollStitcher`）
+
+- 长图初始为首帧；之后每帧：
+  1. 取长图底部一段 180 行作为「探针带」（避开最底部 8 行，防止固定底栏把探针带钉死）；
+  2. 用逐行 64 列亮度签名在长图中自下而上搜索探针带在新帧中的位置 `matchedY`；
+  3. 归一化平均像素差 ≤ `0.04` 视为匹配；新增起点 = `matchedY + (长图当前高度 - 探针带顶部)`，只追加该行以下的内容；
+  4. 因为只追加探针带下方内容，**固定页眉不会重复出现**；探针带匹配到底部但无新增时，改用更高的备用探针带重试。
+- 保护：最大高度 16000 像素、最大 90 帧（约 36 秒）；超过后按已有内容完成。
+- 已知限制：选区内若有**固定底栏 / 悬浮工具条**，追加时会把该条带一起拼进去，可能出现重复条带；建议选区避开。横向滚动未支持。
+
+### 涉及文件
+
+| 文件 | 改动 |
+| --- | --- |
+| `Kernel/Capture/IScrollCaptureService.cs`（新） | 参数 / 进度 / 结果契约 + 空实现 |
+| `Platform.Windows/ScrollStitcher.cs`（新） | 探针带匹配、追加、PNG 编码 |
+| `Platform.Windows/WindowsScrollCaptureService.cs`（新） | 复用 `IScreenCaptureService` 逐帧采集 + 循环 / 取消 / 结束判定 |
+| `App/CompositionRoot.cs` | Windows 注册真实实现，其余平台注册空实现 |
+| `App/Services/Capture/CaptureCoordinator.cs` | 注入服务；新增 `CaptureScrollRegionAsync`、`IsScrollCaptureAvailable`、热键分支 |
+| `App/ViewModels/CaptureTabViewModel.cs` | `CanCaptureScroll`、`CaptureScrollRegionAsync` |
+| `App/Views/CapturePanel.axaml(.cs)` | 「滚动长截图」按钮与点击日志 |
+| `App/Services/HotkeySetting.cs`、`AppSettingsStore.cs`、`ShortcutActionCatalog.cs`、`MainWindowViewModel.cs` | 默认快捷键 + 一次性补入 + 动作目录 + 快捷键分发 |
+
+### 日志字段（便于实测核对）
+
+- 开始：`开始滚动长截图：延迟秒数=… 模式=手动滚动（不发送滚轮消息） 取消方式=右键或 Esc 结束方式=停止滚动后自动拼接`
+- 参数：`区域=… 采集间隔毫秒=400 最大帧数=90 最大高度=16000 最小重叠行数=40 匹配容差=0.04 结束判定=连续3帧无新增内容`
+- 每帧：`滚动长截图进度：滚动长截图：第 N 帧 已拼接高度=… 本帧新增=… …`
+- 保存：`滚动长截图已保存：路径=… 图像宽度=… 图像高度=… 帧数=… 字节数=… 结束原因=… 自动复制到剪贴板=否`
+- 取消：`滚动长截图已取消：用户右键取消/用户按 Esc 取消 已采集帧数=… 结果=未保存产物`
+
+## 2026-11-06 非交互验证记录
+
+| 项目 | 方式 | 结果 |
+| --- | --- | --- |
+| 整包编译 | `dotnet build d:\TabTaskExplorer\TabTaskExplorer.sln -c Debug` | 0 错误（190 个既有 CA1416 警告） |
+| 拼接算法离线测试 | 临时控制台工程反射调用 `ScrollStitcher`，合成 320×2400 长图、700 高帧、步进 200/100 像素，含一帧重复 | 长图 320×2400，逐像素与源图完全一致；重复帧判定「已匹配但没有新增内容」 |
+| 测试中发现的缺陷 | 首版探针带避让 8 行导致追加起点少算 8 行，整图出现 8 行重复 | 已改为按「长图当前底部」换算追加起点，复测像素一致 |
+
+- 测试工程只存在于系统临时目录，未写入仓库。
+
+## 2026-11-06 发布与后台验证（滚动长截图已进发布包）
+
+- `stop.bat`：返回「TabTaskExplorer 未在运行」（旧实例 `TabXExplorer64` pid 23248 不是本程序、也未占用 `output`，未做任何处理）。
+- `build.bat`：退出码 0，`output\TabTaskExplorer.exe` 于 **14:53:40** 重新发布（361,789,552 字节）。
+- 发布包字符串核对（UTF-16 检索）：`开始滚动长截图`、`滚动长截图已保存`、`追加新增内容`、`ScreenshotScroll`、
+  `滚动长截图（选区后手动滚动并拼接）` 全部存在 → 本轮滚动长截图（含追加起点修正）已在包内。
+- 启动冒烟（最小化启动，不抢前台）：进程正常创建、主窗口创建完成、Web 服务监听 15919、UI 看门狗启动；
+  全局热键注册 **7/7 成功**，其中包含 `ScreenshotScroll`（Ctrl+Alt+Shift+PrintScreen）。
+- `GET /api/capture/state` → 200：`copyToClipboard=false`、`pinSave=true`、`items=14`、
+  `format=png`、模板 `截图_yyyyMMdd_HHmmss.png`、缩略图地址 `/api/thumb?path=…`。
+- `GET /api/thumb?path=…` → 200，`Content-Type=image/png`，3193 字节。
+- 启动至结束期间日志无异常/未处理异常；结束后 `stop.bat` 正常停止。
+- 说明：首次从工具终端启动的实例在终端命令结束时被连带结束（无优雅退出日志），改用「后台保持宿主进程」的方式复测后正常。
+
+## 2026-11-06 待用户空闲的桌面验证清单（一次跑完）
+
+| # | 验证项 | 前置条件 | 预期观察点 |
+| --- | --- | --- | --- |
+| 1 | 截图不自动写剪贴板 | 默认设置（`CaptureCopyToClipboard=false`） | 日志「截图未自动写剪贴板」；粘贴到画图无内容 |
+| 2 | 显式复制四格式 | 产物历史选中一张 →「复制选中到剪贴板」 | 日志写入成功；`Dump-Clipboard.ps1` 显示 `PNG`/`CF_DIBV5`/`CF_DIB`/`CF_HDROP`；资源管理器/微信/画图均可粘贴 |
+| 3 | 失败气泡不抢焦点 | 设置「失败提示=托盘气泡」；制造一次失败截图（产物目录改为不可写路径） | 鼠标所在屏右下角出现 4 秒气泡；当前前台窗口不变；任务栏/Alt+Tab 无新条目；日志「失败气泡已关闭」 |
+| 4 | 截图不抢焦点 + 完成后激活 | 默认设置；目标程序放前台 | 触发瞬间目标程序不被遮挡；完成后主窗口激活并停在「截图与录屏」页；日志含 `主窗口避让判定` 与 `完成后激活主窗口并切到截图与录屏页` |
+| 5 | 本程序窗口可被截 | 截图目标选「活动窗口」且前台是本程序 | 不隐藏、正常截到自身；日志 `本程序窗口目标=是 处理=保持` |
+| 6 | 滚动长截图（纵向） | 打开一个可滚动的长网页/文档；点「滚动长截图」→ 框选内容区 → 滚轮向下滚 3~5 屏 → 停手 | 约 1.2 秒后自动完成并保存；产物高度明显大于选区；固定页眉只出现一次、接缝无重复/错位 |
+| 7 | 滚动长截图取消 | 同 6，采集过程中按 Esc 或右键 | 立即停止；不产生新产物；日志「滚动长截图已取消…结果=未保存产物」 |
+| 8 | WGC 主路径生效 | 「截图采集后端=自动（推荐）」 | 每次截图日志含 `采集后端=WGC`；主屏截图与 GDI 对照画面一致、无黑屏/偏色 |
+| 9 | 被遮挡窗口可截 | 用记事本/浏览器窗口，先用别的窗口遮住一半，再对它能成为「活动窗口」的状态截图（或用窗口选择入口，若已启用） | 遮住的部分在产物中仍是完整内容；日志 `采集后端=WGC` |
+| 10 | 强制 GDI 对照 | 设置改「强制 GDI」后重复一次全屏截图 | 日志 `采集后端=GDI（已强制 GDI）`；画面与自动模式基本一致 |
+| 11 | WGC 不可用回退 | 若系统/驱动导致 WGC 失败（或人为在特殊窗口如任务栏、隐藏窗口上触发） | 截图仍成功；日志 `采集后端：WGC 采集失败（…），本帧回退 GDI`，界面不报错 |
+
+## 2026-11-06 子项 2：WGC 主路径 + GDI 回退 + 强制切换（已编译，待发布实测）
+
+### 做了什么
+
+| # | 内容 | 位置 |
+| --- | --- | --- |
+| 1 | 内核增加采集后端偏好 `CaptureBackend`（Auto / WindowsGraphicsCapture / Gdi），放入 `ScreenCaptureRequest` 与 `ScrollCaptureOptions` | `Kernel/Capture/IScreenCaptureService.cs`、`IScrollCaptureService.cs` |
+| 2 | 能力位扩充：`WindowPicker`、`HdrAware`、`OccludedWindow`、`BackendName`；结果增加 `BackendName`（实际后端 + 回退原因） | 同上 |
+| 3 | 新增 WGC 主路径实现：显示器项 / 窗口项 → 帧池 → 会话 → 纹理 → 暂存纹理读回 → 裁剪 → PNG | `Platform.Windows/WindowsGraphicsCaptureService.cs`（新） |
+| 4 | 失败分级回退：强制 GDI 直接走 GDI；自动/强制 WGC 时先查 `GraphicsCaptureSession.IsSupported`，再逐帧尝试 WGC，任一环节失败回退 GDI 并写明原因 | 同上 |
+| 5 | 组合根改为注册 WGC 主路径，并把回退原因接到界面日志；滚动长截图共享同一后端设置 | `App/CompositionRoot.cs`、`App/Services/Capture/CaptureCoordinator.cs` |
+| 6 | 设置项「截图采集后端：自动 / 强制 WGC / 强制 GDI」，截图页与设置中心各一个下拉，改动即时落盘 | `AppSettingsStore.cs`、`CapturePanel.axaml(.cs)`、`SettingsWindow.axaml` |
+
+### 互操作依据（不凭记忆写 IID / vtable）
+
+- 接口 IID 与顺序来自本机 Windows SDK 10.0.26100.0：
+  `Windows.Graphics.Capture.Interop.h`（`IGraphicsCaptureItemInterop` = `3628E81B-…`，`CreateForWindow` 槽 3、`CreateForMonitor` 槽 4），
+  `Windows.Foundation.UniversalApiContract.winmd` 用 `winmdidl` 导出的 IDL（`IDirect3D11CaptureFramePool`、`IGraphicsCaptureSession`、
+  `IDirect3D11CaptureFrame`、`IGraphicsCaptureSession2/3`、`IDirect3D11CaptureFramePoolStatics/2`、`IGraphicsCaptureSessionStatics`），
+  `d3d11.h`（`ID3D11Device.CreateTexture2D` 槽 5、`ID3D11DeviceContext.Map/Unmap/CopyResource` 槽 14/15/47）与 `dxgi.h`（`IDXGIDevice`）。
+- 所有 WinRT 接口继承 `IInspectable`，方法从 vtable 槽 6 开始；原生 COM 接口从槽 3 开始。
+- 工程 TFM 仍为 `net10.0`（无 Windows 目标、无 WinRT 投影），未改 TFM，全部用手写 COM 互操作。
+
+### 后端判定与日志
+
+- `Auto`：`GraphicsCaptureSession.IsSupported` 为真才走 WGC；区域/全屏取「选区中心所在显示器」的显示器项，按物理像素偏移裁剪。
+- 以下情况主动回退 GDI（日志写明原因）：非 Windows、系统低于 1903、WGC 不支持、选区跨显示器、全屏跨显示器、
+  活动窗口最小化或没有活动窗口、取不到首帧（1.5 秒超时）、`CreateForWindow` 返回失败（任务栏/隐藏窗口等系统窗口）。
+- 日志：`采集后端：WGC 采集失败（…），本帧回退 GDI`、`截图成功：… 采集后端=WGC/GDI（原因）`。
+- 光标：WGC 用会话的 `IsCursorCaptureEnabled`，GDI 用 `DrawIconEx`，行为一致；同时关闭 WGC 黄色采集边框。
+
+### 本次后台验证（未抢前台、未驱动桌面窗口）
+
+| 项目 | 方式 | 结果 |
+| --- | --- | --- |
+| 整包编译 | `dotnet build TabTaskExplorer.sln -c Debug` | 0 错误 |
+| WGC 区域采集 | 临时控制台（仓库外）调 `WindowsGraphicsCaptureService` 抓 320×200 | 成功，`采集后端=WGC`，24486 字节 |
+| 与 GDI 像素一致性 | 同区域再走强制 GDI，逐像素抽样 16000 点 | 平均通道差 **0.00**，最大差 4（渲染时序），说明裁剪偏移、通道顺序、上下方向均正确 |
+| WGC 全屏 | 主屏采集 | 成功，1920×1080，`采集后端=WGC` |
+| WGC 窗口项 | 前台为普通应用窗口 | 成功，1920×1040，画面非黑；同一调用对任务栏/`Progman`/隐藏控制台窗口返回 `E_INVALIDARG`（系统窗口不可采集），已验证会回退 GDI 并成功出图 |
+| 强制 GDI | `Backend=Gdi` | 成功，`采集后端=GDI（已强制 GDI）` |
+
+- 说明：临时验证工程位于系统临时目录，未写入仓库；全程未激活任何窗口、未弹遮罩。
+
+### 已知边界
+
+1. 全屏/区域跨多个显示器时 WGC 单次只能采集一个显示器，自动回退 GDI（拼接多显示器采集留待后续）。
+2. 窗口项暂未做独立「窗口选择器」入口，`WindowPicker` 能力位仍为 false；活动窗口截图已能利用 WGC 截取被遮挡内容。
+3. HDR 未做显式色调映射：WGC 输出 `B8G8R8A8`，颜色跟随系统合成结果；`HdrAware=true` 仅表示链路走合成器而非 GDI 桌面 DC。
+4. WGC 首帧超时 1.5 秒；极端卡顿场景会回退 GDI（GDI 结果为当前可见像素）。
+
+### 涉及文件
+
+| 文件 | 改动 |
+| --- | --- |
+| `Kernel/Capture/IScreenCaptureService.cs` | `CaptureBackend` 枚举、请求后端字段、能力位、结果后端名 |
+| `Kernel/Capture/IScrollCaptureService.cs` | `ScrollCaptureOptions.Backend` |
+| `Platform.Windows/WindowsGraphicsCaptureService.cs`（新） | WGC + D3D11 读回 + 裁剪编码 + 回退策略 |
+| `Platform.Windows/WindowsScreenCaptureService.cs` | 成功结果标注 `BackendName="GDI"` |
+| `Platform.Windows/WindowsScrollCaptureService.cs` | 透传后端设置 |
+| `App/CompositionRoot.cs` | 注册 WGC 主路径并接日志 |
+| `App/Services/Capture/CaptureCoordinator.cs` | 6 处请求写入后端设置；`ResolveCaptureBackend`；成功日志追加实际后端 |
+| `App/Services/AppSettingsStore.cs` | `CaptureBackend` + `CaptureBackendIndex` |
+| `App/Views/CapturePanel.axaml(.cs)`、`SettingsWindow.axaml` | 后端下拉与即时保存 |
+
+### 发布与后台冒烟（2026-11-06 15:07）
+
+- `stop.bat`：返回「TabTaskExplorer 未在运行」（无实例占用 `output`）。
+- `build.bat`：退出码 0，`output\TabTaskExplorer.exe` 于 **15:07:33** 重新发布（361,810,032 字节）。
+- 发布包字符串核对：`WindowsGraphicsCaptureService`、`RoGetActivationFactory` 命中（UTF-8）；
+  `截图采集后端` 命中（XAML 资源）→ 本轮 WGC 主路径与后端下拉已在包内。
+- 最小化启动冒烟（未点击、未键入）：进程 42820 正常启动，`GET /api/capture/state` → 200（5969 字节）；
+  日志 `ui-2026-11-06.log` 15:09:44 起记录完整启动（.NET 10.0.12 / Windows 10.0.19045），
+  主窗口创建、UI 看门狗、网页端服务正常，**无异常/未处理异常**；随后进程随启动它的终端会话结束（无残留）。
+- 说明：CompositionRoot 的 WGC 服务工厂在启动阶段即被 `CaptureCoordinator` 解析，冒烟已覆盖注册与构造路径。
+
+### 下一步
+
+1. 等用户空闲，按文末 11 项清单一次跑完桌面验证（8–11 为 WGC 项）。
+2. 后续可选：窗口选择器（`WindowPicker` 能力位 + 缩略图网格）、多显示器 WGC 拼接、HDR 色调映射说明。
+
 

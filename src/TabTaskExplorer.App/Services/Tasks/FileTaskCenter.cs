@@ -447,9 +447,9 @@ internal sealed class FileTaskEntry
             this.ConflictIsDirectory = isDirectory;
             this.Message = isDirectory
                 ? "目标已存在同名文件夹：" + this.ConflictName
-                    + "。请选择合并 / 替换 / 逐项处理 / 改名共存（替换=清空目标后写入源内容，删除走回收站；不会自动跳过）"
+                    + "。请选择合并 / 替换（删除走回收站）/ 逐项处理 / 改名共存，不会自动跳过"
                 : "目标已存在同名文件：" + this.ConflictName
-                    + "。请选择替换或改名共存（不会自动跳过，可取消任务）";
+                    + "。请选择替换（删除走回收站）或改名共存，不会自动跳过";
             source = new TaskCompletionSource<FileConflictAction>(TaskCreationOptions.RunContinuationsAsynchronously);
             this.conflictSource = source;
             UiLogger.Log("任务中心", "冲突判定：路径=" + path + " 类型=" + (isDirectory ? "文件夹" : "文件")

@@ -773,3 +773,150 @@ function renderStatus() {
   }
 }
 
+
+// ======== 设置面板（分组与桌面 SettingsWindow 一致；未接分组保留并置灰说明） ========
+
+const SETTINGS_GROUPS = [
+  { id: 'basic', title: '基本设置' },
+  { id: 'shortcuts', title: '快捷操作' },
+  { id: 'files', title: '文件/文件夹', desktopOnly: '排序、列配置与只读目录等桌面选项' },
+  { id: 'editor', title: '编辑器', desktopOnly: '语法高亮、字体与保存行为' },
+  { id: 'openwith', title: '打开方式', desktopOnly: '按扩展名指定默认程序' },
+  { id: 'media', title: '媒体', desktopOnly: '播放引擎与缩略图生成' },
+  { id: 'web', title: '网页端' },
+  { id: 'shellmenu', title: '右键菜单', desktopOnly: '注入 Windows 资源管理器右键菜单' },
+  { id: 'startup', title: '启动项管理', desktopOnly: '启用 / 禁用开机启动项' },
+  { id: 'capture', title: '截图与录屏', desktopOnly: '截图、录屏与产物历史' },
+  { id: 'about', title: '关于' }
+];
+
+let settingsActive = 'basic';
+
+// 桌面专属入口：控件保留、点击给出可读说明，避免用户误以为是缺陷
+function desktopOnly(name) {
+  flash('「' + name + '」该功能仅桌面端可用');
+}
+
+function openSettings(group) {
+  const modal = document.getElementById('settings');
+  if (!modal) { return; }
+  settingsActive = group || 'basic';
+  renderSettingsNav();
+  renderSettingsPane();
+  modal.classList.remove('hidden');
+}
+
+function closeSettings() {
+  const modal = document.getElementById('settings');
+  if (modal) { modal.classList.add('hidden'); }
+}
+
+function renderSettingsNav() {
+  const nav = document.getElementById('settingsNav');
+  if (!nav) { return; }
+  let html = '';
+  for (const group of SETTINGS_GROUPS) {
+    const selected = group.id === settingsActive ? ' selected' : '';
+    html += '<div class="navitem' + selected + '" onclick="switchSettingsGroup(\'' + group.id + '\')">'
+      + '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + group.title + '</span>'
+      + (group.desktopOnly ? '<span style="color:var(--tte-text-tertiary);font-size:10px">仅桌面</span>' : '')
+      + '</div>';
+  }
+  nav.innerHTML = html;
+}
+
+function switchSettingsGroup(id) {
+  settingsActive = id;
+  renderSettingsNav();
+  renderSettingsPane();
+}
+
+function renderSettingsPane() {
+  const pane = document.getElementById('settingsPane');
+  if (!pane) { return; }
+  const group = SETTINGS_GROUPS.find(item => item.id === settingsActive) || SETTINGS_GROUPS[0];
+  if (group.desktopOnly) {
+    pane.innerHTML = '<div style="display:flex;flex-direction:column;gap:10px">'
+      + '<div style="font-size:13px;font-weight:600">' + group.title + '</div>'
+      + '<div class="hint">该分组仅桌面端可用：' + group.desktopOnly + '。网页端保留入口与位置，避免界面缺块。</div>'
+      + '<div><span class="btn disabled" title="该功能仅桌面端可用">在桌面端打开设置</span></div>'
+      + '</div>';
+    return;
+  }
+  if (settingsActive === 'shortcuts') {
+    pane.innerHTML = renderShortcutSettings();
+    return;
+  }
+  if (settingsActive === 'web') {
+    pane.innerHTML = '<div style="display:flex;flex-direction:column;gap:10px">'
+      + '<div style="font-size:13px;font-weight:600">网页端</div>'
+      + '<div class="hint">端口、监听范围、权限方案、账号密码与允许路径只在桌面端「设置 → 网页端」中修改；网页端只能查看当前地址。</div>'
+      + '<div>当前地址：<code>' + location.origin + '</code></div>'
+      + '<div><span class="btn disabled" title="请在桌面端修改网页端监听与权限">修改监听与权限</span></div>'
+      + '</div>';
+    return;
+  }
+  if (settingsActive === 'about') {
+    pane.innerHTML = '<div style="display:flex;flex-direction:column;gap:10px">'
+      + '<div style="font-size:13px;font-weight:600">关于</div>'
+      + '<div class="hint">日志与诊断：桌面端在「设置 → 关于」生成诊断包；网页端日志显示在底部「诊断信息」。</div>'
+      + '<div><span class="btn disabled" title="该功能仅桌面端可用">生成诊断包</span>'
+      + ' <span class="btn" onclick="closeSettings();scrollDiagnostics()">查看网页诊断信息</span></div>'
+      + '</div>';
+    return;
+  }
+  // 基本设置：接入网页端已有能力（与桌面共用同一份配置）
+  pane.innerHTML = '<div style="display:flex;flex-direction:column;gap:12px">'
+    + '<div style="font-size:13px;font-weight:600">基本设置</div>'
+    + '<div class="hint">这些选项与桌面端共用同一份配置，修改后两端同时生效。</div>'
+    + '<div>主题：<span class="btn" onclick="toggleTheme()">切换深浅色</span></div>'
+    + '<label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="setExtensions" onchange="toggleExtensions()">显示扩展名</label>'
+    + '<label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="setHidden" onchange="clickBtn(\'btnHidden\',\'togglehidden\')">显示隐藏条目</label>'
+    + '<label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="setCompact" onchange="toggleCompactMode()">紧凑模式</label>'
+    + '</div>';
+  const ext = document.getElementById('setExtensions');
+  const hidden = document.getElementById('setHidden');
+  const compact = document.getElementById('setCompact');
+  if (ext) { ext.checked = !!(state && state.showFileExtensions); }
+  if (hidden) { hidden.checked = !!(state && state.showHiddenFiles); }
+  if (compact) { compact.checked = !!(state && state.fileCompactMode); }
+}
+
+function renderShortcutSettings() {
+  let html = '<div style="display:flex;flex-direction:column;gap:10px">'
+    + '<div style="font-size:13px;font-weight:600">快捷操作</div>'
+    + '<div class="hint">与桌面端共用同一套动作与默认按键；网页端未实现的条目保留并标注，不静默消失。</div>'
+    + '<div style="display:flex;gap:6px">'
+    + '<span class="btn disabled" title="该功能仅桌面端可用">添加</span>'
+    + '<span class="btn disabled" title="该功能仅桌面端可用">清空</span>'
+    + '<span class="btn disabled" title="该功能仅桌面端可用">恢复默认</span>'
+    + '<span class="btn disabled" title="该功能仅桌面端可用">全局开关</span>'
+    + '</div>'
+    + '<table style="width:100%;border-collapse:collapse;font-size:12px">'
+    + '<thead><tr>'
+    + '<th style="text-align:left;padding:4px 6px;border-bottom:1px solid var(--tte-border)">动作</th>'
+    + '<th style="text-align:left;padding:4px 6px;border-bottom:1px solid var(--tte-border)">按键</th>'
+    + '<th style="text-align:left;padding:4px 6px;border-bottom:1px solid var(--tte-border)">作用域</th>'
+    + '<th style="text-align:left;padding:4px 6px;border-bottom:1px solid var(--tte-border)">网页端</th>'
+    + '</tr></thead><tbody>';
+  for (const item of WEB_SHORTCUTS) {
+    const dim = item.web.indexOf('仅') === 0 ? ' style="opacity:.55"' : '';
+    html += '<tr' + dim + '>'
+      + '<td style="padding:4px 6px;border-bottom:1px solid var(--tte-border)">' + item.label + '</td>'
+      + '<td style="padding:4px 6px;border-bottom:1px solid var(--tte-border)"><code>' + item.keys + '</code></td>'
+      + '<td style="padding:4px 6px;border-bottom:1px solid var(--tte-border)">' + item.scope + '</td>'
+      + '<td style="padding:4px 6px;border-bottom:1px solid var(--tte-border)">' + item.web + '</td>'
+      + '</tr>';
+  }
+  html += '</tbody></table></div>';
+  return html;
+}
+
+// 底部诊断信息在设置面板关闭后滚动到可见位置
+function scrollDiagnostics() {
+  const box = document.querySelector('.diagBox');
+  if (box) {
+    box.setAttribute('open', 'open');
+    box.scrollIntoView({ block: 'nearest' });
+  }
+}

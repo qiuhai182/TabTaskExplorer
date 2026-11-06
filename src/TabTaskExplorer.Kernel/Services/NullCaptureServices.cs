@@ -72,4 +72,14 @@ public class NullGlobalHotkeyService : IGlobalHotkeyService
     public void UnregisterAll()
     {
     }
+
+    /// <inheritdoc />
+    public void DisableAll()
+    {
+    }
+
+    /// <inheritdoc />
+    public void EnableAll()
+    {
+    }
 }

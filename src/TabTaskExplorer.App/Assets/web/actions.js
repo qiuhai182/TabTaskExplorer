@@ -460,8 +460,8 @@ function renderTasks() {
         + '<div class="taskConflictPath">目标已存在' + (task.conflictIsDirectory ? '同名文件夹' : '同名文件')
         + '：' + esc(task.conflictName || task.conflictPath) + '</div>'
         + (task.conflictIsDirectory
-          ? '<div class="hint">替换=清空目标后写入源内容（删除走回收站）；逐项处理会逐个询问文件夹内同名项。</div>'
-          : '<div class="hint">替换会删除目标文件（走回收站）后写入源文件；改名共存保留两边内容。</div>')
+          ? '<div class="hint">替换=清空目标后写入源内容（删除走回收站）；逐项处理会逐个询问文件夹内同名项；合并会保留两边内容；改名共存让两边都保留。</div>'
+          : '<div class="hint">替换会删除目标文件（走回收站）后写入源文件；改名共存让两边都保留。</div>')
         + '<label class="taskAll"><input type="checkbox"' + (taskApplyAll ? ' checked' : '')
         + ' onchange="taskApplyAll=this.checked">本批统一</label>'
         + '<div class="taskConflictBtns">' + conflictButtons + '</div></div>';
@@ -616,6 +616,50 @@ function showContextMenu(event, row, shiftKey) {
   positionRootContextMenu(ctx, event.clientX, event.clientY, false);
   focusFirstContextItem();
   loadSystemContextMenu(host, token, targetPaths, background);
+}
+
+// 侧边栏（此电脑 / 书签）条目右键：目标不是列表行，只提供「打开」与「粘贴到该文件夹」。
+function sidebarMenu(event, path, name) {
+  event.preventDefault();
+  event.stopPropagation();
+  if (!path) { flash('该条书签没有可用路径，无法作为粘贴目标'); return false; }
+  closeMenus();
+  // 粘贴前置条件在这里算好：runOwnContextAction 的 state 形参是菜单状态，读不到全局剪贴板字段
+  let pasteReason = '';
+  if (!currentTab || currentTab.tabType !== 'file') {
+    pasteReason = '当前标签不是文件列表，请先切到文件标签再粘贴到该文件夹';
+  } else if (!permissions.canCreateDelete) {
+    pasteReason = '该端口未放行新建或修改操作，无法粘贴';
+  } else if (!(state && state.clipboardHasFiles)) {
+    pasteReason = '剪贴板里没有可粘贴的文件或文件夹';
+  }
+  ctxMenuToken++;
+  ctxMenuState = {
+    row: null,
+    background: true,
+    tabType: currentTab ? currentTab.tabType : 'file',
+    targetPaths: [path],
+    folder: path,
+    shift: false,
+    token: ctxMenuToken,
+    focus: null,
+    sidebar: true,
+    pasteReason: pasteReason
+  };
+  ctx.innerHTML = '';
+  ctx.classList.remove('hidden');
+  const head = document.createElement('div');
+  head.className = 'ctxHead';
+  head.textContent = '目标文件夹：' + (name || path);
+  ctx.appendChild(head);
+  appendContextItems(ctx, [
+    { title: '打开', action: 'sidebaropen', enabled: true },
+    { sep: true },
+    { title: '粘贴到该文件夹', action: 'sidebarpaste', enabled: true }
+  ]);
+  positionRootContextMenu(ctx, event.clientX, event.clientY, false);
+  focusFirstContextItem();
+  return false;
 }
 
 let ctxMenuState = null;
@@ -951,6 +995,18 @@ function runOwnContextAction(action, arg, state) {
       if (isDisk) { doAction('diskpasteinto', row.fullPath); }
       else { doAction('pasteto', row.fullPath); }
     }
+    return;
+  }
+  if (action === 'sidebaropen') {
+    const target = paths[0] || state.folder;
+    if (target) { openPath(target); }
+    return;
+  }
+  if (action === 'sidebarpaste') {
+    const target = paths[0] || state.folder;
+    if (!target) { flash('该条目没有可用路径，无法作为粘贴目标'); return; }
+    if (state.pasteReason) { flash(state.pasteReason); return; }
+    doAction('pasteto', target);
     return;
   }
   if (action === 'pastebg') {

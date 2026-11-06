@@ -475,6 +475,11 @@ public partial class MainWindow : Window
     /// </summary>
     private HotkeySetting? FindLocalShortcut(MainWindowViewModel viewModel, KeyEventArgs e)
     {
+        if (viewModel.Settings.ShortcutsDisabled)
+        {
+            // 已一键停用全部快捷键：不再分派任何应用内快捷键，也不再触发全局钩子能力探测
+            return null;
+        }
         if (viewModel.Settings.Shortcuts == null)
         {
             return null;
@@ -2420,7 +2425,13 @@ public partial class MainWindow : Window
         }
         UiLogger.Log("程序行为", "打开设置窗口：初始分页序号=" + initialSectionIndex);
         SettingsWindow window = new SettingsWindow(viewModel.Settings, viewModel.SystemContextMenus,
-            viewModel.CaptureEnvironmentText, initialSectionIndex, viewModel.OpenStartupManagerTab);
+            viewModel.CaptureEnvironmentText, initialSectionIndex, viewModel.OpenStartupManagerTab,
+            () =>
+            {
+                // 设置窗口内「一键清空 / 恢复默认」需要立即生效：重新注册（或卸载）全局热键并立即落盘
+                viewModel.ReloadGlobalHotkeys();
+                viewModel.PersistSettings();
+            });
         await window.ShowDialog(this);
         UiLogger.Log("程序行为", "设置窗口已关闭，开始应用设置");
         App current = (App)App.Current!;

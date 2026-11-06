@@ -26,4 +26,13 @@ public interface IGlobalHotkeyService
 
     /// <summary>注销全部已注册的全局快捷键。</summary>
     void UnregisterAll();
+
+    /// <summary>
+    /// 完全停用全局快捷键：注销全部注册项，并卸载系统级键盘钩子（RegisterHotKey 对应 UnregisterHotKey，
+    /// WH_KEYBOARD_LL 对应 UnhookWindowsHookEx），保证进程内不残留任何按键拦截。
+    /// </summary>
+    void DisableAll();
+
+    /// <summary>重新启用全局快捷键：清理停用标记，后续注册时按需重新安装键盘钩子。</summary>
+    void EnableAll();
 }

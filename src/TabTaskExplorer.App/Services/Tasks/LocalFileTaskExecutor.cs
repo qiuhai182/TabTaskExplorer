@@ -99,9 +99,19 @@ public static class LocalFileTaskExecutor
             }
             catch (Exception error)
             {
-                entry.ReportFailure(source, error.Message);
+                entry.ReportFailure(source, DescribeError(error));
             }
         }
+    }
+
+    /// <summary>把系统异常转成可读中文原因：只读目录或权限不足时不要直接把英文 Win32 文本抛给用户。</summary>
+    private static string DescribeError(Exception error)
+    {
+        if (error is UnauthorizedAccessException || (error is IOException && (error.HResult & 0xFFFF) == 5))
+        {
+            return "拒绝访问：目标目录不可写（只读、被占用或权限不足）";
+        }
+        return error.Message;
     }
 
     /// <summary>顶层目标的处理决定：Path 为实际写入路径；MergeContents 表示目标已存在目录并选择合并。</summary>

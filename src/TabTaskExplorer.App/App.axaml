@@ -7,25 +7,15 @@
   <Application.Resources>
     <ResourceDictionary>
 
+      <!-- 界面语义色唯一来源：Themes/Tokens.axaml（由 design/tokens/ui-tokens.json 生成，网页端 tokens.css 同源） -->
+      <ResourceDictionary.MergedDictionaries>
+        <ResourceInclude Source="avares://TabTaskExplorer/Themes/Tokens.axaml"/>
+      </ResourceDictionary.MergedDictionaries>
+
       <!-- ======== 主题字典：Dark 默认（TabX 官方深色配色），Light 可切换 ======== -->
       <ResourceDictionary.ThemeDictionaries>
 
         <ResourceDictionary x:Key="Dark">
-          <SolidColorBrush x:Key="ChromeBrush" Color="#212121"/>
-          <SolidColorBrush x:Key="ContentBrush" Color="#191919"/>
-          <SolidColorBrush x:Key="SeparatorBrush" Color="#515151"/>
-          <SolidColorBrush x:Key="SubtleBorderBrush" Color="#323232"/>
-          <SolidColorBrush x:Key="TextPrimaryBrush" Color="#E8E8E8"/>
-          <SolidColorBrush x:Key="TextMutedBrush" Color="#808080"/>
-          <SolidColorBrush x:Key="AccentGlyphBrush" Color="#4CC2FF"/>
-          <SolidColorBrush x:Key="RowHoverBrush" Color="#2E2E2E"/>
-          <SolidColorBrush x:Key="RowSelectedBrush" Color="#37373D"/>
-          <SolidColorBrush x:Key="TabHoverBrush" Color="#2E2E2E"/>
-          <SolidColorBrush x:Key="TabActiveBrush" Color="#191919"/>
-          <SolidColorBrush x:Key="BookmarkBarBrush" Color="#3B3B3B"/>
-          <SolidColorBrush x:Key="AddressBarBorderBrush" Color="#525252"/>
-          <SolidColorBrush x:Key="ToolbarTextBrush" Color="#FFFFFF"/>
-
           <CroppedBitmap x:Key="BtnMinN" Source="avares://TabTaskExplorer/Assets/TabX-Dark/btn_min.png" SourceRect="0,0,40,34"/>
           <CroppedBitmap x:Key="BtnMinH" Source="avares://TabTaskExplorer/Assets/TabX-Dark/btn_min.png" SourceRect="40,0,40,34"/>
           <CroppedBitmap x:Key="BtnMinP" Source="avares://TabTaskExplorer/Assets/TabX-Dark/btn_min.png" SourceRect="80,0,40,34"/>
@@ -61,21 +51,6 @@
         </ResourceDictionary>
 
         <ResourceDictionary x:Key="Light">
-          <SolidColorBrush x:Key="ChromeBrush" Color="#F1F1F1"/>
-          <SolidColorBrush x:Key="ContentBrush" Color="#FFFFFF"/>
-          <SolidColorBrush x:Key="SeparatorBrush" Color="#EBEBEC"/>
-          <SolidColorBrush x:Key="SubtleBorderBrush" Color="#E9E9E9"/>
-          <SolidColorBrush x:Key="TextPrimaryBrush" Color="#1C1C1C"/>
-          <SolidColorBrush x:Key="TextMutedBrush" Color="#808080"/>
-          <SolidColorBrush x:Key="AccentGlyphBrush" Color="#4A8FD0"/>
-          <SolidColorBrush x:Key="RowHoverBrush" Color="#F5F7FA"/>
-          <SolidColorBrush x:Key="RowSelectedBrush" Color="#DCE9F5"/>
-          <SolidColorBrush x:Key="TabHoverBrush" Color="#E4E4E4"/>
-          <SolidColorBrush x:Key="TabActiveBrush" Color="#FFFFFF"/>
-          <SolidColorBrush x:Key="BookmarkBarBrush" Color="#FFFFFF"/>
-          <SolidColorBrush x:Key="AddressBarBorderBrush" Color="#DCDDDE"/>
-          <SolidColorBrush x:Key="ToolbarTextBrush" Color="#808080"/>
-
           <CroppedBitmap x:Key="BtnMinN" Source="avares://TabTaskExplorer/Assets/TabX/btn_min.png" SourceRect="0,0,40,34"/>
           <CroppedBitmap x:Key="BtnMinH" Source="avares://TabTaskExplorer/Assets/TabX/btn_min.png" SourceRect="40,0,40,34"/>
           <CroppedBitmap x:Key="BtnMinP" Source="avares://TabTaskExplorer/Assets/TabX/btn_min.png" SourceRect="80,0,40,34"/>

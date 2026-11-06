@@ -44,6 +44,45 @@ public static class RemoteFailureText
         return "连接 " + host + " 失败：" + message;
     }
 
+    /// <summary>
+    /// 把远程传输（上传/下载）失败信息翻成可读中文：传输阶段没有连接上下文，只按底层文本分层，
+    /// 桌面任务中心与网页任务中心共用，避免一边中文一边英文。
+    /// </summary>
+    public static string DescribeTransfer(string? message)
+    {
+        string text = message ?? string.Empty;
+        if (text.Length == 0)
+        {
+            return "未知错误";
+        }
+        if (text.IndexOf("No such file", StringComparison.OrdinalIgnoreCase) >= 0
+            || text.IndexOf("not found", StringComparison.OrdinalIgnoreCase) >= 0)
+        {
+            return "远端路径不存在或已被删除";
+        }
+        if (text.IndexOf("Permission denied", StringComparison.OrdinalIgnoreCase) >= 0
+            || text.IndexOf("Access denied", StringComparison.OrdinalIgnoreCase) >= 0)
+        {
+            return "远端拒绝访问（账号权限不足或目录只读）";
+        }
+        if (text.IndexOf("No space left", StringComparison.OrdinalIgnoreCase) >= 0
+            || text.IndexOf("quota", StringComparison.OrdinalIgnoreCase) >= 0)
+        {
+            return "远端磁盘空间不足";
+        }
+        if (text.IndexOf("timed out", StringComparison.OrdinalIgnoreCase) >= 0
+            || text.IndexOf("timeout", StringComparison.OrdinalIgnoreCase) >= 0)
+        {
+            return "网络超时：与远端的连接在传输中超时，请检查网络后重试";
+        }
+        if (text.IndexOf("closed", StringComparison.OrdinalIgnoreCase) >= 0
+            || text.IndexOf("Socket", StringComparison.OrdinalIgnoreCase) >= 0)
+        {
+            return "连接中断：与远端的会话已断开，请重新连接后重试";
+        }
+        return "传输失败：" + text;
+    }
+
     /// <summary>标注失败发生在哪一层：网络 / 主机密钥 / 认证 / SFTP / 其他。</summary>
     public static string Layer(Exception error)
     {

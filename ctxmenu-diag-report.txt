@@ -1,0 +1,1351 @@
+﻿### HKCU\Software\Classes
+HKCU    Software\Classes\*\shellex\ContextMenuHandlers => 8 项
+     FileSyncEx = {CB3D0F55-BC2C-4C1A-85ED-23ED75B5106B}
+    AABdzCtx = {5B69A6B4-393B-459C-8EBB-214237A9E7AC}
+    Open With kwpsshellext = {AF1D7D2F-6AE8-4BAA-ABFA-738201F4871C}
+    Open With qingshellext = {67F4D210-BFC2-4ADD-9A2A-C9B9E1F42C4F}
+    QingNseContextMenu = {AA147FFB-0B1F-4BB1-9B1E-8D062B35C146}
+    QuarkAI.ContextMenu = {99D4E39A-EA7F-453E-9488-58C56BBF7B98}
+    QuarkCloudDriveAI.ContextMenu = {D7D43EA6-BCE2-489C-9A70-9027A42E1EFD}
+    {A5AF131F-FAE4-48FD-95A2-D0CE5B91DEC2} = {A5AF131F-FAE4-48FD-95A2-D0CE5B91DEC2}
+HKCU    Software\Classes\AllFilesystemObjects\shellex\ContextMenuHandlers => <缺失>
+HKCU    Software\Classes\Directory\shellex\ContextMenuHandlers => 8 项
+     FileSyncEx = {CB3D0F55-BC2C-4C1A-85ED-23ED75B5106B}
+    AABdzCtx = {5B69A6B4-393B-459C-8EBB-214237A9E7AC}
+    Open With kwpsshellext = {AF1D7D2F-6AE8-4BAA-ABFA-738201F4871C}
+    Open With qingshellext = {67F4D210-BFC2-4ADD-9A2A-C9B9E1F42C4F}
+    QingNseContextMenu = {AA147FFB-0B1F-4BB1-9B1E-8D062B35C146}
+    qkdesktopshellext = {0D8B46EA-7D35-4921-B88C-7E2B1E2D80F0}
+    QuarkAI.ContextMenu = {99D4E39A-EA7F-453E-9488-58C56BBF7B98}
+    QuarkCloudDriveAI.ContextMenu = {D7D43EA6-BCE2-489C-9A70-9027A42E1EFD}
+HKCU    Software\Classes\Directory\Background\shellex\ContextMenuHandlers => 5 项
+     FileSyncEx = {CB3D0F55-BC2C-4C1A-85ED-23ED75B5106B}
+    AABdzCtx = {5B69A6B4-393B-459C-8EBB-214237A9E7AC}
+    Open With kwpsshellext = {AF1D7D2F-6AE8-4BAA-ABFA-738201F4871C}
+    Open With qingshellext = {67F4D210-BFC2-4ADD-9A2A-C9B9E1F42C4F}
+    QingNseContextMenu = {AA147FFB-0B1F-4BB1-9B1E-8D062B35C146}
+HKCU    Software\Classes\Folder\shellex\ContextMenuHandlers => <缺失>
+HKCU    Software\Classes\Drive\shellex\ContextMenuHandlers => 2 项
+    AABdzCtx = {5B69A6B4-393B-459C-8EBB-214237A9E7AC}
+    Open With kwpsshellext = {AF1D7D2F-6AE8-4BAA-ABFA-738201F4871C}
+HKCU    Software\Classes\SystemFileAssociations\.txt\shellex\ContextMenuHandlers => <缺失>
+HKCU    Software\Classes\*\shell => 3 项
+    FeiMaoPan = 通过 Feemoo 打开
+    Trae CN = 通过 TRAE 打开
+    VSCode = 通过 Code 打开
+HKCU    Software\Classes\Directory\shell => 7 项
+    open = 
+    OpenProjectInCodex = Open project in Codex
+    Trae CN = 通过 TRAE 打开
+    VSCode = 通过 Code 打开
+    WizTree = Wi&zTree
+    workbuddy-ai = 用 WorkBuddy AI 打开
+    ZCode.OpenInZCode = 在ZCode中打开
+HKCU    Software\Classes\Directory\Background\shell => 6 项
+    douyin = 打开抖音壁纸
+    Open Lapce here = 
+    Trae CN = 通过 TRAE 打开
+    VSCode = 通过 Code 打开
+    WizTree = Wi&zTree
+    workbuddy-ai = 用 WorkBuddy AI 打开
+HKCU    Software\Classes\Folder\shell => 1 项
+    WizTree = Wi&zTree
+
+### HKLM\SOFTWARE\Classes (64 位视图)
+HKLM64  SOFTWARE\Classes\*\shellex\ContextMenuHandlers => 18 项
+      NutstoreExt = {5D652B62-B702-496A-92BC-92C308251FEA-}
+    AABdzCtx = {5B69A6B4-393B-459C-8EBB-214237A9E7AC}
+    HRShell = {18A3E590-F219-4105-9079-93DAFA51B9D6}
+    HRShredShell = {9F012318-CAA5-402C-9BF6-28EB36F61496}
+    ModernSharing = {e2bf9676-5f8f-435c-97eb-11607a5bedf7-}
+    Open With = {09799AFB-AD67-11d1-ABCD-00C04FC30936}
+    Open With EncryptionMenu = {A470F8CF-A1E8-4f65-8335-227475AA5C46}
+    PcyybContextnMenu = {ADEA1FEC-5832-4B19-9B1D-C6EF361BD85D}
+    QuarkAI.ContextMenu = {99D4E39A-EA7F-453E-9488-58C56BBF7B98}
+    QuarkCloudDriveAI.ContextMenu = {D7D43EA6-BCE2-489C-9A70-9027A42E1EFD}
+    Sharing = {f81e9010-6ea4-11ce-a7ff-00aa003ca9f6}
+    TortoiseGit = {10A0FDD2-B0C0-4CD4-A7AE-E594CE3B91C8}
+    TortoiseSVN = {30351349-7B7D-4FCC-81B4-1E394CA267EB}
+    WinMerge = {4E716236-AA30-4C65-B225-D68BBA81E9C2}  <== WinMerge
+    WorkFolders = {E61BF828-5E63-4287-BEF1-60B1A4FDE0E3}
+    YunShellExt = {6D85624F-305A-491d-8848-C1927AA0D790-}
+    {90AA3A4E-1CBA-4233-B8BB-535773D48449} = Taskband Pin
+    {a2a9545d-a0c2-42b4-9708-a0b2badd77c8} = Start Menu Pin
+HKLM64  SOFTWARE\Classes\AllFilesystemObjects\shellex\ContextMenuHandlers => 9 项
+    CopyAsPathMenu = {f3d06e7c-1e45-4a26-847e-f9fcdee59be0}
+    DaemonShellExtImageLite = {1D1B5D7B-0FC9-452E-902C-12BACD4FBC20}
+    HRShell = {18A3E590-F219-4105-9079-93DAFA51B9D6}
+    HRShredShell = {9F012318-CAA5-402C-9BF6-28EB36F61496}
+    NTQQShellExt = {BB4CB47C-6258-4502-AC4C-AFA73AFB4319}
+    SendTo = {7BA4C740-9E81-11CF-99D3-00AA004AE837}
+    {474C98EE-CF3D-41f5-80E3-4AAB0AB04301} = 
+    {596AB062-B4D2-4215-9F74-E9109B0A8153} = 
+    {a2a9545d-a0c2-42b4-9708-a0b2badd77c8} = Start Menu Pin
+HKLM64  SOFTWARE\Classes\Directory\shellex\ContextMenuHandlers => 14 项
+    AABdzCtx = {5B69A6B4-393B-459C-8EBB-214237A9E7AC}
+    EncryptionMenu = {A470F8CF-A1E8-4f65-8335-227475AA5C46}
+    HRShell = {18A3E590-F219-4105-9079-93DAFA51B9D6}
+    HRShredShell = {9F012318-CAA5-402C-9BF6-28EB36F61496}
+    Offline Files = {474C98EE-CF3D-41f5-80E3-4AAB0AB04301}
+    QuarkAI.ContextMenu = {99D4E39A-EA7F-453E-9488-58C56BBF7B98-}
+    QuarkCloudDriveAI.ContextMenu = {D7D43EA6-BCE2-489C-9A70-9027A42E1EFD-}
+    Sharing = {f81e9010-6ea4-11ce-a7ff-00aa003ca9f6}
+    TortoiseGit = {10A0FDD2-B0C0-4CD4-A7AE-E594CE3B91C8}
+    TortoiseSVN = {30351349-7B7D-4FCC-81B4-1E394CA267EB}
+    WinMerge = {4E716236-AA30-4C65-B225-D68BBA81E9C2}  <== WinMerge
+    WorkFolders = {E61BF828-5E63-4287-BEF1-60B1A4FDE0E3}
+    YunShellExt = {6D85624F-305A-491d-8848-C1927AA0D790-}
+    {596AB062-B4D2-4215-9F74-E9109B0A8153} = 
+HKLM64  SOFTWARE\Classes\Directory\Background\shellex\ContextMenuHandlers => 12 项
+    AABdzCtx = {5B69A6B4-393B-459C-8EBB-214237A9E7AC}
+    ACE = {5E2121EE-0300-11D4-8D3B-444553540000-}
+    ASShlExt = {75B003B6-751A-4460-8B53-F3389757CBF5}
+    LDSShellExt = {B3A2F1A4-10A2-410C-9C19-622B621C61D0}
+    New = {D969A300-E7FF-11d0-A93B-00A0C90F2719}
+    NvAppDesktopContext = {F2E8B4A1-9C7D-4F6E-B3A5-8D2C1F4E9B7A}
+    NvCplDesktopContext = {3D1975AF-48C6-4f8e-A182-BE0E08FA86A9}
+    Sharing = {f81e9010-6ea4-11ce-a7ff-00aa003ca9f6}
+    TortoiseGit = {10A0FDD2-B0C0-4CD4-A7AE-E594CE3B91C8}
+    TortoiseSVN = {30351349-7B7D-4FCC-81B4-1E394CA267EB}
+    WinMerge = {4E716236-AA30-4C65-B225-D68BBA81E9C2}  <== WinMerge
+    WorkFolders = {E61BF828-5E63-4287-BEF1-60B1A4FDE0E3}
+HKLM64  SOFTWARE\Classes\Folder\shellex\ContextMenuHandlers => 7 项
+      NutstoreExt = {5D652B62-B702-496A-92BC-92C308251FEA-}
+    Library Location = {3dad6c5d-2167-4cae-9914-f99e41c12cfa}
+    Offline Files = {474C98EE-CF3D-41f5-80E3-4AAB0AB04301}
+    PintoStartScreen = {470C0EBD-5D73-4d58-9CED-E91E22E23282}
+    TortoiseGit = {10A0FDD2-B0C0-4CD4-A7AE-E594CE3B91C8}
+    TortoiseSVN = {30351349-7B7D-4FCC-81B4-1E394CA267EB}
+    {a2a9545d-a0c2-42b4-9708-a0b2badd77c8} = Start Menu Pin
+HKLM64  SOFTWARE\Classes\Drive\shellex\ContextMenuHandlers => 13 项
+    AABdzCtx = {5B69A6B4-393B-459C-8EBB-214237A9E7AC}
+    DaemonShellExtDriveLite = {C06369D6-E77D-4626-9656-1256312BD576}
+    EnhancedStorageShell = {2854F705-3548-414C-A113-93E27C808C85}
+    HRShell = {18A3E590-F219-4105-9079-93DAFA51B9D6}
+    HRShredShell = {9F012318-CAA5-402C-9BF6-28EB36F61496}
+    PcyybContextnMenu = {ADEA1FEC-5832-4B19-9B1D-C6EF361BD85D}
+    Sharing = {f81e9010-6ea4-11ce-a7ff-00aa003ca9f6}
+    TortoiseGit = {10A0FDD2-B0C0-4CD4-A7AE-E594CE3B91C8}
+    TortoiseSVN = {30351349-7B7D-4FCC-81B4-1E394CA267EB}
+    WinMerge = {4E716236-AA30-4C65-B225-D68BBA81E9C2}  <== WinMerge
+    {596AB062-B4D2-4215-9F74-E9109B0A8153} = 
+    {D6791A63-E7E2-4fee-BF52-5DED8E86E9B8-} = 
+    {fbeb8a05-beee-4442-804e-409d6c4515e9-} = 
+HKLM64  SOFTWARE\Classes\SystemFileAssociations\.txt\shellex\ContextMenuHandlers => <缺失>
+HKLM64  SOFTWARE\Classes\*\shell => 5 项
+    removeproperties = 
+    ToDeskSendFile = 使用 ToDesk 快传文件
+    UpdateEncryptionSettingsWork = 
+    VSCode = 通过 Code 打开
+    YunShellExplorerCommand = baidunetdisk
+HKLM64  SOFTWARE\Classes\Directory\shell => 12 项
+    AnyCode = @C:\Program Files (x86)\Common Files\Microsoft Shared\MSEnv\2052\VSLauncherUI.dll,-1002
+    cmd = @shell32.dll,-8506
+    find = 
+    git_gui = Open Git &GUI here
+    git_shell = Open Git Ba&sh here
+    Powershell = @shell32.dll,-8508
+    QQMusic.1.Play = 使用 QQ音乐 播放(&P)
+    QQMusic.2.Add = 加入 QQ音乐 播放队列(&E)
+    ToDeskSendFile = 使用 ToDesk 快传文件
+    UpdateEncryptionSettings = 
+    VSCode = 通过 Code 打开
+    YunShellExplorerCommand = baidunetdisk
+HKLM64  SOFTWARE\Classes\Directory\Background\shell => 6 项
+    AnyCode = @C:\Program Files (x86)\Common Files\Microsoft Shared\MSEnv\2052\VSLauncherUI.dll,-1002
+    cmd = @shell32.dll,-8506
+    git_gui = Open Git &GUI here
+    git_shell = Open Git Ba&sh here
+    Powershell = @shell32.dll,-8508
+    VSCode = 通过 Code 打开
+HKLM64  SOFTWARE\Classes\Folder\shell => 6 项
+    explore = 
+    open = 
+    opennewprocess = 
+    opennewtab = 
+    opennewwindow = 
+    pintohome = 
+
+### HKLM\SOFTWARE\Classes\WOW6432Node (32 位视图)
+HKLM32  SOFTWARE\Classes\WOW6432Node\*\shellex\ContextMenuHandlers => <缺失>
+HKLM32  SOFTWARE\Classes\WOW6432Node\AllFilesystemObjects\shellex\ContextMenuHandlers => <缺失>
+HKLM32  SOFTWARE\Classes\WOW6432Node\Directory\shellex\ContextMenuHandlers => <缺失>
+HKLM32  SOFTWARE\Classes\WOW6432Node\Directory\Background\shellex\ContextMenuHandlers => <缺失>
+HKLM32  SOFTWARE\Classes\WOW6432Node\Folder\shellex\ContextMenuHandlers => <缺失>
+HKLM32  SOFTWARE\Classes\WOW6432Node\Drive\shellex\ContextMenuHandlers => <缺失>
+HKLM32  SOFTWARE\Classes\WOW6432Node\SystemFileAssociations\.txt\shellex\ContextMenuHandlers => <缺失>
+HKLM32  SOFTWARE\Classes\WOW6432Node\*\shell => <缺失>
+HKLM32  SOFTWARE\Classes\WOW6432Node\Directory\shell => <缺失>
+HKLM32  SOFTWARE\Classes\WOW6432Node\Directory\Background\shell => <缺失>
+HKLM32  SOFTWARE\Classes\WOW6432Node\Folder\shell => <缺失>
+
+### WinMerge CLSID
+HKCU   Software\Classes\CLSID\{4E716236-AA30-4C65-B225-D68BBA81E9C2} => <缺失>
+HKLM64 InprocServer32 = C:\Program Files\WinMerge\ShellExtensionX64.dll Threading=Apartment 位数=x64
+HKLM32 SOFTWARE\Classes\WOW6432Node\CLSID\{4E716236-AA30-4C65-B225-D68BBA81E9C2} => <缺失>
+
+### WinMerge 相关类键
+HKLM64  SOFTWARE\Classes\ShellExtension.WinMergeShell => 2 项
+    CLSID = {4E716236-AA30-4C65-B225-D68BBA81E9C2}  <== WinMerge
+    CurVer = ShellExtension.WinMergeShell.1
+
+### Shell Extensions Blocked / Approved
+HKCU Blocked => <缺失>
+HKLM Blocked => <缺失>
+HKCU Approved => 1 个值
+HKLM Approved => 56 个值
+    命中: {30351348-7B7D-4FCC-81B4-1E394CA267EB} = TortoiseSVN
+    命中: {30351347-7B7D-4FCC-81B4-1E394CA267EB} = TortoiseSVN
+    命中: {3035134A-7B7D-4FCC-81B4-1E394CA267EB} = TortoiseSVN
+    命中: {3035134C-7B7D-4FCC-81B4-1E394CA267EB} = TortoiseSVN
+    命中: {30351346-7B7D-4FCC-81B4-1E394CA267EB} = TortoiseSVN
+    命中: {30351349-7B7D-4FCC-81B4-1E394CA267EB} = TortoiseSVN
+    命中: {3035134B-7B7D-4FCC-81B4-1E394CA267EB} = TortoiseSVN
+    命中: {3035134D-7B7D-4FCC-81B4-1E394CA267EB} = TortoiseSVN
+    命中: {3035134E-7B7D-4FCC-81B4-1E394CA267EB} = TortoiseSVN
+    命中: {3035134F-7B7D-4FCC-81B4-1E394CA267EB} = TortoiseSVN
+    命中: {30351350-7B7D-4FCC-81B4-1E394CA267EB} = TortoiseSVN
+    命中: {C5994560-53D9-4125-87C9-F193FC689CB2} = TortoiseOverlays
+    命中: {C5994561-53D9-4125-87C9-F193FC689CB2} = TortoiseOverlays
+    命中: {C5994562-53D9-4125-87C9-F193FC689CB2} = TortoiseOverlays
+    命中: {C5994563-53D9-4125-87C9-F193FC689CB2} = TortoiseOverlays
+    命中: {C5994564-53D9-4125-87C9-F193FC689CB2} = TortoiseOverlays
+    命中: {C5994565-53D9-4125-87C9-F193FC689CB2} = TortoiseOverlays
+    命中: {C5994566-53D9-4125-87C9-F193FC689CB2} = TortoiseOverlays
+    命中: {C5994567-53D9-4125-87C9-F193FC689CB2} = TortoiseOverlays
+    命中: {C5994568-53D9-4125-87C9-F193FC689CB2} = TortoiseOverlays
+    命中: {475A024D-6157-4E03-8C61-D1FA9806415C} = TortoiseGit - Conflict
+    命中: {8DA7CDCB-DC0B-4246-80BD-812E942734AF} = TortoiseGit - Modified
+    命中: {6A4800FA-13B4-4CB4-9A37-97E7FAEDA731} = TortoiseGit - DropHandler
+    命中: {D69716CD-6993-4D0D-898F-5EBBC25C5D4D} = TortoiseGit - Deleted
+    命中: {451C7E59-058F-450A-8C42-FE9A12A302FC} = TortoiseGit - Normal
+    命中: {10A0FDD2-B0C0-4CD4-A7AE-E594CE3B91C8} = TortoiseGit - Uncontrolled
+    命中: {5F380D0B-EE64-479B-B2AD-EF437BF4B0A6} = TortoiseGit - ReadOnly
+    命中: {4E453CBA-2AAB-465C-A01E-627A7BE9ED73} = TortoiseGit - Locked
+    命中: {A38915E4-A460-4143-8D6B-0B45564C6A00} = TortoiseGit - Added
+    命中: {1B94B098-57C6-4C39-9DC5-8EB00E423D3E} = TortoiseGit - Ignored
+    命中: {18BF1135-6EA2-405F-A71E-16EEE7F71F8B} = TortoiseGit - Unversioned
+
+### COM FOLDER_ITEM background=False
+OleInitialize=0x00000000
+GetUIObjectOf=0x00000000 cidl=1
+contextMenuPtr=1228304338960
+QI IContextMenu2=True IContextMenu3=True
+QueryContextMenu(CMF_NORMAL) hr=0x000000EB 项数=51
+#0 id=210 fType=0x0 '打开(&O)'
+#1 id=211 fType=0x0 '使用 Visual Studio 打开(&V)'
+#2 id=213 fType=0x0 'Open Git Ba&sh here'
+#3 id=214 fType=0x0 'Open project in Codex'
+#4 id=216 fType=0x0 '使用 QQ音乐 播放(&P)'
+#5 id=217 fType=0x0 '加入 QQ音乐 播放队列(&E)'
+#6 id=218 fType=0x0 '使用 ToDesk 快传文件'
+#7 id=219 fType=0x0 '通过 TRAE 打开'
+#8 id=221 fType=0x0 '通过 Code 打开'
+#9 id=222 fType=0x0 'Wi&zTree'
+#10 id=223 fType=0x0 '用 WorkBuddy AI 打开'
+#11 id=225 fType=0x0 '在ZCode中打开'
+#12 id=231 fType=0x0 '固定到快速访问'
+#13 id=207 fType=0x0 '压缩为“TabTaskExplorer.&zip”'
+#14 id=208 fType=0x0 '压缩为“TabTaskExplorer.7z”'
+#15 id=209 fType=0x0 '新建压缩包 (Bandizip)(&B)...'
+#16 id=206 fType=0x0 '使用火绒安全进行杀毒'
+#17 id=204 fType=0x0 '使用火绒安全解锁占用'
+#18 id=205 fType=0x0 '使用火绒安全粉碎文件'
+#19 id=196 fType=0x800 ''
+#20 id=197 fType=0x0 '批量压缩'
+#21 id=198 fType=0x0 '批量打印'
+#22 id=199 fType=0x0 '批量重命名'
+#23 id=200 fType=0x800 ''
+#24 id=195 fType=0x0 '上传或同步到WPS' [子菜单]
+    #0 id=193 fType=0x0 '上传到WPS'
+    #1 id=194 fType=0x0 '自动同步该文件夹'
+#25 id=0 fType=0x800 ''
+#26 id=192 fType=0x0 '授予访问权限(&G)' [子菜单]
+    #0 id=177 fType=0x0 '删除访问'
+    #1 id=178 fType=0x0 '特定用户...'
+#27 id=0 fType=0x800 ''
+#28 id=136 fType=0x0 'Git Sync...'
+#29 id=137 fType=0x0 'Git &Commit -> "main"...'
+#30 id=175 fType=0x0 '&TortoiseGit' [子菜单]
+    #0 id=133 fType=0x0 '&Pull...'
+    #1 id=134 fType=0x0 'F&etch...'
+    #2 id=135 fType=0x0 'Pus&h...'
+    #3 id=0 fType=0x800 ''
+    #4 id=139 fType=0x0 '&Diff'
+    #5 id=140 fType=0x0 '&Diff with previous version'
+    #6 id=0 fType=0x800 ''
+    #7 id=142 fType=0x0 'Show &log'
+    #8 id=143 fType=0x0 'Show &RefLog'
+    #9 id=144 fType=0x0 'Browse References'
+    #10 id=145 fType=0x0 'Daemon'
+    #11 id=146 fType=0x0 'Revision &graph'
+    #12 id=147 fType=0x0 '&Repo-browser'
+    #13 id=148 fType=0x0 'Check for modi&fications'
+    #14 id=149 fType=0x0 'Rebase...'
+    #15 id=150 fType=0x0 'Stash changes'
+    #16 id=0 fType=0x800 ''
+    #17 id=152 fType=0x0 'Bisect start'
+    #18 id=0 fType=0x800 ''
+    #19 id=154 fType=0x0 'Res&olve...'
+    #20 id=155 fType=0x0 'Re&vert...'
+    #21 id=156 fType=0x0 '&Clean up...'
+    #22 id=0 fType=0x800 ''
+    #23 id=158 fType=0x0 'S&witch/Checkout...'
+    #24 id=159 fType=0x0 '&Merge...'
+    #25 id=160 fType=0x0 'Create &Branch...'
+    #26 id=161 fType=0x0 'Create &Tag...'
+    #27 id=162 fType=0x0 'E&xport...'
+    #28 id=0 fType=0x800 ''
+    #29 id=164 fType=0x0 '&Add...'
+    #30 id=0 fType=0x800 ''
+    #31 id=166 fType=0x0 'Worktrees'
+    #32 id=167 fType=0x0 'Submodule Add...'
+    #33 id=0 fType=0x800 ''
+    #34 id=169 fType=0x0 'Create Patch Serial...'
+    #35 id=170 fType=0x0 'Apply Patch Serial...'
+    #36 id=0 fType=0x800 ''
+    #37 id=172 fType=0x0 '&Settings'
+    #38 id=173 fType=0x0 '&Help'
+    #39 id=174 fType=0x0 'A&bout'
+#31 id=0 fType=0x800 ''
+#32 id=119 fType=0x0 'SVN Chec&kout...'
+#33 id=130 fType=0x0 '&TortoiseSVN' [子菜单]
+    #0 id=120 fType=0x0 '&Repo-browser'
+    #1 id=0 fType=0x800 ''
+    #2 id=122 fType=0x0 'E&xport...'
+    #3 id=0 fType=0x800 ''
+    #4 id=124 fType=0x0 'Create repositor&y here'
+    #5 id=125 fType=0x0 '&Import...'
+    #6 id=0 fType=0x800 ''
+    #7 id=127 fType=0x0 '&Settings'
+    #8 id=128 fType=0x0 '&Help'
+    #9 id=129 fType=0x0 'About'
+#34 id=0 fType=0x800 ''
+#35 id=112 fType=0x0 'Win&Merge'
+#36 id=111 fType=0x0 '还原以前的版本(&V)'
+#37 id=79 fType=0x0 '包含到库中(&I)' [子菜单]
+    #0 id=78 fType=0x0 '正在检索库...'
+#38 id=78 fType=0x0 '固定到“开始”屏幕(&P)'
+#39 id=4294967295 fType=0x800 ''
+#40 id=153033513 fType=0x0 '与Catch!共享' [子菜单]
+    #0 id=75 fType=0x0 '刷新'
+#41 id=32765 fType=0x800 ''
+#42 id=74 fType=0x0 '发送到(&N)' [子菜单]
+    #0 id=27 fType=0x0 'Web_Publishing_Wizard'
+    #1 id=28 fType=0x0 '传真收件人'
+#43 id=32764 fType=0x800 ''
+#44 id=24 fType=0x0 '剪切(&T)'
+#45 id=25 fType=0x0 '复制(&C)'
+#46 id=4294967295 fType=0x800 ''
+#47 id=16 fType=0x0 '创建快捷方式(&S)'
+#48 id=17 fType=0x0 '删除(&D)'
+#49 id=32766 fType=0x800 ''
+#50 id=19 fType=0x0 '属性(&R)'
+QueryContextMenu(CMF_EXPLORE) hr=0x000000ED 项数=52
+#0 id=229 fType=0x0 '打开(&O)'
+#1 id=233 fType=0x0 '固定到快速访问'
+#2 id=234 fType=0x0 'Wi&zTree'
+#3 id=210 fType=0x0 'Open project in ChatGPT'
+#4 id=213 fType=0x0 '使用 Visual Studio 打开(&V)'
+#5 id=215 fType=0x0 'Open Git Ba&sh here'
+#6 id=216 fType=0x0 'Open project in Codex'
+#7 id=218 fType=0x0 '使用 QQ音乐 播放(&P)'
+#8 id=219 fType=0x0 '加入 QQ音乐 播放队列(&E)'
+#9 id=220 fType=0x0 '使用 ToDesk 快传文件'
+#10 id=221 fType=0x0 '通过 TRAE 打开'
+#11 id=223 fType=0x0 '通过 Code 打开'
+#12 id=225 fType=0x0 '用 WorkBuddy AI 打开'
+#13 id=227 fType=0x0 '在ZCode中打开'
+#14 id=207 fType=0x0 '压缩为“TabTaskExplorer.&zip”'
+#15 id=208 fType=0x0 '压缩为“TabTaskExplorer.7z”'
+#16 id=209 fType=0x0 '新建压缩包 (Bandizip)(&B)...'
+#17 id=206 fType=0x0 '使用火绒安全进行杀毒'
+#18 id=204 fType=0x0 '使用火绒安全解锁占用'
+#19 id=205 fType=0x0 '使用火绒安全粉碎文件'
+#20 id=196 fType=0x800 ''
+#21 id=197 fType=0x0 '批量压缩'
+#22 id=198 fType=0x0 '批量打印'
+#23 id=199 fType=0x0 '批量重命名'
+#24 id=200 fType=0x800 ''
+#25 id=195 fType=0x0 '上传或同步到WPS' [子菜单]
+    #0 id=193 fType=0x0 '上传到WPS'
+    #1 id=194 fType=0x0 '自动同步该文件夹'
+#26 id=0 fType=0x800 ''
+#27 id=192 fType=0x0 '授予访问权限(&G)' [子菜单]
+    #0 id=177 fType=0x0 '删除访问'
+    #1 id=178 fType=0x0 '特定用户...'
+#28 id=0 fType=0x800 ''
+#29 id=136 fType=0x0 'Git Sync...'
+#30 id=137 fType=0x0 'Git &Commit -> "main"...'
+#31 id=175 fType=0x0 '&TortoiseGit' [子菜单]
+    #0 id=133 fType=0x0 '&Pull...'
+    #1 id=134 fType=0x0 'F&etch...'
+    #2 id=135 fType=0x0 'Pus&h...'
+    #3 id=0 fType=0x800 ''
+    #4 id=139 fType=0x0 '&Diff'
+    #5 id=140 fType=0x0 '&Diff with previous version'
+    #6 id=0 fType=0x800 ''
+    #7 id=142 fType=0x0 'Show &log'
+    #8 id=143 fType=0x0 'Show &RefLog'
+    #9 id=144 fType=0x0 'Browse References'
+    #10 id=145 fType=0x0 'Daemon'
+    #11 id=146 fType=0x0 'Revision &graph'
+    #12 id=147 fType=0x0 '&Repo-browser'
+    #13 id=148 fType=0x0 'Check for modi&fications'
+    #14 id=149 fType=0x0 'Rebase...'
+    #15 id=150 fType=0x0 'Stash changes'
+    #16 id=0 fType=0x800 ''
+    #17 id=152 fType=0x0 'Bisect start'
+    #18 id=0 fType=0x800 ''
+    #19 id=154 fType=0x0 'Res&olve...'
+    #20 id=155 fType=0x0 'Re&vert...'
+    #21 id=156 fType=0x0 '&Clean up...'
+    #22 id=0 fType=0x800 ''
+    #23 id=158 fType=0x0 'S&witch/Checkout...'
+    #24 id=159 fType=0x0 '&Merge...'
+    #25 id=160 fType=0x0 'Create &Branch...'
+    #26 id=161 fType=0x0 'Create &Tag...'
+    #27 id=162 fType=0x0 'E&xport...'
+    #28 id=0 fType=0x800 ''
+    #29 id=164 fType=0x0 '&Add...'
+    #30 id=0 fType=0x800 ''
+    #31 id=166 fType=0x0 'Worktrees'
+    #32 id=167 fType=0x0 'Submodule Add...'
+    #33 id=0 fType=0x800 ''
+    #34 id=169 fType=0x0 'Create Patch Serial...'
+    #35 id=170 fType=0x0 'Apply Patch Serial...'
+    #36 id=0 fType=0x800 ''
+    #37 id=172 fType=0x0 '&Settings'
+    #38 id=173 fType=0x0 '&Help'
+    #39 id=174 fType=0x0 'A&bout'
+#32 id=0 fType=0x800 ''
+#33 id=119 fType=0x0 'SVN Chec&kout...'
+#34 id=130 fType=0x0 '&TortoiseSVN' [子菜单]
+    #0 id=120 fType=0x0 '&Repo-browser'
+    #1 id=0 fType=0x800 ''
+    #2 id=122 fType=0x0 'E&xport...'
+    #3 id=0 fType=0x800 ''
+    #4 id=124 fType=0x0 'Create repositor&y here'
+    #5 id=125 fType=0x0 '&Import...'
+    #6 id=0 fType=0x800 ''
+    #7 id=127 fType=0x0 '&Settings'
+    #8 id=128 fType=0x0 '&Help'
+    #9 id=129 fType=0x0 'About'
+#35 id=0 fType=0x800 ''
+#36 id=112 fType=0x0 'Win&Merge'
+#37 id=111 fType=0x0 '还原以前的版本(&V)'
+#38 id=79 fType=0x0 '包含到库中(&I)' [子菜单]
+    #0 id=79 fType=0x0 'Git'
+    #1 id=80 fType=0x0 'Subversion'
+    #2 id=81 fType=0x0 '保存的图片'
+    #3 id=82 fType=0x0 '本机照片'
+    #4 id=83 fType=0x0 '视频'
+    #5 id=84 fType=0x0 '图片'
+    #6 id=85 fType=0x0 '文档'
+    #7 id=86 fType=0x0 '音乐'
+    #8 id=0 fType=0x800 ''
+    #9 id=87 fType=0x0 '创建新库'
+#39 id=78 fType=0x0 '固定到“开始”屏幕(&P)'
+#40 id=4294967295 fType=0x800 ''
+#41 id=1471484915 fType=0x0 '与Catch!共享' [子菜单]
+    #0 id=75 fType=0x0 '刷新'
+#42 id=32765 fType=0x800 ''
+#43 id=74 fType=0x0 '发送到(&N)' [子菜单]
+    #0 id=27 fType=0x0 'Web_Publishing_Wizard'
+    #1 id=28 fType=0x0 '传真收件人'
+    #2 id=29 fType=0x0 '坚果云'
+    #3 id=30 fType=0x0 '蓝牙设备'
+#44 id=32764 fType=0x800 ''
+#45 id=24 fType=0x0 '剪切(&T)'
+#46 id=25 fType=0x0 '复制(&C)'
+#47 id=4294967295 fType=0x800 ''
+#48 id=16 fType=0x0 '创建快捷方式(&S)'
+#49 id=17 fType=0x0 '删除(&D)'
+#50 id=32766 fType=0x800 ''
+#51 id=19 fType=0x0 '属性(&R)'
+WM_INITMENUPOPUP 后 项数=52 (前=52)
+#0 id=229 fType=0x0 '打开(&O)'
+#1 id=233 fType=0x0 '固定到快速访问'
+#2 id=234 fType=0x0 'Wi&zTree'
+#3 id=210 fType=0x0 'Open project in ChatGPT'
+#4 id=213 fType=0x0 '使用 Visual Studio 打开(&V)'
+#5 id=215 fType=0x0 'Open Git Ba&sh here'
+#6 id=216 fType=0x0 'Open project in Codex'
+#7 id=218 fType=0x0 '使用 QQ音乐 播放(&P)'
+#8 id=219 fType=0x0 '加入 QQ音乐 播放队列(&E)'
+#9 id=220 fType=0x0 '使用 ToDesk 快传文件'
+#10 id=221 fType=0x0 '通过 TRAE 打开'
+#11 id=223 fType=0x0 '通过 Code 打开'
+#12 id=225 fType=0x0 '用 WorkBuddy AI 打开'
+#13 id=227 fType=0x0 '在ZCode中打开'
+#14 id=207 fType=0x0 '压缩为“TabTaskExplorer.&zip”'
+#15 id=208 fType=0x0 '压缩为“TabTaskExplorer.7z”'
+#16 id=209 fType=0x0 '新建压缩包 (Bandizip)(&B)...'
+#17 id=206 fType=0x0 '使用火绒安全进行杀毒'
+#18 id=204 fType=0x0 '使用火绒安全解锁占用'
+#19 id=205 fType=0x0 '使用火绒安全粉碎文件'
+#20 id=196 fType=0x800 ''
+#21 id=197 fType=0x0 '批量压缩'
+#22 id=198 fType=0x0 '批量打印'
+#23 id=199 fType=0x0 '批量重命名'
+#24 id=200 fType=0x800 ''
+#25 id=195 fType=0x0 '上传或同步到WPS' [子菜单]
+    #0 id=193 fType=0x0 '上传到WPS'
+    #1 id=194 fType=0x0 '自动同步该文件夹'
+#26 id=0 fType=0x800 ''
+#27 id=192 fType=0x0 '授予访问权限(&G)' [子菜单]
+    #0 id=177 fType=0x0 '删除访问'
+    #1 id=178 fType=0x0 '特定用户...'
+#28 id=0 fType=0x800 ''
+#29 id=136 fType=0x0 'Git Sync...'
+#30 id=137 fType=0x0 'Git &Commit -> "main"...'
+#31 id=175 fType=0x0 '&TortoiseGit' [子菜单]
+    #0 id=133 fType=0x0 '&Pull...'
+    #1 id=134 fType=0x0 'F&etch...'
+    #2 id=135 fType=0x0 'Pus&h...'
+    #3 id=0 fType=0x800 ''
+    #4 id=139 fType=0x0 '&Diff'
+    #5 id=140 fType=0x0 '&Diff with previous version'
+    #6 id=0 fType=0x800 ''
+    #7 id=142 fType=0x0 'Show &log'
+    #8 id=143 fType=0x0 'Show &RefLog'
+    #9 id=144 fType=0x0 'Browse References'
+    #10 id=145 fType=0x0 'Daemon'
+    #11 id=146 fType=0x0 'Revision &graph'
+    #12 id=147 fType=0x0 '&Repo-browser'
+    #13 id=148 fType=0x0 'Check for modi&fications'
+    #14 id=149 fType=0x0 'Rebase...'
+    #15 id=150 fType=0x0 'Stash changes'
+    #16 id=0 fType=0x800 ''
+    #17 id=152 fType=0x0 'Bisect start'
+    #18 id=0 fType=0x800 ''
+    #19 id=154 fType=0x0 'Res&olve...'
+    #20 id=155 fType=0x0 'Re&vert...'
+    #21 id=156 fType=0x0 '&Clean up...'
+    #22 id=0 fType=0x800 ''
+    #23 id=158 fType=0x0 'S&witch/Checkout...'
+    #24 id=159 fType=0x0 '&Merge...'
+    #25 id=160 fType=0x0 'Create &Branch...'
+    #26 id=161 fType=0x0 'Create &Tag...'
+    #27 id=162 fType=0x0 'E&xport...'
+    #28 id=0 fType=0x800 ''
+    #29 id=164 fType=0x0 '&Add...'
+    #30 id=0 fType=0x800 ''
+    #31 id=166 fType=0x0 'Worktrees'
+    #32 id=167 fType=0x0 'Submodule Add...'
+    #33 id=0 fType=0x800 ''
+    #34 id=169 fType=0x0 'Create Patch Serial...'
+    #35 id=170 fType=0x0 'Apply Patch Serial...'
+    #36 id=0 fType=0x800 ''
+    #37 id=172 fType=0x0 '&Settings'
+    #38 id=173 fType=0x0 '&Help'
+    #39 id=174 fType=0x0 'A&bout'
+#32 id=0 fType=0x800 ''
+#33 id=119 fType=0x0 'SVN Chec&kout...'
+#34 id=130 fType=0x0 '&TortoiseSVN' [子菜单]
+    #0 id=120 fType=0x0 '&Repo-browser'
+    #1 id=0 fType=0x800 ''
+    #2 id=122 fType=0x0 'E&xport...'
+    #3 id=0 fType=0x800 ''
+    #4 id=124 fType=0x0 'Create repositor&y here'
+    #5 id=125 fType=0x0 '&Import...'
+    #6 id=0 fType=0x800 ''
+    #7 id=127 fType=0x0 '&Settings'
+    #8 id=128 fType=0x0 '&Help'
+    #9 id=129 fType=0x0 'About'
+#35 id=0 fType=0x800 ''
+#36 id=112 fType=0x0 'Win&Merge'
+#37 id=111 fType=0x0 '还原以前的版本(&V)'
+#38 id=79 fType=0x0 '包含到库中(&I)' [子菜单]
+    #0 id=79 fType=0x0 'Git'
+    #1 id=80 fType=0x0 'Subversion'
+    #2 id=81 fType=0x0 '保存的图片'
+    #3 id=82 fType=0x0 '本机照片'
+    #4 id=83 fType=0x0 '视频'
+    #5 id=84 fType=0x0 '图片'
+    #6 id=85 fType=0x0 '文档'
+    #7 id=86 fType=0x0 '音乐'
+    #8 id=0 fType=0x800 ''
+    #9 id=87 fType=0x0 '创建新库'
+#39 id=78 fType=0x0 '固定到“开始”屏幕(&P)'
+#40 id=4294967295 fType=0x800 ''
+#41 id=1471484915 fType=0x0 '与Catch!共享' [子菜单]
+    #0 id=75 fType=0x0 '刷新'
+#42 id=32765 fType=0x800 ''
+#43 id=74 fType=0x0 '发送到(&N)' [子菜单]
+    #0 id=27 fType=0x0 'Web_Publishing_Wizard'
+    #1 id=28 fType=0x0 '传真收件人'
+    #2 id=29 fType=0x0 '坚果云'
+    #3 id=30 fType=0x0 '蓝牙设备'
+#44 id=32764 fType=0x800 ''
+#45 id=24 fType=0x0 '剪切(&T)'
+#46 id=25 fType=0x0 '复制(&C)'
+#47 id=4294967295 fType=0x800 ''
+#48 id=16 fType=0x0 '创建快捷方式(&S)'
+#49 id=17 fType=0x0 '删除(&D)'
+#50 id=32766 fType=0x800 ''
+#51 id=19 fType=0x0 '属性(&R)'
+
+### COM FOLDER_BG background=True
+OleInitialize=0x00000001
+SHParseDisplayName=0x00000000
+BindToObject=0x00000000
+CreateViewObject=0x00000000
+contextMenuPtr=1228304338960
+QI IContextMenu2=True IContextMenu3=True
+QueryContextMenu(CMF_NORMAL) hr=0x0000009D 项数=24
+#0 id=147 fType=0x0 '使用 Visual Studio 打开(&V)'
+#1 id=149 fType=0x0 '打开抖音壁纸'
+#2 id=150 fType=0x0 'Open Git Ba&sh here'
+#3 id=151 fType=0x0 '&Open Lapce here'
+#4 id=153 fType=0x0 '通过 TRAE 打开'
+#5 id=154 fType=0x0 '通过 Code 打开'
+#6 id=155 fType=0x0 'Wi&zTree'
+#7 id=156 fType=0x0 '用 WorkBuddy AI 打开'
+#8 id=146 fType=0x0 '新建文件夹(&N)'
+#9 id=0 fType=0x800 ''
+#10 id=81 fType=0x0 '授予访问权限(&G)' [子菜单]
+#11 id=0 fType=0x800 ''
+#12 id=25 fType=0x0 'Git Sync...'
+#13 id=26 fType=0x0 'Git &Commit -> "main"...'
+#14 id=64 fType=0x0 '&TortoiseGit' [子菜单]
+    #0 id=22 fType=0x0 '&Pull...'
+    #1 id=23 fType=0x0 'F&etch...'
+    #2 id=24 fType=0x0 'Pus&h...'
+    #3 id=0 fType=0x800 ''
+    #4 id=28 fType=0x0 '&Diff'
+    #5 id=29 fType=0x0 '&Diff with previous version'
+    #6 id=0 fType=0x800 ''
+    #7 id=31 fType=0x0 'Show &log'
+    #8 id=32 fType=0x0 'Show &RefLog'
+    #9 id=33 fType=0x0 'Browse References'
+    #10 id=34 fType=0x0 'Daemon'
+    #11 id=35 fType=0x0 'Revision &graph'
+    #12 id=36 fType=0x0 '&Repo-browser'
+    #13 id=37 fType=0x0 'Check for modi&fications'
+    #14 id=38 fType=0x0 'Rebase...'
+    #15 id=39 fType=0x0 'Stash changes'
+    #16 id=0 fType=0x800 ''
+    #17 id=41 fType=0x0 'Bisect start'
+    #18 id=0 fType=0x800 ''
+    #19 id=43 fType=0x0 'Res&olve...'
+    #20 id=44 fType=0x0 'Re&vert...'
+    #21 id=45 fType=0x0 '&Clean up...'
+    #22 id=0 fType=0x800 ''
+    #23 id=47 fType=0x0 'S&witch/Checkout...'
+    #24 id=48 fType=0x0 '&Merge...'
+    #25 id=49 fType=0x0 'Create &Branch...'
+    #26 id=50 fType=0x0 'Create &Tag...'
+    #27 id=51 fType=0x0 'E&xport...'
+    #28 id=0 fType=0x800 ''
+    #29 id=53 fType=0x0 '&Add...'
+    #30 id=0 fType=0x800 ''
+    #31 id=55 fType=0x0 'Worktrees'
+    #32 id=56 fType=0x0 'Submodule Add...'
+    #33 id=0 fType=0x800 ''
+    #34 id=58 fType=0x0 'Create Patch Serial...'
+    #35 id=59 fType=0x0 'Apply Patch Serial...'
+    #36 id=0 fType=0x800 ''
+    #37 id=61 fType=0x0 '&Settings'
+    #38 id=62 fType=0x0 '&Help'
+    #39 id=63 fType=0x0 'A&bout'
+#15 id=0 fType=0x800 ''
+#16 id=8 fType=0x0 'SVN Chec&kout...'
+#17 id=19 fType=0x0 '&TortoiseSVN' [子菜单]
+    #0 id=9 fType=0x0 '&Repo-browser'
+    #1 id=0 fType=0x800 ''
+    #2 id=11 fType=0x0 'E&xport...'
+    #3 id=0 fType=0x800 ''
+    #4 id=13 fType=0x0 'Create repositor&y here'
+    #5 id=14 fType=0x0 '&Import...'
+    #6 id=0 fType=0x800 ''
+    #7 id=16 fType=0x0 '&Settings'
+    #8 id=17 fType=0x0 '&Help'
+    #9 id=18 fType=0x0 'About'
+#18 id=0 fType=0x800 ''
+#19 id=1 fType=0x0 'Win&Merge'
+#20 id=32765 fType=0x800 ''
+#21 id=82 fType=0x0 '新建(&W)' [子菜单]
+    #0 id=83 fType=0x0 '文件夹(&F)'
+    #1 id=84 fType=0x0 '快捷方式(&S)'
+    #2 id=4294967295 fType=0x800 ''
+    #3 id=85 fType=0x0 'BMP 图片文件'
+    #4 id=86 fType=0x0 'DOC 文档'
+    #5 id=87 fType=0x0 'DOCX 文档'
+    #6 id=90 fType=0x0 'WorkBuddy AI Document'
+    #7 id=91 fType=0x0 '坚果云思维导图'
+    #8 id=92 fType=0x0 '坚果云绘图'
+    #9 id=93 fType=0x0 '坚果云笔记'
+    #10 id=94 fType=0x0 'WPS PDF 文档'
+    #11 id=95 fType=0x0 'PPT 演示文稿'
+    #12 id=96 fType=0x0 'PPTX 演示文稿'
+    #13 id=97 fType=0x0 'WPS AI 生成 PPT'
+    #14 id=98 fType=0x0 'RTF 文件'
+    #15 id=99 fType=0x0 '文本文档'
+    #16 id=100 fType=0x0 'XLS 工作表'
+    #17 id=101 fType=0x0 'XLSX 工作表'
+#22 id=32766 fType=0x800 ''
+#23 id=0 fType=0x0 '属性(&R)'
+QueryContextMenu(CMF_EXPLORE) hr=0x0000009D 项数=24
+#0 id=147 fType=0x0 '使用 Visual Studio 打开(&V)'
+#1 id=149 fType=0x0 '打开抖音壁纸'
+#2 id=150 fType=0x0 'Open Git Ba&sh here'
+#3 id=151 fType=0x0 '&Open Lapce here'
+#4 id=153 fType=0x0 '通过 TRAE 打开'
+#5 id=154 fType=0x0 '通过 Code 打开'
+#6 id=155 fType=0x0 'Wi&zTree'
+#7 id=156 fType=0x0 '用 WorkBuddy AI 打开'
+#8 id=146 fType=0x0 '新建文件夹(&N)'
+#9 id=0 fType=0x800 ''
+#10 id=81 fType=0x0 '授予访问权限(&G)' [子菜单]
+#11 id=0 fType=0x800 ''
+#12 id=25 fType=0x0 'Git Sync...'
+#13 id=26 fType=0x0 'Git &Commit -> "main"...'
+#14 id=64 fType=0x0 '&TortoiseGit' [子菜单]
+    #0 id=22 fType=0x0 '&Pull...'
+    #1 id=23 fType=0x0 'F&etch...'
+    #2 id=24 fType=0x0 'Pus&h...'
+    #3 id=0 fType=0x800 ''
+    #4 id=28 fType=0x0 '&Diff'
+    #5 id=29 fType=0x0 '&Diff with previous version'
+    #6 id=0 fType=0x800 ''
+    #7 id=31 fType=0x0 'Show &log'
+    #8 id=32 fType=0x0 'Show &RefLog'
+    #9 id=33 fType=0x0 'Browse References'
+    #10 id=34 fType=0x0 'Daemon'
+    #11 id=35 fType=0x0 'Revision &graph'
+    #12 id=36 fType=0x0 '&Repo-browser'
+    #13 id=37 fType=0x0 'Check for modi&fications'
+    #14 id=38 fType=0x0 'Rebase...'
+    #15 id=39 fType=0x0 'Stash changes'
+    #16 id=0 fType=0x800 ''
+    #17 id=41 fType=0x0 'Bisect start'
+    #18 id=0 fType=0x800 ''
+    #19 id=43 fType=0x0 'Res&olve...'
+    #20 id=44 fType=0x0 'Re&vert...'
+    #21 id=45 fType=0x0 '&Clean up...'
+    #22 id=0 fType=0x800 ''
+    #23 id=47 fType=0x0 'S&witch/Checkout...'
+    #24 id=48 fType=0x0 '&Merge...'
+    #25 id=49 fType=0x0 'Create &Branch...'
+    #26 id=50 fType=0x0 'Create &Tag...'
+    #27 id=51 fType=0x0 'E&xport...'
+    #28 id=0 fType=0x800 ''
+    #29 id=53 fType=0x0 '&Add...'
+    #30 id=0 fType=0x800 ''
+    #31 id=55 fType=0x0 'Worktrees'
+    #32 id=56 fType=0x0 'Submodule Add...'
+    #33 id=0 fType=0x800 ''
+    #34 id=58 fType=0x0 'Create Patch Serial...'
+    #35 id=59 fType=0x0 'Apply Patch Serial...'
+    #36 id=0 fType=0x800 ''
+    #37 id=61 fType=0x0 '&Settings'
+    #38 id=62 fType=0x0 '&Help'
+    #39 id=63 fType=0x0 'A&bout'
+#15 id=0 fType=0x800 ''
+#16 id=8 fType=0x0 'SVN Chec&kout...'
+#17 id=19 fType=0x0 '&TortoiseSVN' [子菜单]
+    #0 id=9 fType=0x0 '&Repo-browser'
+    #1 id=0 fType=0x800 ''
+    #2 id=11 fType=0x0 'E&xport...'
+    #3 id=0 fType=0x800 ''
+    #4 id=13 fType=0x0 'Create repositor&y here'
+    #5 id=14 fType=0x0 '&Import...'
+    #6 id=0 fType=0x800 ''
+    #7 id=16 fType=0x0 '&Settings'
+    #8 id=17 fType=0x0 '&Help'
+    #9 id=18 fType=0x0 'About'
+#18 id=0 fType=0x800 ''
+#19 id=1 fType=0x0 'Win&Merge'
+#20 id=32765 fType=0x800 ''
+#21 id=82 fType=0x0 '新建(&W)' [子菜单]
+    #0 id=83 fType=0x0 '文件夹(&F)'
+    #1 id=84 fType=0x0 '快捷方式(&S)'
+    #2 id=4294967295 fType=0x800 ''
+    #3 id=85 fType=0x0 'BMP 图片文件'
+    #4 id=86 fType=0x0 'DOC 文档'
+    #5 id=87 fType=0x0 'DOCX 文档'
+    #6 id=90 fType=0x0 'WorkBuddy AI Document'
+    #7 id=91 fType=0x0 '坚果云思维导图'
+    #8 id=92 fType=0x0 '坚果云绘图'
+    #9 id=93 fType=0x0 '坚果云笔记'
+    #10 id=94 fType=0x0 'WPS PDF 文档'
+    #11 id=95 fType=0x0 'PPT 演示文稿'
+    #12 id=96 fType=0x0 'PPTX 演示文稿'
+    #13 id=97 fType=0x0 'WPS AI 生成 PPT'
+    #14 id=98 fType=0x0 'RTF 文件'
+    #15 id=99 fType=0x0 '文本文档'
+    #16 id=100 fType=0x0 'XLS 工作表'
+    #17 id=101 fType=0x0 'XLSX 工作表'
+#22 id=32766 fType=0x800 ''
+#23 id=0 fType=0x0 '属性(&R)'
+WM_INITMENUPOPUP 后 项数=24 (前=24)
+#0 id=147 fType=0x0 '使用 Visual Studio 打开(&V)'
+#1 id=149 fType=0x0 '打开抖音壁纸'
+#2 id=150 fType=0x0 'Open Git Ba&sh here'
+#3 id=151 fType=0x0 '&Open Lapce here'
+#4 id=153 fType=0x0 '通过 TRAE 打开'
+#5 id=154 fType=0x0 '通过 Code 打开'
+#6 id=155 fType=0x0 'Wi&zTree'
+#7 id=156 fType=0x0 '用 WorkBuddy AI 打开'
+#8 id=146 fType=0x0 '新建文件夹(&N)'
+#9 id=0 fType=0x800 ''
+#10 id=81 fType=0x0 '授予访问权限(&G)' [子菜单]
+#11 id=0 fType=0x800 ''
+#12 id=25 fType=0x0 'Git Sync...'
+#13 id=26 fType=0x0 'Git &Commit -> "main"...'
+#14 id=64 fType=0x0 '&TortoiseGit' [子菜单]
+    #0 id=22 fType=0x0 '&Pull...'
+    #1 id=23 fType=0x0 'F&etch...'
+    #2 id=24 fType=0x0 'Pus&h...'
+    #3 id=0 fType=0x800 ''
+    #4 id=28 fType=0x0 '&Diff'
+    #5 id=29 fType=0x0 '&Diff with previous version'
+    #6 id=0 fType=0x800 ''
+    #7 id=31 fType=0x0 'Show &log'
+    #8 id=32 fType=0x0 'Show &RefLog'
+    #9 id=33 fType=0x0 'Browse References'
+    #10 id=34 fType=0x0 'Daemon'
+    #11 id=35 fType=0x0 'Revision &graph'
+    #12 id=36 fType=0x0 '&Repo-browser'
+    #13 id=37 fType=0x0 'Check for modi&fications'
+    #14 id=38 fType=0x0 'Rebase...'
+    #15 id=39 fType=0x0 'Stash changes'
+    #16 id=0 fType=0x800 ''
+    #17 id=41 fType=0x0 'Bisect start'
+    #18 id=0 fType=0x800 ''
+    #19 id=43 fType=0x0 'Res&olve...'
+    #20 id=44 fType=0x0 'Re&vert...'
+    #21 id=45 fType=0x0 '&Clean up...'
+    #22 id=0 fType=0x800 ''
+    #23 id=47 fType=0x0 'S&witch/Checkout...'
+    #24 id=48 fType=0x0 '&Merge...'
+    #25 id=49 fType=0x0 'Create &Branch...'
+    #26 id=50 fType=0x0 'Create &Tag...'
+    #27 id=51 fType=0x0 'E&xport...'
+    #28 id=0 fType=0x800 ''
+    #29 id=53 fType=0x0 '&Add...'
+    #30 id=0 fType=0x800 ''
+    #31 id=55 fType=0x0 'Worktrees'
+    #32 id=56 fType=0x0 'Submodule Add...'
+    #33 id=0 fType=0x800 ''
+    #34 id=58 fType=0x0 'Create Patch Serial...'
+    #35 id=59 fType=0x0 'Apply Patch Serial...'
+    #36 id=0 fType=0x800 ''
+    #37 id=61 fType=0x0 '&Settings'
+    #38 id=62 fType=0x0 '&Help'
+    #39 id=63 fType=0x0 'A&bout'
+#15 id=0 fType=0x800 ''
+#16 id=8 fType=0x0 'SVN Chec&kout...'
+#17 id=19 fType=0x0 '&TortoiseSVN' [子菜单]
+    #0 id=9 fType=0x0 '&Repo-browser'
+    #1 id=0 fType=0x800 ''
+    #2 id=11 fType=0x0 'E&xport...'
+    #3 id=0 fType=0x800 ''
+    #4 id=13 fType=0x0 'Create repositor&y here'
+    #5 id=14 fType=0x0 '&Import...'
+    #6 id=0 fType=0x800 ''
+    #7 id=16 fType=0x0 '&Settings'
+    #8 id=17 fType=0x0 '&Help'
+    #9 id=18 fType=0x0 'About'
+#18 id=0 fType=0x800 ''
+#19 id=1 fType=0x0 'Win&Merge'
+#20 id=32765 fType=0x800 ''
+#21 id=82 fType=0x0 '新建(&W)' [子菜单]
+    #0 id=83 fType=0x0 '文件夹(&F)'
+    #1 id=84 fType=0x0 '快捷方式(&S)'
+    #2 id=4294967295 fType=0x800 ''
+    #3 id=85 fType=0x0 'BMP 图片文件'
+    #4 id=86 fType=0x0 'DOC 文档'
+    #5 id=87 fType=0x0 'DOCX 文档'
+    #6 id=90 fType=0x0 'WorkBuddy AI Document'
+    #7 id=91 fType=0x0 '坚果云思维导图'
+    #8 id=92 fType=0x0 '坚果云绘图'
+    #9 id=93 fType=0x0 '坚果云笔记'
+    #10 id=94 fType=0x0 'WPS PDF 文档'
+    #11 id=95 fType=0x0 'PPT 演示文稿'
+    #12 id=96 fType=0x0 'PPTX 演示文稿'
+    #13 id=97 fType=0x0 'WPS AI 生成 PPT'
+    #14 id=98 fType=0x0 'RTF 文件'
+    #15 id=99 fType=0x0 '文本文档'
+    #16 id=100 fType=0x0 'XLS 工作表'
+    #17 id=101 fType=0x0 'XLSX 工作表'
+#22 id=32766 fType=0x800 ''
+#23 id=0 fType=0x0 '属性(&R)'
+
+### COM MULTI_TXT background=False
+OleInitialize=0x00000001
+GetUIObjectOf=0x00000000 cidl=2
+contextMenuPtr=1228304338960
+QI IContextMenu2=True IContextMenu3=True
+QueryContextMenu(CMF_NORMAL) hr=0x00000096 项数=43
+#0 id=138 fType=0x0 '打开(&O)'
+#1 id=140 fType=0x0 '编辑(&E)'
+#2 id=141 fType=0x0 '询问 Copilot'
+#3 id=143 fType=0x0 '使用 ToDesk 快传文件'
+#4 id=144 fType=0x0 '通过 TRAE 打开'
+#5 id=146 fType=0x0 '通过 Code 打开'
+#6 id=134 fType=0x0 '压缩为“ctxmenu-winmerge2.&zip”'
+#7 id=135 fType=0x0 '压缩为“ctxmenu-winmerge2.7z”'
+#8 id=136 fType=0x0 '压缩为独立的“压缩文件/文件夹名.zip”(&E)'
+#9 id=137 fType=0x0 '新建压缩包 (Bandizip)(&B)...'
+#10 id=133 fType=0x0 '使用火绒安全进行杀毒'
+#11 id=131 fType=0x0 '使用火绒安全解锁占用'
+#12 id=132 fType=0x0 '使用火绒安全粉碎文件'
+#13 id=124 fType=0x800 ''
+#14 id=125 fType=0x0 '文件压缩'
+#15 id=126 fType=0x0 '批量改文档格式'
+#16 id=127 fType=0x0 '批量重命名'
+#17 id=128 fType=0x800 ''
+#18 id=122 fType=0x0 '上传或同步到WPS' [子菜单]
+    #0 id=121 fType=0x0 '上传到WPS'
+#19 id=123 fType=0x0 '我的设备'
+#20 id=0 fType=0x800 ''
+#21 id=120 fType=0x0 '授予访问权限(&G)' [子菜单]
+    #0 id=105 fType=0x0 '删除访问'
+    #1 id=106 fType=0x0 '特定用户...'
+#22 id=0 fType=0x800 ''
+#23 id=103 fType=0x0 '&TortoiseGit' [子菜单]
+    #0 id=98 fType=0x0 '&Diff'
+    #1 id=0 fType=0x800 ''
+    #2 id=100 fType=0x0 '&Settings'
+    #3 id=101 fType=0x0 '&Help'
+    #4 id=102 fType=0x0 'A&bout'
+#24 id=0 fType=0x800 ''
+#25 id=95 fType=0x0 '&TortoiseSVN' [子菜单]
+    #0 id=90 fType=0x0 '&Diff'
+    #1 id=0 fType=0x800 ''
+    #2 id=92 fType=0x0 '&Settings'
+    #3 id=93 fType=0x0 '&Help'
+    #4 id=94 fType=0x0 'About'
+#26 id=0 fType=0x800 ''
+#27 id=83 fType=0x0 'Win&Merge'
+#28 id=4294967295 fType=0x800 ''
+#29 id=631445365 fType=0x0 '与Catch!共享' [子菜单]
+    #0 id=80 fType=0x0 '刷新'
+#30 id=4294967295 fType=0x800 ''
+#31 id=17047269 fType=0x0 '通过QQ发送到' [子菜单]
+    #0 id=77 fType=0x0 '我的手机'
+    #1 id=78 fType=0x0 'QQ好友'
+#32 id=79 fType=0x0 '用QQ闪传分享(超大文件极速传输)'
+#33 id=32765 fType=0x800 ''
+#34 id=75 fType=0x0 '发送到(&N)' [子菜单]
+    #0 id=28 fType=0x0 'Web_Publishing_Wizard'
+    #1 id=29 fType=0x0 '传真收件人'
+    #2 id=30 fType=0x0 '坚果云'
+    #3 id=31 fType=0x0 '蓝牙设备'
+    #4 id=32 fType=0x0 '文档'
+#35 id=32764 fType=0x800 ''
+#36 id=24 fType=0x0 '剪切(&T)'
+#37 id=25 fType=0x0 '复制(&C)'
+#38 id=4294967295 fType=0x800 ''
+#39 id=16 fType=0x0 '创建快捷方式(&S)'
+#40 id=17 fType=0x0 '删除(&D)'
+#41 id=32766 fType=0x800 ''
+#42 id=19 fType=0x0 '属性(&R)'
+QueryContextMenu(CMF_EXPLORE) hr=0x00000096 项数=43
+#0 id=138 fType=0x0 '打开(&O)'
+#1 id=140 fType=0x0 '编辑(&E)'
+#2 id=141 fType=0x0 '询问 Copilot'
+#3 id=143 fType=0x0 '使用 ToDesk 快传文件'
+#4 id=144 fType=0x0 '通过 TRAE 打开'
+#5 id=146 fType=0x0 '通过 Code 打开'
+#6 id=134 fType=0x0 '压缩为“ctxmenu-winmerge2.&zip”'
+#7 id=135 fType=0x0 '压缩为“ctxmenu-winmerge2.7z”'
+#8 id=136 fType=0x0 '压缩为独立的“压缩文件/文件夹名.zip”(&E)'
+#9 id=137 fType=0x0 '新建压缩包 (Bandizip)(&B)...'
+#10 id=133 fType=0x0 '使用火绒安全进行杀毒'
+#11 id=131 fType=0x0 '使用火绒安全解锁占用'
+#12 id=132 fType=0x0 '使用火绒安全粉碎文件'
+#13 id=124 fType=0x800 ''
+#14 id=125 fType=0x0 '文件压缩'
+#15 id=126 fType=0x0 '批量改文档格式'
+#16 id=127 fType=0x0 '批量重命名'
+#17 id=128 fType=0x800 ''
+#18 id=122 fType=0x0 '上传或同步到WPS' [子菜单]
+    #0 id=121 fType=0x0 '上传到WPS'
+#19 id=123 fType=0x0 '我的设备'
+#20 id=0 fType=0x800 ''
+#21 id=120 fType=0x0 '授予访问权限(&G)' [子菜单]
+    #0 id=105 fType=0x0 '删除访问'
+    #1 id=106 fType=0x0 '特定用户...'
+#22 id=0 fType=0x800 ''
+#23 id=103 fType=0x0 '&TortoiseGit' [子菜单]
+    #0 id=98 fType=0x0 '&Diff'
+    #1 id=0 fType=0x800 ''
+    #2 id=100 fType=0x0 '&Settings'
+    #3 id=101 fType=0x0 '&Help'
+    #4 id=102 fType=0x0 'A&bout'
+#24 id=0 fType=0x800 ''
+#25 id=95 fType=0x0 '&TortoiseSVN' [子菜单]
+    #0 id=90 fType=0x0 '&Diff'
+    #1 id=0 fType=0x800 ''
+    #2 id=92 fType=0x0 '&Settings'
+    #3 id=93 fType=0x0 '&Help'
+    #4 id=94 fType=0x0 'About'
+#26 id=0 fType=0x800 ''
+#27 id=83 fType=0x0 'Win&Merge'
+#28 id=4294967295 fType=0x800 ''
+#29 id=184287517 fType=0x0 '与Catch!共享' [子菜单]
+    #0 id=80 fType=0x0 '刷新'
+#30 id=4294967295 fType=0x800 ''
+#31 id=413860669 fType=0x0 '通过QQ发送到' [子菜单]
+    #0 id=77 fType=0x0 '我的手机'
+    #1 id=78 fType=0x0 'QQ好友'
+#32 id=79 fType=0x0 '用QQ闪传分享(超大文件极速传输)'
+#33 id=32765 fType=0x800 ''
+#34 id=75 fType=0x0 '发送到(&N)' [子菜单]
+    #0 id=28 fType=0x0 'Web_Publishing_Wizard'
+    #1 id=29 fType=0x0 '传真收件人'
+    #2 id=30 fType=0x0 '坚果云'
+    #3 id=31 fType=0x0 '蓝牙设备'
+    #4 id=32 fType=0x0 '文档'
+    #5 id=33 fType=0x0 '压缩(zipped)文件夹'
+    #6 id=34 fType=0x0 '邮件收件人'
+    #7 id=35 fType=0x0 '桌面快捷方式'
+#35 id=32764 fType=0x800 ''
+#36 id=24 fType=0x0 '剪切(&T)'
+#37 id=25 fType=0x0 '复制(&C)'
+#38 id=4294967295 fType=0x800 ''
+#39 id=16 fType=0x0 '创建快捷方式(&S)'
+#40 id=17 fType=0x0 '删除(&D)'
+#41 id=32766 fType=0x800 ''
+#42 id=19 fType=0x0 '属性(&R)'
+WM_INITMENUPOPUP 后 项数=43 (前=43)
+#0 id=138 fType=0x0 '打开(&O)'
+#1 id=140 fType=0x0 '编辑(&E)'
+#2 id=141 fType=0x0 '询问 Copilot'
+#3 id=143 fType=0x0 '使用 ToDesk 快传文件'
+#4 id=144 fType=0x0 '通过 TRAE 打开'
+#5 id=146 fType=0x0 '通过 Code 打开'
+#6 id=134 fType=0x0 '压缩为“ctxmenu-winmerge2.&zip”'
+#7 id=135 fType=0x0 '压缩为“ctxmenu-winmerge2.7z”'
+#8 id=136 fType=0x0 '压缩为独立的“压缩文件/文件夹名.zip”(&E)'
+#9 id=137 fType=0x0 '新建压缩包 (Bandizip)(&B)...'
+#10 id=133 fType=0x0 '使用火绒安全进行杀毒'
+#11 id=131 fType=0x0 '使用火绒安全解锁占用'
+#12 id=132 fType=0x0 '使用火绒安全粉碎文件'
+#13 id=124 fType=0x800 ''
+#14 id=125 fType=0x0 '文件压缩'
+#15 id=126 fType=0x0 '批量改文档格式'
+#16 id=127 fType=0x0 '批量重命名'
+#17 id=128 fType=0x800 ''
+#18 id=122 fType=0x0 '上传或同步到WPS' [子菜单]
+    #0 id=121 fType=0x0 '上传到WPS'
+#19 id=123 fType=0x0 '我的设备'
+#20 id=0 fType=0x800 ''
+#21 id=120 fType=0x0 '授予访问权限(&G)' [子菜单]
+    #0 id=105 fType=0x0 '删除访问'
+    #1 id=106 fType=0x0 '特定用户...'
+#22 id=0 fType=0x800 ''
+#23 id=103 fType=0x0 '&TortoiseGit' [子菜单]
+    #0 id=98 fType=0x0 '&Diff'
+    #1 id=0 fType=0x800 ''
+    #2 id=100 fType=0x0 '&Settings'
+    #3 id=101 fType=0x0 '&Help'
+    #4 id=102 fType=0x0 'A&bout'
+#24 id=0 fType=0x800 ''
+#25 id=95 fType=0x0 '&TortoiseSVN' [子菜单]
+    #0 id=90 fType=0x0 '&Diff'
+    #1 id=0 fType=0x800 ''
+    #2 id=92 fType=0x0 '&Settings'
+    #3 id=93 fType=0x0 '&Help'
+    #4 id=94 fType=0x0 'About'
+#26 id=0 fType=0x800 ''
+#27 id=83 fType=0x0 'Win&Merge'
+#28 id=4294967295 fType=0x800 ''
+#29 id=184287517 fType=0x0 '与Catch!共享' [子菜单]
+    #0 id=80 fType=0x0 '刷新'
+#30 id=4294967295 fType=0x800 ''
+#31 id=413860669 fType=0x0 '通过QQ发送到' [子菜单]
+    #0 id=77 fType=0x0 '我的手机'
+    #1 id=78 fType=0x0 'QQ好友'
+#32 id=79 fType=0x0 '用QQ闪传分享(超大文件极速传输)'
+#33 id=32765 fType=0x800 ''
+#34 id=75 fType=0x0 '发送到(&N)' [子菜单]
+    #0 id=28 fType=0x0 'Web_Publishing_Wizard'
+    #1 id=29 fType=0x0 '传真收件人'
+    #2 id=30 fType=0x0 '坚果云'
+    #3 id=31 fType=0x0 '蓝牙设备'
+    #4 id=32 fType=0x0 '文档'
+    #5 id=33 fType=0x0 '压缩(zipped)文件夹'
+    #6 id=34 fType=0x0 '邮件收件人'
+    #7 id=35 fType=0x0 '桌面快捷方式'
+#35 id=32764 fType=0x800 ''
+#36 id=24 fType=0x0 '剪切(&T)'
+#37 id=25 fType=0x0 '复制(&C)'
+#38 id=4294967295 fType=0x800 ''
+#39 id=16 fType=0x0 '创建快捷方式(&S)'
+#40 id=17 fType=0x0 '删除(&D)'
+#41 id=32766 fType=0x800 ''
+#42 id=19 fType=0x0 '属性(&R)'
+
+### COM SINGLE_TXT background=False
+OleInitialize=0x00000001
+GetUIObjectOf=0x00000000 cidl=1
+contextMenuPtr=1228304338960
+QI IContextMenu2=True IContextMenu3=True
+QueryContextMenu(CMF_NORMAL) hr=0x000000AC 项数=45
+#0 id=160 fType=0x0 '打开(&O)'
+#1 id=162 fType=0x0 '编辑(&E)'
+#2 id=163 fType=0x0 '询问 Copilot'
+#3 id=165 fType=0x0 '使用 ToDesk 快传文件'
+#4 id=166 fType=0x0 '通过 TRAE 打开'
+#5 id=168 fType=0x0 '通过 Code 打开'
+#6 id=157 fType=0x0 '压缩为“left.&zip”'
+#7 id=158 fType=0x0 '压缩为“left.7z”'
+#8 id=159 fType=0x0 '新建压缩包 (Bandizip)(&B)...'
+#9 id=156 fType=0x0 '使用火绒安全进行杀毒'
+#10 id=154 fType=0x0 '使用火绒安全解锁占用'
+#11 id=155 fType=0x0 '使用火绒安全粉碎文件'
+#12 id=137 fType=0x0 '打开方式(&H)' [子菜单]
+    #0 id=139 fType=0x0 'Microsoft Visual Studio 2013'
+    #1 id=140 fType=0x0 'Trae CN'
+    #2 id=141 fType=0x0 'Visual Studio Code'
+    #3 id=142 fType=0x0 '记事本'
+    #4 id=143 fType=0x0 '写字板'
+    #5 id=144 fType=0x0 '在腾讯应用宝中搜索'
+    #6 id=0 fType=0x800 ''
+    #7 id=138 fType=0x0 '搜索 Microsoft Store(&S)'
+    #8 id=137 fType=0x0 '选择其他应用(&C)'
+#13 id=131 fType=0x800 ''
+#14 id=132 fType=0x0 '文件压缩'
+#15 id=133 fType=0x0 '批量改文档格式'
+#16 id=134 fType=0x800 ''
+#17 id=126 fType=0x0 '上传或同步到WPS' [子菜单]
+    #0 id=125 fType=0x0 '上传到WPS'
+#18 id=130 fType=0x0 '通过WPS发送' [子菜单]
+    #0 id=127 fType=0x0 '转为在线文档'
+    #1 id=128 fType=0x0 '我的设备'
+    #2 id=129 fType=0x0 '发送至共享文件夹'
+#19 id=0 fType=0x800 ''
+#20 id=124 fType=0x0 '使用番茄免费小说打开'
+#21 id=0 fType=0x800 ''
+#22 id=123 fType=0x0 '授予访问权限(&G)' [子菜单]
+    #0 id=108 fType=0x0 '删除访问'
+    #1 id=109 fType=0x0 '特定用户...'
+#23 id=0 fType=0x800 ''
+#24 id=106 fType=0x0 '&TortoiseGit' [子菜单]
+    #0 id=101 fType=0x0 'Diff later'
+    #1 id=0 fType=0x800 ''
+    #2 id=103 fType=0x0 '&Settings'
+    #3 id=104 fType=0x0 '&Help'
+    #4 id=105 fType=0x0 'A&bout'
+#25 id=0 fType=0x800 ''
+#26 id=98 fType=0x0 '&TortoiseSVN' [子菜单]
+    #0 id=91 fType=0x0 'Diff later'
+    #1 id=92 fType=0x0 'Diff with "D:\svn\nk8500_kmj\P...\ScdComnProc.cxx"'
+    #2 id=93 fType=0x0 '&Repo-browser'
+    #3 id=0 fType=0x800 ''
+    #4 id=95 fType=0x0 '&Settings'
+    #5 id=96 fType=0x0 '&Help'
+    #6 id=97 fType=0x0 'About'
+#27 id=0 fType=0x800 ''
+#28 id=84 fType=0x0 'Win&Merge'
+#29 id=4294967295 fType=0x800 ''
+#30 id=235346893 fType=0x0 '与Catch!共享' [子菜单]
+    #0 id=81 fType=0x0 '刷新'
+#31 id=4294967295 fType=0x800 ''
+#32 id=153688873 fType=0x0 '通过QQ发送到' [子菜单]
+    #0 id=78 fType=0x0 '我的手机'
+    #1 id=79 fType=0x0 'QQ好友'
+#33 id=80 fType=0x0 '用QQ闪传分享(超大文件极速传输)'
+#34 id=27 fType=0x0 '还原以前的版本(&V)'
+#35 id=32765 fType=0x800 ''
+#36 id=76 fType=0x0 '发送到(&N)' [子菜单]
+    #0 id=29 fType=0x0 'Web_Publishing_Wizard'
+    #1 id=30 fType=0x0 '传真收件人'
+    #2 id=31 fType=0x0 '坚果云'
+    #3 id=32 fType=0x0 '蓝牙设备'
+    #4 id=33 fType=0x0 '文档'
+    #5 id=34 fType=0x0 '压缩(zipped)文件夹'
+    #6 id=35 fType=0x0 '邮件收件人'
+    #7 id=36 fType=0x0 '桌面快捷方式'
+#37 id=32764 fType=0x800 ''
+#38 id=24 fType=0x0 '剪切(&T)'
+#39 id=25 fType=0x0 '复制(&C)'
+#40 id=4294967295 fType=0x800 ''
+#41 id=16 fType=0x0 '创建快捷方式(&S)'
+#42 id=17 fType=0x0 '删除(&D)'
+#43 id=32766 fType=0x800 ''
+#44 id=19 fType=0x0 '属性(&R)'
+QueryContextMenu(CMF_EXPLORE) hr=0x000000AC 项数=45
+#0 id=160 fType=0x0 '打开(&O)'
+#1 id=162 fType=0x0 '编辑(&E)'
+#2 id=163 fType=0x0 '询问 Copilot'
+#3 id=165 fType=0x0 '使用 ToDesk 快传文件'
+#4 id=166 fType=0x0 '通过 TRAE 打开'
+#5 id=168 fType=0x0 '通过 Code 打开'
+#6 id=157 fType=0x0 '压缩为“left.&zip”'
+#7 id=158 fType=0x0 '压缩为“left.7z”'
+#8 id=159 fType=0x0 '新建压缩包 (Bandizip)(&B)...'
+#9 id=156 fType=0x0 '使用火绒安全进行杀毒'
+#10 id=154 fType=0x0 '使用火绒安全解锁占用'
+#11 id=155 fType=0x0 '使用火绒安全粉碎文件'
+#12 id=137 fType=0x0 '打开方式(&H)' [子菜单]
+    #0 id=139 fType=0x0 'Microsoft Visual Studio 2013'
+    #1 id=140 fType=0x0 'Trae CN'
+    #2 id=141 fType=0x0 'Visual Studio Code'
+    #3 id=142 fType=0x0 '记事本'
+    #4 id=143 fType=0x0 '写字板'
+    #5 id=144 fType=0x0 '在腾讯应用宝中搜索'
+    #6 id=0 fType=0x800 ''
+    #7 id=138 fType=0x0 '搜索 Microsoft Store(&S)'
+    #8 id=137 fType=0x0 '选择其他应用(&C)'
+#13 id=131 fType=0x800 ''
+#14 id=132 fType=0x0 '文件压缩'
+#15 id=133 fType=0x0 '批量改文档格式'
+#16 id=134 fType=0x800 ''
+#17 id=126 fType=0x0 '上传或同步到WPS' [子菜单]
+    #0 id=125 fType=0x0 '上传到WPS'
+#18 id=130 fType=0x0 '通过WPS发送' [子菜单]
+    #0 id=127 fType=0x0 '转为在线文档'
+    #1 id=128 fType=0x0 '我的设备'
+    #2 id=129 fType=0x0 '发送至共享文件夹'
+#19 id=0 fType=0x800 ''
+#20 id=124 fType=0x0 '使用番茄免费小说打开'
+#21 id=0 fType=0x800 ''
+#22 id=123 fType=0x0 '授予访问权限(&G)' [子菜单]
+    #0 id=108 fType=0x0 '删除访问'
+    #1 id=109 fType=0x0 '特定用户...'
+#23 id=0 fType=0x800 ''
+#24 id=106 fType=0x0 '&TortoiseGit' [子菜单]
+    #0 id=101 fType=0x0 'Diff later'
+    #1 id=0 fType=0x800 ''
+    #2 id=103 fType=0x0 '&Settings'
+    #3 id=104 fType=0x0 '&Help'
+    #4 id=105 fType=0x0 'A&bout'
+#25 id=0 fType=0x800 ''
+#26 id=98 fType=0x0 '&TortoiseSVN' [子菜单]
+    #0 id=91 fType=0x0 'Diff later'
+    #1 id=92 fType=0x0 'Diff with "D:\svn\nk8500_kmj\P...\ScdComnProc.cxx"'
+    #2 id=93 fType=0x0 '&Repo-browser'
+    #3 id=0 fType=0x800 ''
+    #4 id=95 fType=0x0 '&Settings'
+    #5 id=96 fType=0x0 '&Help'
+    #6 id=97 fType=0x0 'About'
+#27 id=0 fType=0x800 ''
+#28 id=84 fType=0x0 'Win&Merge'
+#29 id=4294967295 fType=0x800 ''
+#30 id=10887011 fType=0x0 '与Catch!共享' [子菜单]
+    #0 id=81 fType=0x0 '刷新'
+#31 id=4294967295 fType=0x800 ''
+#32 id=646840987 fType=0x0 '通过QQ发送到' [子菜单]
+    #0 id=78 fType=0x0 '我的手机'
+    #1 id=79 fType=0x0 'QQ好友'
+#33 id=80 fType=0x0 '用QQ闪传分享(超大文件极速传输)'
+#34 id=27 fType=0x0 '还原以前的版本(&V)'
+#35 id=32765 fType=0x800 ''
+#36 id=76 fType=0x0 '发送到(&N)' [子菜单]
+    #0 id=29 fType=0x0 'Web_Publishing_Wizard'
+    #1 id=30 fType=0x0 '传真收件人'
+    #2 id=31 fType=0x0 '坚果云'
+    #3 id=32 fType=0x0 '蓝牙设备'
+    #4 id=33 fType=0x0 '文档'
+    #5 id=34 fType=0x0 '压缩(zipped)文件夹'
+    #6 id=35 fType=0x0 '邮件收件人'
+    #7 id=36 fType=0x0 '桌面快捷方式'
+#37 id=32764 fType=0x800 ''
+#38 id=24 fType=0x0 '剪切(&T)'
+#39 id=25 fType=0x0 '复制(&C)'
+#40 id=4294967295 fType=0x800 ''
+#41 id=16 fType=0x0 '创建快捷方式(&S)'
+#42 id=17 fType=0x0 '删除(&D)'
+#43 id=32766 fType=0x800 ''
+#44 id=19 fType=0x0 '属性(&R)'
+WM_INITMENUPOPUP 后 项数=45 (前=45)
+#0 id=160 fType=0x0 '打开(&O)'
+#1 id=162 fType=0x0 '编辑(&E)'
+#2 id=163 fType=0x0 '询问 Copilot'
+#3 id=165 fType=0x0 '使用 ToDesk 快传文件'
+#4 id=166 fType=0x0 '通过 TRAE 打开'
+#5 id=168 fType=0x0 '通过 Code 打开'
+#6 id=157 fType=0x0 '压缩为“left.&zip”'
+#7 id=158 fType=0x0 '压缩为“left.7z”'
+#8 id=159 fType=0x0 '新建压缩包 (Bandizip)(&B)...'
+#9 id=156 fType=0x0 '使用火绒安全进行杀毒'
+#10 id=154 fType=0x0 '使用火绒安全解锁占用'
+#11 id=155 fType=0x0 '使用火绒安全粉碎文件'
+#12 id=137 fType=0x0 '打开方式(&H)' [子菜单]
+    #0 id=139 fType=0x0 'Microsoft Visual Studio 2013'
+    #1 id=140 fType=0x0 'Trae CN'
+    #2 id=141 fType=0x0 'Visual Studio Code'
+    #3 id=142 fType=0x0 '记事本'
+    #4 id=143 fType=0x0 '写字板'
+    #5 id=144 fType=0x0 '在腾讯应用宝中搜索'
+    #6 id=0 fType=0x800 ''
+    #7 id=138 fType=0x0 '搜索 Microsoft Store(&S)'
+    #8 id=137 fType=0x0 '选择其他应用(&C)'
+#13 id=131 fType=0x800 ''
+#14 id=132 fType=0x0 '文件压缩'
+#15 id=133 fType=0x0 '批量改文档格式'
+#16 id=134 fType=0x800 ''
+#17 id=126 fType=0x0 '上传或同步到WPS' [子菜单]
+    #0 id=125 fType=0x0 '上传到WPS'
+#18 id=130 fType=0x0 '通过WPS发送' [子菜单]
+    #0 id=127 fType=0x0 '转为在线文档'
+    #1 id=128 fType=0x0 '我的设备'
+    #2 id=129 fType=0x0 '发送至共享文件夹'
+#19 id=0 fType=0x800 ''
+#20 id=124 fType=0x0 '使用番茄免费小说打开'
+#21 id=0 fType=0x800 ''
+#22 id=123 fType=0x0 '授予访问权限(&G)' [子菜单]
+    #0 id=108 fType=0x0 '删除访问'
+    #1 id=109 fType=0x0 '特定用户...'
+#23 id=0 fType=0x800 ''
+#24 id=106 fType=0x0 '&TortoiseGit' [子菜单]
+    #0 id=101 fType=0x0 'Diff later'
+    #1 id=0 fType=0x800 ''
+    #2 id=103 fType=0x0 '&Settings'
+    #3 id=104 fType=0x0 '&Help'
+    #4 id=105 fType=0x0 'A&bout'
+#25 id=0 fType=0x800 ''
+#26 id=98 fType=0x0 '&TortoiseSVN' [子菜单]
+    #0 id=91 fType=0x0 'Diff later'
+    #1 id=92 fType=0x0 'Diff with "D:\svn\nk8500_kmj\P...\ScdComnProc.cxx"'
+    #2 id=93 fType=0x0 '&Repo-browser'
+    #3 id=0 fType=0x800 ''
+    #4 id=95 fType=0x0 '&Settings'
+    #5 id=96 fType=0x0 '&Help'
+    #6 id=97 fType=0x0 'About'
+#27 id=0 fType=0x800 ''
+#28 id=84 fType=0x0 'Win&Merge'
+#29 id=4294967295 fType=0x800 ''
+#30 id=10887011 fType=0x0 '与Catch!共享' [子菜单]
+    #0 id=81 fType=0x0 '刷新'
+#31 id=4294967295 fType=0x800 ''
+#32 id=646840987 fType=0x0 '通过QQ发送到' [子菜单]
+    #0 id=78 fType=0x0 '我的手机'
+    #1 id=79 fType=0x0 'QQ好友'
+#33 id=80 fType=0x0 '用QQ闪传分享(超大文件极速传输)'
+#34 id=27 fType=0x0 '还原以前的版本(&V)'
+#35 id=32765 fType=0x800 ''
+#36 id=76 fType=0x0 '发送到(&N)' [子菜单]
+    #0 id=29 fType=0x0 'Web_Publishing_Wizard'
+    #1 id=30 fType=0x0 '传真收件人'
+    #2 id=31 fType=0x0 '坚果云'
+    #3 id=32 fType=0x0 '蓝牙设备'
+    #4 id=33 fType=0x0 '文档'
+    #5 id=34 fType=0x0 '压缩(zipped)文件夹'
+    #6 id=35 fType=0x0 '邮件收件人'
+    #7 id=36 fType=0x0 '桌面快捷方式'
+#37 id=32764 fType=0x800 ''
+#38 id=24 fType=0x0 '剪切(&T)'
+#39 id=25 fType=0x0 '复制(&C)'
+#40 id=4294967295 fType=0x800 ''
+#41 id=16 fType=0x0 '创建快捷方式(&S)'
+#42 id=17 fType=0x0 '删除(&D)'
+#43 id=32766 fType=0x800 ''
+#44 id=19 fType=0x0 '属性(&R)'
+PROD_MTA_ITEM 线程套间=MTA 顶层=52 叶子=43 WinMerge=True Tortoise=False
+    命中项=WinMerge(id=112)
+PROD_STA_ITEM 线程套间=STA 顶层=52 叶子=43 WinMerge=True Tortoise=False
+    命中项=WinMerge(id=112)
+PROD_MTA_BG 线程套间=MTA 顶层=24 叶子=32 WinMerge=True Tortoise=False
+    命中项=WinMerge(id=1)
+PROD_STA_BG 线程套间=STA 顶层=24 叶子=32 WinMerge=True Tortoise=False
+    命中项=WinMerge(id=1)
+PROD_MTA_MULTI 线程套间=MTA 顶层=43 叶子=38 WinMerge=True Tortoise=False
+    命中项=WinMerge(id=134) | WinMerge(id=135) | WinMerge(id=83)
+PROD_STA_MULTI 线程套间=STA 顶层=43 叶子=38 WinMerge=True Tortoise=False
+    命中项=WinMerge(id=134) | WinMerge(id=135) | WinMerge(id=83)

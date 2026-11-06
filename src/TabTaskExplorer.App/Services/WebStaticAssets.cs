@@ -19,6 +19,7 @@ public static class WebStaticAssets
     public const string AssetPrefix = "/assets/web/";
 
     private const string IndexResource = "web.index.html";
+    private const string TokensResource = "web.tokens.css";
     private const string StyleResource = "web.app.css";
     private const string CoreResource = "web.core.js";
     private const string ViewsResource = "web.views.js";
@@ -29,6 +30,7 @@ public static class WebStaticAssets
 
     private static readonly Dictionary<string, string> contentTypes = new Dictionary<string, string>(StringComparer.Ordinal)
     {
+        ["tokens.css"] = "text/css; charset=utf-8",
         ["app.css"] = "text/css; charset=utf-8",
         ["core.js"] = "text/javascript; charset=utf-8",
         ["views.js"] = "text/javascript; charset=utf-8",
@@ -42,6 +44,7 @@ public static class WebStaticAssets
     private static bool loaded;
     private static bool available;
     private static string indexHtml = string.Empty;
+    private static string tokensSheet = string.Empty;
     private static string styleSheet = string.Empty;
     private static string coreScript = string.Empty;
     private static string viewsScript = string.Empty;
@@ -93,7 +96,11 @@ public static class WebStaticAssets
         contentType = string.Empty;
         content = Array.Empty<byte>();
         string text;
-        if (string.Equals(fileName, "app.css", StringComparison.Ordinal))
+        if (string.Equals(fileName, "tokens.css", StringComparison.Ordinal))
+        {
+            text = WebStaticAssets.tokensSheet;
+        }
+        else if (string.Equals(fileName, "app.css", StringComparison.Ordinal))
         {
             text = WebStaticAssets.styleSheet;
         }
@@ -147,6 +154,7 @@ public static class WebStaticAssets
             }
             WebStaticAssets.loaded = true;
             WebStaticAssets.indexHtml = WebStaticAssets.LoadResource(WebStaticAssets.IndexResource) ?? string.Empty;
+            WebStaticAssets.tokensSheet = WebStaticAssets.LoadResource(WebStaticAssets.TokensResource) ?? string.Empty;
             WebStaticAssets.styleSheet = WebStaticAssets.LoadResource(WebStaticAssets.StyleResource) ?? string.Empty;
             WebStaticAssets.coreScript = WebStaticAssets.LoadResource(WebStaticAssets.CoreResource) ?? string.Empty;
             WebStaticAssets.viewsScript = WebStaticAssets.LoadResource(WebStaticAssets.ViewsResource) ?? string.Empty;
@@ -155,6 +163,7 @@ public static class WebStaticAssets
             WebStaticAssets.ideScript = WebStaticAssets.LoadResource(WebStaticAssets.IdeResource) ?? string.Empty;
             WebStaticAssets.bootScript = WebStaticAssets.LoadResource(WebStaticAssets.BootResource) ?? string.Empty;
             WebStaticAssets.available = WebStaticAssets.indexHtml.Length > 0
+                && WebStaticAssets.tokensSheet.Length > 0
                 && WebStaticAssets.styleSheet.Length > 0
                 && WebStaticAssets.coreScript.Length > 0
                 && WebStaticAssets.viewsScript.Length > 0
@@ -165,13 +174,14 @@ public static class WebStaticAssets
             if (!WebStaticAssets.available)
             {
                 UiLogger.Log("网页端静态资源", "回退内联页面：嵌入资源不完整 index=" + WebStaticAssets.indexHtml.Length
+                    + " 令牌=" + WebStaticAssets.tokensSheet.Length
                     + " 样式=" + WebStaticAssets.styleSheet.Length + " 核心=" + WebStaticAssets.coreScript.Length
                     + " 视图=" + WebStaticAssets.viewsScript.Length + " 面板=" + WebStaticAssets.panelsScript.Length
                     + " 交互=" + WebStaticAssets.actionsScript.Length + " IDE=" + WebStaticAssets.ideScript.Length
                     + " 启动=" + WebStaticAssets.bootScript.Length);
                 return;
             }
-            string combined = WebStaticAssets.indexHtml + "\n" + WebStaticAssets.styleSheet + "\n"
+            string combined = WebStaticAssets.indexHtml + "\n" + WebStaticAssets.tokensSheet + "\n" + WebStaticAssets.styleSheet + "\n"
                 + WebStaticAssets.coreScript + "\n" + WebStaticAssets.viewsScript + "\n"
                 + WebStaticAssets.panelsScript + "\n" + WebStaticAssets.actionsScript + "\n"
                 + WebStaticAssets.ideScript + "\n" + WebStaticAssets.bootScript;

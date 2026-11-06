@@ -62,6 +62,21 @@ public struct CaptureArea
     }
 }
 
+/// <summary>
+/// 截图采集后端：默认自动（优先现代采集，失败回退 GDI），也可强制指定以便对比与排查。
+/// </summary>
+public enum CaptureBackend
+{
+    /// <summary>平台自动选择：优先 Windows Graphics Capture，不可用或失败时回退 GDI。</summary>
+    Auto,
+
+    /// <summary>优先/强制使用 Windows Graphics Capture；仍失败时回退 GDI，并在结果中标注原因。</summary>
+    WindowsGraphicsCapture,
+
+    /// <summary>强制使用 GDI（CopyFromScreen），用于对照与绕过采集兼容问题。</summary>
+    Gdi,
+}
+
 /// <summary>截图能力清单：界面据此禁用当前平台不支持的目标，避免用户点击后才失败。</summary>
 public class ScreenCaptureCapabilities
 {
@@ -76,6 +91,18 @@ public class ScreenCaptureCapabilities
 
     /// <summary>是否支持活动窗口截图。</summary>
     public bool ActiveWindow { get; set; }
+
+    /// <summary>是否支持独立窗口选择（可截取被遮挡窗口）。</summary>
+    public bool WindowPicker { get; set; }
+
+    /// <summary>采集链路是否具备 HDR / 宽色域感知（按系统合成结果输出 SDR 像素）。</summary>
+    public bool HdrAware { get; set; }
+
+    /// <summary>是否可截取被其他窗口遮挡的内容。</summary>
+    public bool OccludedWindow { get; set; }
+
+    /// <summary>当前后端名称（中文，用于状态展示与日志）。</summary>
+    public string BackendName { get; set; } = string.Empty;
 }
 
 /// <summary>一次截图请求。</summary>
@@ -95,6 +122,9 @@ public class ScreenCaptureRequest
     /// 留空表示由平台实现自行查找。
     /// </summary>
     public string ToolPath { get; set; } = string.Empty;
+
+    /// <summary>采集后端偏好；平台不支持时按自动策略回退。</summary>
+    public CaptureBackend Backend { get; set; } = CaptureBackend.Auto;
 }
 
 /// <summary>一次截图结果：成功时携带 PNG 字节与像素尺寸。</summary>
@@ -117,6 +147,9 @@ public class ScreenCaptureResult
 
     /// <summary>失败原因（中文，可直接展示给用户）。</summary>
     public string ErrorMessage { get; set; } = string.Empty;
+
+    /// <summary>实际使用的采集后端（中文，含回退原因），用于日志排查。</summary>
+    public string BackendName { get; set; } = string.Empty;
 
     /// <summary>构造成功结果。</summary>
     public static ScreenCaptureResult CreateSuccess(byte[] imageBytes, int pixelWidth, int pixelHeight, CaptureArea area)

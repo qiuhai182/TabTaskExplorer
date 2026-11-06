@@ -50,6 +50,12 @@ public class WebWorkspace
     /// <summary>工作区标识（网页端回传时使用）。</summary>
     public string Id { get; private set; } = string.Empty;
 
+    /// <summary>按连接缓存的远程传输服务：本地条目粘贴到远程目录时复用同一上传队列。</summary>
+    private readonly Dictionary<string, IRemoteTransferService> transferServices = new Dictionary<string, IRemoteTransferService>();
+
+    /// <summary>剪切上传的任务编号 → 本地源路径：上传成功后删除源，失败则保留。</summary>
+    private readonly Dictionary<Guid, string> cutUploadSources = new Dictionary<Guid, string>();
+
     /// <summary>最近一次访问的时间（用于清理闲置工作区）。</summary>
     public DateTime LastAccessTime { get; set; } = DateTime.Now;
 
@@ -972,7 +978,39 @@ public class WebWorkspace
         }
         if (action == "pin" || action == "unpin")
         {
-            return "独立工作区不与桌面共享书签，该操作不可用";
+            // 书签与桌面共用同一份设置（PinnedPaths）：独立工作区展示的正是这份清单，需要能增删
+            if (string.IsNullOrEmpty(argument))
+            {
+                return "未指定书签路径";
+            }
+            string normalized = argument.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            string? existing = null;
+            foreach (string pinned in this.settings.PinnedPaths)
+            {
+                if (string.Equals((pinned ?? string.Empty).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
+                    normalized, StringComparison.OrdinalIgnoreCase))
+                {
+                    existing = pinned;
+                    break;
+                }
+            }
+            if (action == "pin")
+            {
+                if (existing != null)
+                {
+                    return "该路径已在书签中：" + argument;
+                }
+                this.settings.PinnedPaths.Add(argument);
+                this.SaveSettingsAndRefresh();
+                return "已固定书签：" + argument;
+            }
+            if (existing == null)
+            {
+                return "该路径不在书签中：" + argument;
+            }
+            this.settings.PinnedPaths.Remove(existing);
+            this.SaveSettingsAndRefresh();
+            return "已取消固定书签：" + argument;
         }
         if (action == "comparechecked")
         {
@@ -1514,6 +1552,7 @@ public class WebWorkspace
                     FileTabViewModel newTab = new FileTabViewModel(provider, workspace.settings, "/", null,
                         workspace.services.GetRequiredService<IArchiveService>(), new AppSettingsStore());
                     newTab.AttachedProfileId = profile.Id;
+                    newTab.RemoteRootTitle = profile.Name;
                     workspace.tabs.Add(newTab);
                     workspace.selectedIndex = workspace.tabs.Count - 1;
                     UiLogger.Log("网页端工作区", "工作区=" + workspace.Id + " 打开远程文件夹标签：连接=" + profile.Name
@@ -1607,7 +1646,8 @@ public class WebWorkspace
         }
         string landedPathsText = string.Join("、", this.clipboardPaths);
         bool landedIsCut = this.clipboardIsCut;
-        bool localTask = fileTab != null && fileTab.FileSystemProvider is DefaultFileSystemProvider;
+        // 磁盘视图粘贴时没有文件标签（fileTab 为空），目标仍是本地目录，必须按本地任务中心提交
+        bool localTask = fileTab == null || fileTab.FileSystemProvider is DefaultFileSystemProvider;
         if (localTask)
         {
             foreach (string candidate in this.clipboardPaths)
@@ -1619,7 +1659,17 @@ public class WebWorkspace
                 }
             }
         }
+        if (localTask && !Directory.Exists(targetDirectory))
+        {
+            // 书签可能指向文件：粘贴目标必须是已存在的文件夹，否则直接说明，不要只回“请检查源路径与目标目录”
+            return "粘贴目标不是文件夹或不存在：" + targetDirectory;
+        }
         string taskId = string.Empty;
+        if (!localTask && fileTab != null && !string.IsNullOrEmpty(fileTab.AttachedProfileId))
+        {
+            // 目标是远程目录：本地条目必须走远程传输服务上传，直接调用远程提供者的 Copy 读不到本地路径
+            return this.UploadLocalPathsToRemote(fileTab, targetDirectory);
+        }
         if (localTask)
         {
             UiLogger.Log("网页端工作区", "工作区=" + this.Id + " 粘贴开始：源数量=" + this.clipboardPaths.Count
@@ -1677,6 +1727,144 @@ public class WebWorkspace
             fileTab.ShowMessage(message);
         }
         return message;
+    }
+
+    /// <summary>本地条目粘贴到远程目录：走远程传输服务上传，失败原因写回提示，剪切成功后删除本地源。</summary>
+    private string UploadLocalPathsToRemote(FileTabViewModel fileTab, string targetDirectory)
+    {
+        bool allLocal = true;
+        foreach (string candidate in this.clipboardPaths!)
+        {
+            if (!File.Exists(candidate) && !Directory.Exists(candidate))
+            {
+                allLocal = false;
+                break;
+            }
+        }
+        if (!allLocal)
+        {
+            string unsupported = "远程目录暂不支持从远程来源直接复制或移动，请先下载到本地再上传";
+            fileTab.ShowMessage(unsupported);
+            UiLogger.Log("网页端工作区", "工作区=" + this.Id + " 粘贴：目标=" + targetDirectory + " 结果=不支持，已提示");
+            return unsupported;
+        }
+
+        ConnectionManager manager = this.services.GetRequiredService<ConnectionManager>();
+        RemoteConnectionProfile? profile = manager.FindById(fileTab.AttachedProfileId);
+        if (profile == null)
+        {
+            string gone = "粘贴失败：连接配置已不存在，请重新打开该远程目录";
+            fileTab.ShowMessage(gone);
+            return gone;
+        }
+        string secret = manager.GetSecret(profile);
+        string? missing = RemoteCredentialCheck.DescribeMissing(profile, secret);
+        if (missing != null)
+        {
+            string blocked = "粘贴失败：" + missing;
+            this.lastNotice = blocked;
+            fileTab.ShowMessage(blocked);
+            UiLogger.Log("网页端工作区", "工作区=" + this.Id + " 粘贴被阻断：连接=" + profile.Name
+                + " 失败层次=认证层 原因=" + missing);
+            return blocked;
+        }
+
+        IRemoteTransferService service;
+        if (!this.transferServices.TryGetValue(profile.Id, out service!))
+        {
+            try
+            {
+                IRemoteSessionFactory factory = this.services.GetRequiredService<IRemoteSessionFactory>();
+                service = factory.OpenTransferService(profile, secret);
+            }
+            catch (Exception error)
+            {
+                string reason = RemoteFailureText.Describe(error, profile);
+                string failed = "粘贴失败：" + reason;
+                this.lastNotice = failed;
+                fileTab.ShowMessage(failed);
+                UiLogger.LogError("网页端工作区", "建立上传服务失败：连接=" + profile.Name + " 失败层次="
+                    + RemoteFailureText.Layer(error) + " 原因=" + reason, error);
+                return failed;
+            }
+            this.transferServices[profile.Id] = service;
+            service.JobChanged += this.OnUploadJobChanged;
+        }
+
+        bool isCut = this.clipboardIsCut;
+        int queued = 0;
+        foreach (string source in this.clipboardPaths!)
+        {
+            string trimmed = source.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            string name = Path.GetFileName(trimmed);
+            string remotePath = targetDirectory.TrimEnd('/') + "/" + name;
+            RemoteTransferJob job = service.EnqueueUpload(source, remotePath);
+            if (isCut)
+            {
+                this.cutUploadSources[job.Id] = source;
+            }
+            queued++;
+        }
+        if (isCut)
+        {
+            this.clipboardPaths = null;
+        }
+        string message = "已提交上传任务：本地 " + queued + " 项 → " + targetDirectory + "（可在任务中心查看进度）";
+        this.lastNotice = message;
+        fileTab.ShowMessage(message);
+        UiLogger.Log("网页端工作区", "工作区=" + this.Id + " 粘贴上传：连接=" + profile.Name + " 目标=" + targetDirectory
+            + " 源数量=" + queued + " 方式=" + (isCut ? "移动（上传成功后删除本地源）" : "复制")
+            + " 目标路径列表=" + string.Join("、", this.clipboardPaths == null ? new List<string>() : this.clipboardPaths));
+        return message;
+    }
+
+    /// <summary>上传任务状态变化：完成时删除剪切源，失败时把原因写进提示（含远端路径）。</summary>
+    private void OnUploadJobChanged(RemoteTransferJob job)
+    {
+        if (job.Status == RemoteTransferStatus.Completed)
+        {
+            string? source;
+            if (this.cutUploadSources.TryGetValue(job.Id, out source))
+            {
+                this.cutUploadSources.Remove(job.Id);
+                try
+                {
+                    if (Directory.Exists(source))
+                    {
+                        Directory.Delete(source, true);
+                    }
+                    else if (File.Exists(source))
+                    {
+                        File.Delete(source);
+                    }
+                    UiLogger.Log("网页端工作区", "剪切上传完成：任务=" + job.Id + " 源=" + source + " 结果=已删除本地源");
+                }
+                catch (Exception error)
+                {
+                    UiLogger.LogError("网页端工作区", "剪切上传完成但删除本地源失败：任务=" + job.Id + " 源=" + source, error);
+                }
+            }
+            Dispatcher.UIThread.Post(delegate
+            {
+                foreach (object tab in this.tabs)
+                {
+                    FileTabViewModel? fileTab = tab as FileTabViewModel;
+                    if (fileTab != null)
+                    {
+                        fileTab.Refresh();
+                    }
+                }
+            });
+            return;
+        }
+        if (job.Status == RemoteTransferStatus.Failed)
+        {
+            string reason = RemoteFailureText.DescribeTransfer(job.ErrorMessage);
+            this.lastNotice = "上传失败：" + reason + "（远端路径：" + job.RemotePath + "）";
+            this.cutUploadSources.Remove(job.Id);
+            UiLogger.LogError("网页端工作区", "上传失败", "任务=" + job.Id + " 本地=" + job.LocalPath
+                + " 远端=" + job.RemotePath + " 原因=" + reason);
+        }
     }
 
     /// <summary>刷新当前工作区内所有正好停在指定目录的文件标签（磁盘视图操作后保持文件夹视图同步）。</summary>
@@ -2122,9 +2310,32 @@ public class WebWorkspace
             state.Ide = this.ideShell.BuildMirrorState();
         }
 
-        // 此电脑分组：磁盘分区（独立工作区没有桌面书签，侧边栏只给磁盘入口）
+        // 此电脑分组：磁盘分区
         FileTabViewModel? currentFileTab = this.CurrentFileTab();
         string currentPath = currentFileTab != null ? currentFileTab.CurrentPath : string.Empty;
+        // 快捷访问（书签）与桌面共用设置：独立工作区也要能看到，并可作为右键粘贴目标
+        foreach (string pinned in this.settings.PinnedPaths)
+        {
+            if (string.IsNullOrEmpty(pinned))
+            {
+                continue;
+            }
+            string trimmedPinned = pinned.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            string pinnedName = Path.GetFileName(trimmedPinned);
+            if (string.IsNullOrEmpty(pinnedName))
+            {
+                pinnedName = pinned;
+            }
+            state.NavPinned.Add(new DebugNavItem
+            {
+                Name = pinnedName,
+                Path = pinned,
+                IconCategory = FileIconCatalog.Folder,
+                Selected = !string.IsNullOrEmpty(currentPath)
+                    && string.Equals(currentPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
+                        trimmedPinned, StringComparison.OrdinalIgnoreCase),
+            });
+        }
         foreach (DriveInfo drive in DriveInfo.GetDrives())
         {
             state.NavPc.Add(new DebugNavItem

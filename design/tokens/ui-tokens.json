@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "comment": "界面颜色令牌唯一来源。修改本文件后运行 tools/gen-design-tokens.ps1，重新生成 src/TabTaskExplorer.App/Themes/Tokens.axaml、src/TabTaskExplorer.App/Assets/web/tokens.css 与 WebPageHtml 内联回退样式中的令牌块；不要手改生成物。第一版取值以桌面端既有 14 个语义画刷为准，桌面端因此没有视觉变化。",
+  "color": {
+    "chrome": { "light": "#F1F1F1", "dark": "#212121", "avalonia": "ChromeBrush", "note": "标题栏 / 窗口铬色" },
+    "content": { "light": "#FFFFFF", "dark": "#191919", "avalonia": "ContentBrush", "note": "内容区底色" },
+    "separator": { "light": "#EBEBEC", "dark": "#515151", "avalonia": "SeparatorBrush", "note": "标题栏 / 状态栏等强分隔线" },
+    "border": { "light": "#E9E9E9", "dark": "#323232", "avalonia": "SubtleBorderBrush", "note": "侧栏、面板、菜单、表格的细边框" },
+    "textPrimary": { "light": "#1C1C1C", "dark": "#E8E8E8", "avalonia": "TextPrimaryBrush", "note": "主文字" },
+    "textMuted": { "light": "#808080", "dark": "#808080", "avalonia": "TextMutedBrush", "note": "次文字 / 表头 / 提示" },
+    "accent": { "light": "#4A8FD0", "dark": "#4CC2FF", "avalonia": "AccentGlyphBrush", "note": "唯一界面强调色" },
+    "rowHover": { "light": "#F5F7FA", "dark": "#2E2E2E", "avalonia": "RowHoverBrush", "note": "行 / 列表项 / 菜单项悬停" },
+    "rowSelected": { "light": "#DCE9F5", "dark": "#37373D", "avalonia": "RowSelectedBrush", "note": "行 / 列表项选中底色" },
+    "rowSelectedText": { "light": "#4A8FD0", "dark": "#4CC2FF", "avalonia": "RowSelectedTextBrush", "note": "选中项文字（与桌面侧栏一致：强调色文字）" },
+    "tabHover": { "light": "#E4E4E4", "dark": "#2E2E2E", "avalonia": "TabHoverBrush", "note": "标签悬停" },
+    "tabActive": { "light": "#FFFFFF", "dark": "#191919", "avalonia": "TabActiveBrush", "note": "标签选中底色" },
+    "bookmarkBar": { "light": "#FFFFFF", "dark": "#3B3B3B", "avalonia": "BookmarkBarBrush", "note": "书签栏底色" },
+    "inputBorder": { "light": "#DCDDDE", "dark": "#525252", "avalonia": "AddressBarBorderBrush", "note": "地址栏 / 输入框边框" },
+    "inputSurface": { "light": "#FFFFFF", "dark": "#202020", "avalonia": "InputSurfaceBrush", "note": "输入框底色（桌面沿用 Fluent 模板）" },
+    "toolbarText": { "light": "#808080", "dark": "#FFFFFF", "avalonia": "ToolbarTextBrush", "note": "工具栏文字" },
+    "statusBar": { "light": "#F1F1F1", "dark": "#212121", "avalonia": "StatusBarBrush", "note": "状态栏底色（桌面用 ChromeBrush，取值相同）" },
+    "menuSurface": { "light": "#F1F1F1", "dark": "#212121", "avalonia": "MenuSurfaceBrush", "note": "菜单 / 右键菜单表面（桌面 ContextMenu 用 ChromeBrush，取值相同）" },
+    "surfaceRaised": { "light": "#FFFFFF", "dark": "#242424", "avalonia": "SurfaceRaisedBrush", "note": "浮起面板：对话框、预览层、任务中心" },
+    "overlayScrim": { "light": "#00000073", "dark": "#00000073", "avalonia": "OverlayScrimBrush", "note": "模态遮罩 45% 黑" },
+    "rowSelectedBorder": { "light": "#BBD7F5", "dark": "#3D5A78", "avalonia": "RowSelectedBorderBrush", "note": "磁贴选中时的描边" },
+    "onAccent": { "light": "#FFFFFF", "dark": "#FFFFFF", "avalonia": "OnAccentBrush", "note": "强调色块上的文字" },
+    "danger": { "light": "#D9534F", "dark": "#FF6B6B", "avalonia": "DangerBrush", "note": "失败 / 离线" },
+    "warning": { "light": "#E8A317", "dark": "#E8A317", "avalonia": "WarningBrush", "note": "警告 / 重连中" },
+    "success": { "light": "#3FA45B", "dark": "#3FA45B", "avalonia": "SuccessBrush", "note": "成功 / 在线" },
+    "focusRing": { "light": "#4A8FD0", "dark": "#4CC2FF", "avalonia": "FocusRingBrush", "note": "键盘焦点环" }
+  }
+}
