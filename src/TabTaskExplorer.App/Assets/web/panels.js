@@ -774,23 +774,184 @@ function renderStatus() {
 }
 
 
-// ======== 设置面板（分组与桌面 SettingsWindow 一致；未接分组保留并置灰说明） ========
+// ======== 截图与录屏（分组与桌面 CapturePanel 一致；已接动作可点，未接动作置灰说明） ========
+
+let captureState = null;
+let captureError = '';
+let captureTimer = null;
+
+function openCapture() {
+  const modal = document.getElementById('capturePanel');
+  if (!modal) { return; }
+  modal.classList.remove('hidden');
+  renderCaptureLoading();
+  loadCaptureState();
+  if (captureTimer) { clearInterval(captureTimer); }
+  captureTimer = setInterval(loadCaptureState, 2000);
+}
+
+function closeCapture() {
+  const modal = document.getElementById('capturePanel');
+  if (modal) { modal.classList.add('hidden'); }
+  if (captureTimer) { clearInterval(captureTimer); captureTimer = null; }
+}
+
+async function loadCaptureState() {
+  try {
+    const response = await apiFetch('/api/capture/state');
+    if (!response.ok) { throw new Error('HTTP ' + response.status); }
+    captureState = await response.json();
+    captureError = '';
+  } catch (error) {
+    captureState = null;
+    captureError = error && error.message ? error.message : '未知错误';
+  }
+  renderCapture();
+}
+
+function renderCaptureLoading() {
+  const body = document.getElementById('captureBody');
+  if (body) { body.innerHTML = '<div class="capState">正在读取截图状态…</div>'; }
+}
+
+function captureDisabledButton(label, reason) {
+  return '<span class="btn disabled" title="' + esc(reason) + '">' + label + '</span>';
+}
+
+function renderCapture() {
+  const body = document.getElementById('captureBody');
+  if (!body) { return; }
+  if (!captureState) {
+    body.innerHTML = '<div class="capGroup"><div class="capGroupHead">截图与录屏</div>'
+      + '<div class="capState">读取截图状态失败：' + esc(captureError || '未知错误') + '</div>'
+      + '<div class="capBar"><span class="btn" onclick="loadCaptureState()">重新读取</span></div></div>';
+    return;
+  }
+  const state = captureState;
+  const items = Array.isArray(state.items) ? state.items : [];
+  let html = '';
+
+  // 1. 截图动作：已接全屏 / 区域 / 贴图；其余保留并置灰
+  html += '<div class="capGroup"><div class="capGroupHead">截图</div>'
+    + '<div class="capBar">'
+    + '<span class="btn" onclick="captureAction(\'fullscreen\')">全屏截图</span>'
+    + '<span class="btn" onclick="captureAction(\'region\')">区域截图</span>'
+    + '<span class="btn" onclick="captureAction(\'pin\')">贴图截图</span>'
+    + captureDisabledButton('主屏截图', '网页端尚未接入该截图方式，请在桌面端使用')
+    + captureDisabledButton('滚动长截图', '网页端尚未接入该截图方式，请在桌面端使用')
+    + captureDisabledButton('活动窗口', '网页端尚未接入该截图方式，请在桌面端使用')
+    + captureDisabledButton('上次区域', '网页端尚未接入该截图方式，请在桌面端使用')
+    + captureDisabledButton('屏幕取色', '网页端尚未接入该截图方式，请在桌面端使用')
+    + '</div>'
+    + '<div class="capNote">延迟：' + (state.delaySeconds || 0) + ' 秒（网页端固定使用桌面设置的延迟，暂不可改）</div>'
+    + '</div>';
+
+  // 2. 截图选项：仅贴图保存可写，其余由桌面截图管线读取
+  const pinSaveChecked = state.pinSave ? ' checked' : '';
+  html += '<div class="capGroup"><div class="capGroupHead">截图选项</div>'
+    + '<label class="capRow"><input type="checkbox"' + pinSaveChecked
+    + ' onchange="captureAction(\'pinSave\', this.checked ? \'on\' : \'off\')">贴图截图保存产物</label>'
+    + '<div class="capRow">'
+    + captureDisabledButton('完成后自动打开产物文件夹', '该选项由桌面端截图管线读取，网页端暂不可改')
+    + captureDisabledButton('截图后自动打开标注编辑器', '该选项由桌面端截图管线读取，网页端暂不可改')
+    + captureDisabledButton('包含鼠标指针', '该选项由桌面端截图管线读取，网页端暂不可改')
+    + '</div>'
+    + '<div class="capNote">采集后端：' + esc(state.backend || 'auto') + '（由桌面端设置决定，网页端暂不可改）</div>'
+    + '</div>';
+
+  // 3. 录屏：网页端无桥接，整组置灰
+  html += '<div class="capGroup"><div class="capGroupHead">录屏</div>'
+    + '<div class="capBar">'
+    + captureDisabledButton('开始录制', '网页端尚未接入录屏，请在桌面端录制')
+    + captureDisabledButton('停止录制', '网页端尚未接入录屏，请在桌面端录制')
+    + '</div>'
+    + '<div class="capRow">'
+    + captureDisabledButton('录制目标', '网页端尚未接入录屏，请在桌面端录制')
+    + captureDisabledButton('麦克风', '网页端尚未接入录屏，请在桌面端录制')
+    + captureDisabledButton('帧率 / 质量', '网页端尚未接入录屏，请在桌面端录制')
+    + '</div>'
+    + '<div class="capNote">网页端尚未接入录屏，请在桌面端录制。</div>'
+    + '</div>';
+
+  // 4. 产物历史：缩略图 + 删除 / 复制；打开与标注为桌面行为
+  html += '<div class="capGroup"><div class="capGroupHead">产物历史（' + items.length + '）</div>'
+    + '<div class="capBar"><span class="btn" onclick="loadCaptureState()">刷新</span>'
+    + captureDisabledButton('打开产物目录', '产物在桌面本机，网页端不打开本地窗口') + '</div>';
+  if (items.length === 0) {
+    html += '<div class="capState">暂无截图产物</div>';
+  } else {
+    for (const item of items) {
+      const file = item.fileName || item.fullPath || '未命名产物';
+      const thumb = item.thumbnailUrl
+        ? '<img src="' + escAttr(item.thumbnailUrl) + '" alt="" onerror="this.style.display=\'none\'">'
+        : uiIcon('camera', 18, '#8A8F99');
+      html += '<div class="capItem">'
+        + '<span class="capThumb">' + thumb + '</span>'
+        + '<span class="capMeta"><span class="capName" title="' + escAttr(item.fullPath || file) + '">' + esc(file) + '</span>'
+        + '<span class="capSub">' + esc(item.modifiedTime || '') + ' · ' + esc(item.sizeText || '') + '</span></span>'
+        + '<span class="capBar">'
+        + '<span class="btn" onclick="captureAction(\'copy\',\'' + escAttr(item.fullPath || '') + '\')">复制到剪贴板</span>'
+        + '<span class="btn" onclick="captureAction(\'delete\',\'' + escAttr(item.fullPath || '') + '\')">删除</span>'
+        + captureDisabledButton('打开', '产物在桌面本机，网页端不打开本地窗口')
+        + captureDisabledButton('标注此图', '标注编辑器仅桌面端可用')
+        + '</span></div>';
+    }
+  }
+  html += '</div>';
+
+  // 5. 状态栏：保存目录 / 命名模板 / 格式
+  html += '<div class="capGroup"><div class="capGroupHead">输出</div>'
+    + '<div class="capNote">保存目录：' + esc(state.outputDirectory || '未设置') + '</div>'
+    + '<div class="capNote">命名模板：' + esc(state.fileNameTemplate || '未设置') + ' · 格式：' + esc(state.format || '未设置') + '</div>'
+    + '</div>';
+
+  body.innerHTML = html;
+}
+
+async function captureAction(action, argument) {
+  const arg = argument == null ? '' : argument;
+  const url = '/api/capture/action?a=' + encodeURIComponent(action)
+    + (arg ? '&arg=' + encodeURIComponent(arg) : '');
+  try {
+    const response = await apiFetch(url, { method: 'POST' });
+    if (response.status === 403) {
+      flash('当前端口未放行修改权限，无法执行该截图操作');
+      return;
+    }
+    let data = null;
+    try { data = await response.json(); } catch (error) { data = null; }
+    if (!data) {
+      flash('截图操作失败：服务未返回结果');
+      return;
+    }
+    flash(data.message || (data.ok ? '操作已完成' : '操作未执行'));
+    setTimeout(loadCaptureState, 600);
+  } catch (error) {
+    flash('截图操作失败：' + (error && error.message ? error.message : '网络错误'));
+  }
+}
+
+
+// ======== 设置面板（分组与桌面 SettingsWindow 一致；/api/settings 已接的分组可写） ========
 
 const SETTINGS_GROUPS = [
   { id: 'basic', title: '基本设置' },
-  { id: 'shortcuts', title: '快捷操作' },
+  { id: 'shortcuts', title: '快捷操作', locked: 'shortcuts' },
   { id: 'files', title: '文件/文件夹', desktopOnly: '排序、列配置与只读目录等桌面选项' },
-  { id: 'editor', title: '编辑器', desktopOnly: '语法高亮、字体与保存行为' },
-  { id: 'openwith', title: '打开方式', desktopOnly: '按扩展名指定默认程序' },
-  { id: 'media', title: '媒体', desktopOnly: '播放引擎与缩略图生成' },
-  { id: 'web', title: '网页端' },
-  { id: 'shellmenu', title: '右键菜单', desktopOnly: '注入 Windows 资源管理器右键菜单' },
-  { id: 'startup', title: '启动项管理', desktopOnly: '启用 / 禁用开机启动项' },
-  { id: 'capture', title: '截图与录屏', desktopOnly: '截图、录屏与产物历史' },
+  { id: 'editor', title: '编辑器' },
+  { id: 'openwith', title: '打开方式', locked: 'openwith', fallback: '默认打开方式需要系统文件关联，仅桌面端可用' },
+  { id: 'media', title: '媒体', locked: 'media', fallback: '播放器设置由桌面内置播放器读取，网页端不使用' },
+  { id: 'web', title: '网页端', locked: 'web', fallback: '网页服务地址与端口需在桌面端修改并重启服务' },
+  { id: 'shellmenu', title: '右键菜单', locked: 'shellmenu', fallback: '系统右键菜单项仅桌面端可枚举与启停' },
+  { id: 'startup', title: '启动项管理', locked: 'startup', fallback: '启动项需要写入系统注册表 / 启动目录，仅桌面端可用' },
+  { id: 'capture', title: '截图与录屏' },
   { id: 'about', title: '关于' }
 ];
 
 let settingsActive = 'basic';
+let settingsData = null;
+let settingsError = '';
+let settingsLoading = false;
 
 // 桌面专属入口：控件保留、点击给出可读说明，避免用户误以为是缺陷
 function desktopOnly(name) {
@@ -802,13 +963,76 @@ function openSettings(group) {
   if (!modal) { return; }
   settingsActive = group || 'basic';
   renderSettingsNav();
-  renderSettingsPane();
+  if (settingsData) {
+    renderSettingsPane();
+  } else {
+    renderSettingsLoading();
+  }
   modal.classList.remove('hidden');
+  loadSettings();
 }
 
 function closeSettings() {
   const modal = document.getElementById('settings');
   if (modal) { modal.classList.add('hidden'); }
+}
+
+async function loadSettings() {
+  settingsLoading = true;
+  try {
+    const response = await apiFetch('/api/settings');
+    if (!response.ok) { throw new Error('HTTP ' + response.status); }
+    settingsData = await response.json();
+    settingsError = '';
+  } catch (error) {
+    settingsData = null;
+    settingsError = error && error.message ? error.message : '未知错误';
+  } finally {
+    settingsLoading = false;
+    renderSettingsNav();
+    renderSettingsPane();
+  }
+}
+
+function renderSettingsLoading() {
+  const pane = document.getElementById('settingsPane');
+  if (pane) { pane.innerHTML = '<div class="hint">正在读取设置…</div>'; }
+}
+
+function settingValue(key) {
+  return settingsData && settingsData.values ? settingsData.values[key] : undefined;
+}
+
+async function applySetting(key, value, type) {
+  const payload = {};
+  payload[key] = type === 'bool' ? !!value : (type === 'number' ? Number(value) : value);
+  try {
+    const response = await apiFetch('/api/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (response.status === 403) {
+      flash('当前端口未放行修改权限，无法修改设置');
+      loadSettings();
+      return;
+    }
+    let data = null;
+    try { data = await response.json(); } catch (error) { data = null; }
+    if (!data) {
+      flash('设置保存失败：服务未返回结果');
+      loadSettings();
+      return;
+    }
+    if (data.rejected && data.rejected.length > 0) {
+      flash('未应用：' + data.rejected.map(item => item.reason).join('；'));
+    } else {
+      flash(data.message || '设置已保存');
+    }
+    loadSettings();
+  } catch (error) {
+    flash('设置保存失败：' + (error && error.message ? error.message : '网络错误'));
+  }
 }
 
 function renderSettingsNav() {
@@ -817,9 +1041,10 @@ function renderSettingsNav() {
   let html = '';
   for (const group of SETTINGS_GROUPS) {
     const selected = group.id === settingsActive ? ' selected' : '';
+    const locked = group.locked || group.desktopOnly;
     html += '<div class="navitem' + selected + '" onclick="switchSettingsGroup(\'' + group.id + '\')">'
       + '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + group.title + '</span>'
-      + (group.desktopOnly ? '<span style="color:var(--tte-text-tertiary);font-size:10px">仅桌面</span>' : '')
+      + (locked ? '<span class="setNote">仅桌面</span>' : '')
       + '</div>';
   }
   nav.innerHTML = html;
@@ -847,10 +1072,22 @@ function renderSettingsPane() {
     pane.innerHTML = renderShortcutSettings();
     return;
   }
+  if (group.locked && settingsActive !== 'web') {
+    const reason = (settingsData && settingsData.locked && settingsData.locked[group.locked])
+      || group.fallback || '该分组仅桌面端可用';
+    pane.innerHTML = '<div style="display:flex;flex-direction:column;gap:10px">'
+      + '<div style="font-size:13px;font-weight:600">' + group.title + '</div>'
+      + '<div class="hint">' + esc(reason) + '。</div>'
+      + '<div><span class="btn disabled" title="' + escAttr(reason) + '">在桌面端修改</span></div>'
+      + '</div>';
+    return;
+  }
   if (settingsActive === 'web') {
+    const webReason = (settingsData && settingsData.locked && settingsData.locked.web)
+      || '网页服务地址与端口需在桌面端修改并重启服务';
     pane.innerHTML = '<div style="display:flex;flex-direction:column;gap:10px">'
       + '<div style="font-size:13px;font-weight:600">网页端</div>'
-      + '<div class="hint">端口、监听范围、权限方案、账号密码与允许路径只在桌面端「设置 → 网页端」中修改；网页端只能查看当前地址。</div>'
+      + '<div class="hint">' + esc(webReason) + '；网页端只能查看当前地址。</div>'
       + '<div>当前地址：<code>' + location.origin + '</code></div>'
       + '<div><span class="btn disabled" title="请在桌面端修改网页端监听与权限">修改监听与权限</span></div>'
       + '</div>';
@@ -865,21 +1102,94 @@ function renderSettingsPane() {
       + '</div>';
     return;
   }
-  // 基本设置：接入网页端已有能力（与桌面共用同一份配置）
-  pane.innerHTML = '<div style="display:flex;flex-direction:column;gap:12px">'
+  if (!settingsData) {
+    pane.innerHTML = '<div style="display:flex;flex-direction:column;gap:10px">'
+      + '<div style="font-size:13px;font-weight:600">' + group.title + '</div>'
+      + '<div class="hint">读取设置失败：' + esc(settingsError || '未知错误') + '</div>'
+      + '<div><span class="btn" onclick="loadSettings()">重新读取</span></div>'
+      + '</div>';
+    return;
+  }
+  if (settingsActive === 'editor') {
+    renderEditorSettings(pane);
+    return;
+  }
+  if (settingsActive === 'capture') {
+    renderCaptureSettings(pane);
+    return;
+  }
+  renderBasicSettings(pane);
+}
+
+function settingCheckbox(key, label) {
+  const checked = settingValue(key) ? ' checked' : '';
+  return '<label class="setRow"><input type="checkbox"' + checked
+    + ' onchange="applySetting(\'' + key + '\', this.checked, \'bool\')">' + label + '</label>';
+}
+
+function renderBasicSettings(pane) {
+  const theme = settingValue('theme') || 'Light';
+  pane.innerHTML = '<div style="display:flex;flex-direction:column;gap:10px">'
     + '<div style="font-size:13px;font-weight:600">基本设置</div>'
     + '<div class="hint">这些选项与桌面端共用同一份配置，修改后两端同时生效。</div>'
-    + '<div>主题：<span class="btn" onclick="toggleTheme()">切换深浅色</span></div>'
-    + '<label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="setExtensions" onchange="toggleExtensions()">显示扩展名</label>'
-    + '<label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="setHidden" onchange="clickBtn(\'btnHidden\',\'togglehidden\')">显示隐藏条目</label>'
-    + '<label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="setCompact" onchange="toggleCompactMode()">紧凑模式</label>'
+    + '<div class="setRow"><span class="setLabel">主题</span>'
+    + '<select class="setInput" onchange="applySetting(\'theme\', this.value)">'
+    + '<option value="Light"' + (theme === 'Light' ? ' selected' : '') + '>浅色</option>'
+    + '<option value="Dark"' + (theme === 'Dark' ? ' selected' : '') + '>深色</option>'
+    + '</select></div>'
+    + settingCheckbox('showFileExtensions', '显示扩展名')
+    + settingCheckbox('showHiddenFiles', '显示隐藏条目')
+    + settingCheckbox('fileCompactMode', '紧凑模式')
+    + settingCheckbox('closeToTray', '关闭窗口时最小化到托盘')
+    + settingCheckbox('doubleClickTabClose', '双击标签关闭')
+    + settingCheckbox('showToolbar', '显示工具栏')
+    + settingCheckbox('showBookmarkBar', '显示书签栏')
+    + settingCheckbox('restoreLastTabs', '启动时恢复上次标签')
     + '</div>';
-  const ext = document.getElementById('setExtensions');
-  const hidden = document.getElementById('setHidden');
-  const compact = document.getElementById('setCompact');
-  if (ext) { ext.checked = !!(state && state.showFileExtensions); }
-  if (hidden) { hidden.checked = !!(state && state.showHiddenFiles); }
-  if (compact) { compact.checked = !!(state && state.fileCompactMode); }
+}
+
+function renderEditorSettings(pane) {
+  const fontFamily = settingValue('editorFontFamily') || '';
+  const fontSize = settingValue('editorFontSize') || 13;
+  const tabWidth = settingValue('editorTabWidth') || 4;
+  pane.innerHTML = '<div style="display:flex;flex-direction:column;gap:10px">'
+    + '<div style="font-size:13px;font-weight:600">编辑器</div>'
+    + '<div class="setRow"><span class="setLabel">字体</span>'
+    + '<input class="setInput" style="flex:1;min-width:0" value="' + escAttr(fontFamily)
+    + '" onchange="applySetting(\'editorFontFamily\', this.value)"></div>'
+    + '<div class="setRow"><span class="setLabel">字号（8 - 48）</span>'
+    + '<input class="setInput" type="number" min="8" max="48" value="' + fontSize
+    + '" onchange="applySetting(\'editorFontSize\', this.value, \'number\')"></div>'
+    + '<div class="setRow"><span class="setLabel">制表宽度（1 - 8）</span>'
+    + '<input class="setInput" type="number" min="1" max="8" value="' + tabWidth
+    + '" onchange="applySetting(\'editorTabWidth\', this.value, \'number\')"></div>'
+    + settingCheckbox('editorInsertSpaces', '插入空格代替制表符')
+    + settingCheckbox('editorWordWrap', '自动换行')
+    + settingCheckbox('editorShowWhitespace', '显示空白字符')
+    + '</div>';
+}
+
+function renderCaptureSettings(pane) {
+  const backend = settingValue('captureBackend') || 'auto';
+  const delay = settingValue('captureDelaySeconds');
+  pane.innerHTML = '<div style="display:flex;flex-direction:column;gap:10px">'
+    + '<div style="font-size:13px;font-weight:600">截图与录屏</div>'
+    + '<div class="hint">以下选项与桌面端截图管线共用；录屏与标注窗口仅桌面端可用。</div>'
+    + settingCheckbox('capturePinShotSaveFile', '贴图截图保存产物')
+    + settingCheckbox('captureOpenFolderAfter', '完成后自动打开产物文件夹')
+    + settingCheckbox('captureOpenEditorAfter', '截图后自动打开标注编辑器')
+    + settingCheckbox('captureIncludeCursor', '包含鼠标指针')
+    + '<div class="setRow"><span class="setLabel">截图延迟（0 - 30 秒）</span>'
+    + '<input class="setInput" type="number" min="0" max="30" value="' + (delay == null ? 0 : delay)
+    + '" onchange="applySetting(\'captureDelaySeconds\', this.value, \'number\')"></div>'
+    + '<div class="setRow"><span class="setLabel">采集后端</span>'
+    + '<select class="setInput" onchange="applySetting(\'captureBackend\', this.value)">'
+    + '<option value="auto"' + (backend === 'auto' ? ' selected' : '') + '>自动</option>'
+    + '<option value="wgc"' + (backend === 'wgc' ? ' selected' : '') + '>WGC</option>'
+    + '<option value="gdi"' + (backend === 'gdi' ? ' selected' : '') + '>GDI</option>'
+    + '</select></div>'
+    + '<div class="capNote">录屏、录制目标、麦克风与帧率质量仅桌面端可用。</div>'
+    + '</div>';
 }
 
 function renderShortcutSettings() {

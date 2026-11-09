@@ -60,6 +60,7 @@ public partial class MainWindow : Window
 
     private readonly List<ListBoxItem> tabHooked = new List<ListBoxItem>();
     private FileTabViewModel? breadcrumbTab;
+    private TaskCenterWindow? taskCenterWindow;
     private bool navSyncing;
     private bool navSelectionChangedDuringPress;
     private bool forceClose;
@@ -2276,6 +2277,54 @@ public partial class MainWindow : Window
         }
         tab.ShowInfoPane = !tab.ShowInfoPane;
         UiLogger.Log("程序行为", "点击信息面板按钮：结果=信息面板已" + (tab.ShowInfoPane ? "显示" : "隐藏"));
+    }
+
+    /// <summary>工具栏预览按钮：快速预览第一个勾选的文件（文件夹与无勾选给出中文提示）。</summary>
+    private void OnToolbarPreviewClick(object? sender, RoutedEventArgs e)
+    {
+        FileTabViewModel? tab = this.ViewModel?.SelectedFileTab;
+        if (tab == null)
+        {
+            UiLogger.Log("程序行为", "点击工具栏预览按钮：当前没有文件标签，未打开预览");
+            return;
+        }
+        List<FileRow> checkedRows = tab.GetCheckedRows();
+        if (checkedRows.Count == 0)
+        {
+            tab.ShowMessage("请先勾选要预览的文件");
+            UiLogger.Log("程序行为", "点击工具栏预览按钮：勾选条目数=0，结果=提示先勾选");
+            return;
+        }
+        FileRow row = checkedRows[0];
+        if (row.IsDirectory || Directory.Exists(row.FullPath))
+        {
+            tab.ShowMessage("预览仅支持文件，文件夹请直接双击打开");
+            UiLogger.Log("程序行为", "点击工具栏预览按钮：选中项为文件夹 " + row.FullPath + "，结果=不预览");
+            return;
+        }
+        QuickLookWindow.ShowFor(this, row.FullPath);
+        UiLogger.Log("程序行为", "点击工具栏预览按钮：预览文件=" + row.FullPath
+            + " 勾选总数=" + checkedRows.Count + " 结果=已打开快速预览");
+    }
+
+    /// <summary>工具栏任务中心按钮：单实例打开桌面任务中心窗口。</summary>
+    private void OnToolbarTaskCenterClick(object? sender, RoutedEventArgs e)
+    {
+        MainWindowViewModel? viewModel = this.ViewModel;
+        if (viewModel == null)
+        {
+            UiLogger.Log("程序行为", "点击工具栏任务中心按钮：当前没有可用的主窗口视图模型，未打开");
+            return;
+        }
+        if (this.taskCenterWindow != null && this.taskCenterWindow.IsVisible)
+        {
+            this.taskCenterWindow.Activate();
+            return;
+        }
+        this.taskCenterWindow = new TaskCenterWindow(viewModel);
+        this.taskCenterWindow.Closed += delegate { this.taskCenterWindow = null; };
+        this.taskCenterWindow.Show(this);
+        UiLogger.Log("程序行为", "点击工具栏任务中心按钮：结果=已打开桌面任务中心");
     }
 
     private void OnToolbarRefreshClick(object? sender, RoutedEventArgs e)

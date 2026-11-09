@@ -556,6 +556,7 @@ public class WebServiceHost
                         preview = true,
                         fileColumns = true,
                         tasks = true,
+                        settings = true,
                     },
                 }, jsonOptions);
                 this.WriteBytes(stream, "application/json; charset=utf-8", Encoding.UTF8.GetBytes(versionJson));
@@ -624,6 +625,11 @@ public class WebServiceHost
             if (path == "/api/tasks" && (request.Method == "GET" || request.Method == "POST"))
             {
                 this.HandleTasks(stream, request, profile, workspaceId, bridge);
+                return;
+            }
+            if (path == "/api/settings" && (request.Method == "GET" || request.Method == "POST"))
+            {
+                this.HandleSettings(stream, request, profile, bridge);
                 return;
             }
             if (path.StartsWith("/api/tasks/", StringComparison.Ordinal) && request.Method == "POST")
@@ -1468,6 +1474,33 @@ public class WebServiceHost
                 + " 可见列=" + next.VisibleColumns + " 列宽=" + next.ColumnWidths
                 + " 紧凑=" + (next.CompactMode ? "开" : "关") + " 排序=" + next.SortField);
             this.WriteOk(stream);
+        }
+
+        /// <summary>网页端设置：GET 返回白名单取值，POST 校验并应用（需放行修改权限）。</summary>
+        private void HandleSettings(NetworkStream stream, HttpRequest request, WebAccessProfile profile,
+            IWebWorkspaceBridge bridge)
+        {
+            if (request.Method == "GET")
+            {
+                string json = bridge.GetSettingsJson();
+                this.WriteBytes(stream, "application/json; charset=utf-8", Encoding.UTF8.GetBytes(json));
+                return;
+            }
+            if (!profile.AllowModify)
+            {
+                this.WriteText(stream, "该端口未放行修改权限", 403);
+                return;
+            }
+            string body = Encoding.UTF8.GetString(request.Body);
+            if (body.Length == 0)
+            {
+                this.WriteText(stream, "设置格式不正确", 400);
+                return;
+            }
+            string result = bridge.ApplySettingsJson(body);
+            UiLogger.Log("网页端设置", "端口=" + this.runtime.Port + " 来源=" + request.RemoteAddress
+                + " 请求体长度=" + body.Length);
+            this.WriteBytes(stream, "application/json; charset=utf-8", Encoding.UTF8.GetBytes(result));
         }
 
         /// <summary>统一任务中心：GET 返回快照，POST 提交本地复制/移动/删除任务。</summary>

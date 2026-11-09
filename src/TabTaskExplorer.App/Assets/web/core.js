@@ -209,14 +209,26 @@ function sendApi(path, options) {
 }
 
 // 统一请求入口：自动补会话令牌与 CSRF 令牌；会话过期时重新申请一次再重试。
+// 保存设置等操作会让服务重启监听，旧 CSRF 令牌随之失效（403 +「CSRF」）：此时同样重新申请会话，
+// 避免把令牌过期误报成「当前端口未放行修改权限」。服务端在 CSRF 校验阶段就拒绝，未执行写操作，重试安全。
 async function apiFetch(path, options) {
   await loadSession(false);
-  const response = await sendApi(path, options);
+  let response = await sendApi(path, options);
   if (response.status === 401) {
     sessionToken = '';
     csrfToken = '';
     const renewed = await loadSession(true);
-    if (renewed) { return sendApi(path, options); }
+    if (renewed) { response = await sendApi(path, options); }
+  }
+  if (response.status === 403) {
+    let reason = '';
+    try { reason = await response.clone().text(); } catch (error) { reason = ''; }
+    if (reason.indexOf('CSRF') >= 0) {
+      sessionToken = '';
+      csrfToken = '';
+      const renewed = await loadSession(true);
+      if (renewed) { response = await sendApi(path, options); }
+    }
   }
   return response;
 }

@@ -308,6 +308,20 @@
           <TextBlock Text="显示详细信息窗格" VerticalAlignment="Center" Foreground="{DynamicResource ToolbarTextBrush}" />
         </StackPanel>
       </Button>
+      <Button Classes="nav tool" Click="OnToolbarPreviewClick" ToolTip.Tip="预览选中文件（空格）">
+        <StackPanel Orientation="Horizontal" Spacing="5">
+          <views:VectorIcon Kind="eye" Width="14" Height="14" Thickness="1.6"
+                            IconBrush="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
+          <TextBlock Text="预览" VerticalAlignment="Center" Foreground="{DynamicResource ToolbarTextBrush}" />
+        </StackPanel>
+      </Button>
+      <Button Classes="nav tool" Click="OnToolbarTaskCenterClick" ToolTip.Tip="任务中心（复制 / 移动 / 删除与远程传输）">
+        <StackPanel Orientation="Horizontal" Spacing="5">
+          <views:VectorIcon Kind="board" Width="14" Height="14" Thickness="1.6"
+                            IconBrush="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
+          <TextBlock Text="任务中心" VerticalAlignment="Center" Foreground="{DynamicResource ToolbarTextBrush}" />
+        </StackPanel>
+      </Button>
       <Button Classes="nav tool" Click="OnToolbarRefreshClick" ToolTip.Tip="刷新 (F5)">
         <StackPanel Orientation="Horizontal" Spacing="5">
           <views:VectorIcon Kind="refresh" Width="14" Height="14" Thickness="1.6"

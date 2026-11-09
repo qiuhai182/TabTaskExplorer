@@ -2832,8 +2832,14 @@ public interface IWebWorkspaceBridge
     /// <summary>读取截图录屏状态与产物历史（JSON 文本：保存目录、命名模板、格式、开关、历史条目）。</summary>
     string GetCaptureStateJson();
 
-    /// <summary>执行截图录屏动作（fullscreen / region / pin / pinSave / delete），返回 JSON 文本。</summary>
+    /// <summary>执行截图录屏动作（fullscreen / region / pin / pinSave / delete / copy），返回 JSON 文本。</summary>
     string ExecuteCaptureAction(string action, string argument);
+
+    /// <summary>读取网页可编辑的设置项（白名单）与只读分组原因（JSON 文本）。</summary>
+    string GetSettingsJson();
+
+    /// <summary>应用网页提交的设置项，返回 { ok, message, applied[], rejected[] }（JSON 文本）。</summary>
+    string ApplySettingsJson(string json);
 
     /// <summary>构建桌面当前标签的系统右键菜单层级（校验目标必须位于桌面已打开标签内）。</summary>
     WebContextMenuResult BuildDesktopContextMenu(IReadOnlyList<string> paths, bool isBackground);

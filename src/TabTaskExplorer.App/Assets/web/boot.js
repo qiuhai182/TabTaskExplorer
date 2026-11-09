@@ -68,6 +68,8 @@ function handleKeyDown(event) {
     if (previewPane && !previewPane.classList.contains('hidden')) { closePreview(); return; }
     const taskPanel = document.getElementById('taskPanel');
     if (taskPanel && !taskPanel.classList.contains('hidden')) { toggleTaskPanel(false); return; }
+    const capturePanel = document.getElementById('capturePanel');
+    if (capturePanel && !capturePanel.classList.contains('hidden')) { closeCapture(); return; }
     const settingsPanel = document.getElementById('settings');
     if (settingsPanel && !settingsPanel.classList.contains('hidden')) { closeSettings(); return; }
     // IDE 模式浮层优先关闭：确认弹窗 → 快速打开 → 查找面板

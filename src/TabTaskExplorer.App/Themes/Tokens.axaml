@@ -1,7 +1,73 @@
 ﻿<ResourceDictionary xmlns="https://github.com/avaloniaui"
-                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:sys="using:System">
 
   <!-- 由 tools/gen-design-tokens.ps1 从 design/tokens/ui-tokens.json 生成，请勿手工编辑。 -->
+  <!-- 尺寸 / 密度：与主题无关，深浅两套共用。 -->
+  <sys:Double x:Key="TokenTitleBarHeight">36</sys:Double>
+  <sys:Double x:Key="TokenTabHeight">28</sys:Double>
+  <sys:Double x:Key="TokenBookmarkBarHeight">36</sys:Double>
+  <sys:Double x:Key="TokenToolbarHeight">36</sys:Double>
+  <sys:Double x:Key="TokenNavRowHeight">36</sys:Double>
+  <sys:Double x:Key="TokenStatusBarHeight">26</sys:Double>
+  <sys:Double x:Key="TokenAddressBarHeight">30</sys:Double>
+  <sys:Double x:Key="TokenNavButtonSize">28</sys:Double>
+  <sys:Double x:Key="TokenCaptionButtonWidth">40</sys:Double>
+  <sys:Double x:Key="TokenCaptionButtonHeight">36</sys:Double>
+  <Thickness x:Key="TokenToolbarPadding">6,2</Thickness>
+  <Thickness x:Key="TokenBookmarkBarPadding">8,2</Thickness>
+  <Thickness x:Key="TokenStatusBarPadding">12,4</Thickness>
+  <sys:Double x:Key="TokenRowHeight">28</sys:Double>
+  <sys:Double x:Key="TokenRowHeightCompact">22</sys:Double>
+  <Thickness x:Key="TokenRowPadding">2,3</Thickness>
+  <Thickness x:Key="TokenRowPaddingCompact">2,1</Thickness>
+  <Thickness x:Key="TokenControlPadding">9,4</Thickness>
+  <sys:Double x:Key="TokenIconSizeSmall">14</sys:Double>
+  <sys:Double x:Key="TokenIconSizeMedium">16</sys:Double>
+  <sys:Double x:Key="TokenIconSizeLarge">18</sys:Double>
+  <sys:Double x:Key="TokenIconSizeTab">14</sys:Double>
+  <sys:Double x:Key="TokenThumbnailSizeList">20</sys:Double>
+  <sys:Double x:Key="TokenTileIconSizeExtraLarge">64</sys:Double>
+  <sys:Double x:Key="TokenTileIconSizeLarge">48</sys:Double>
+  <sys:Double x:Key="TokenTileIconSizeMedium">36</sys:Double>
+  <sys:Double x:Key="TokenTileIconSizeSmall">24</sys:Double>
+  <sys:Double x:Key="TokenTileIconSizeTile">40</sys:Double>
+  <sys:Double x:Key="TokenTileWidthExtraLarge">210</sys:Double>
+  <sys:Double x:Key="TokenTileWidthLarge">130</sys:Double>
+  <sys:Double x:Key="TokenTileWidthMedium">96</sys:Double>
+  <sys:Double x:Key="TokenTileWidthSmall">64</sys:Double>
+  <CornerRadius x:Key="TokenRadiusSmall">3</CornerRadius>
+  <CornerRadius x:Key="TokenRadiusMedium">4</CornerRadius>
+  <CornerRadius x:Key="TokenRadiusLarge">6</CornerRadius>
+  <CornerRadius x:Key="TokenRadiusXLarge">8</CornerRadius>
+  <sys:Double x:Key="TokenBorderWidth">1</sys:Double>
+  <sys:Double x:Key="TokenBorderWidthEmphasis">2</sys:Double>
+  <sys:Double x:Key="TokenFocusOutlineWidth">1</sys:Double>
+  <sys:Double x:Key="TokenFocusOutlineOffset">-1</sys:Double>
+  <sys:Double x:Key="TokenSpacingXSmall">2</sys:Double>
+  <sys:Double x:Key="TokenSpacingSmall">4</sys:Double>
+  <sys:Double x:Key="TokenSpacingMedium">6</sys:Double>
+  <sys:Double x:Key="TokenSpacingLarge">8</sys:Double>
+  <sys:Double x:Key="TokenSpacingXLarge">12</sys:Double>
+  <sys:Double x:Key="TokenSpacingXXLarge">16</sys:Double>
+  <sys:Double x:Key="TokenSidebarWidth">200</sys:Double>
+  <sys:Double x:Key="TokenInfoPaneWidth">220</sys:Double>
+  <sys:Double x:Key="TokenSearchBoxWidth">200</sys:Double>
+  <sys:Double x:Key="TokenModalPanelWidth">900</sys:Double>
+  <sys:Double x:Key="TokenModalPanelHeight">640</sys:Double>
+  <sys:Double x:Key="TokenDialogWidth">380</sys:Double>
+  <Thickness x:Key="TokenDialogPadding">16,16</Thickness>
+  <sys:Double x:Key="TokenModalHeadHeight">40</sys:Double>
+  <sys:Double x:Key="TokenModalFootHeight">44</sys:Double>
+  <sys:Double x:Key="TokenRecentPopupMinWidth">380</sys:Double>
+  <sys:Double x:Key="TokenRecentPopupMaxHeight">320</sys:Double>
+  <sys:Double x:Key="TokenContextMenuMinWidth">190</sys:Double>
+  <sys:Double x:Key="TokenFontSizeBody">13</sys:Double>
+  <sys:Double x:Key="TokenFontSizeSmall">12</sys:Double>
+  <sys:Double x:Key="TokenFontSizeTiny">11</sys:Double>
+  <sys:Double x:Key="TokenFontSizeLarge">15</sys:Double>
+  <sys:Double x:Key="TokenLineHeightBody">18</sys:Double>
+
   <ResourceDictionary.ThemeDictionaries>
 
     <ResourceDictionary x:Key="Dark">

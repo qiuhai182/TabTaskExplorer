@@ -28,7 +28,7 @@
     <div class="tabs" id="tabs"></div>
     <span class="iconBtn" title="新建标签" onclick="newTab()"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M12 4.6 L12 19.4 M4.6 12 L19.4 12"/></svg></span>
     <span class="iconBtn" title="任务看板" onclick="clickBtn(null,'openboard')"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4.4 5.6 L19.6 5.6 L19.6 18.4 L4.4 18.4 Z M4.4 9.2 L19.6 9.2 M8.2 8.6 L8.2 15.4 M12 8.6 L12 12.6 M15.8 8.6 L15.8 14.4"/></svg></span>
-    <span class="iconBtn" id="captureEntry" title="截图与录屏：该功能仅桌面端可用" aria-disabled="true" style="opacity:.45;cursor:not-allowed" onclick="desktopOnly('截图与录屏')"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4.2 7.4 L8.2 7.4 L9.6 5.2 L14.4 5.2 L15.8 7.4 L19.8 7.4 C20.9 7.4 21.8 8.3 21.8 9.4 L21.8 17.4 C21.8 18.5 20.9 19.4 19.8 19.4 L4.2 19.4 C3.1 19.4 2.2 18.5 2.2 17.4 L2.2 9.4 C2.2 8.3 3.1 7.4 4.2 7.4 Z M8.6 12.6 A3.4 3.4 0 1 0 15.4 12.6 A3.4 3.4 0 1 0 8.6 12.6"/></svg></span>
+    <span class="iconBtn" id="captureEntry" title="截图与录屏" onclick="openCapture()"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4.2 7.4 L8.2 7.4 L9.6 5.2 L14.4 5.2 L15.8 7.4 L19.8 7.4 C20.9 7.4 21.8 8.3 21.8 9.4 L21.8 17.4 C21.8 18.5 20.9 19.4 19.8 19.4 L4.2 19.4 C3.1 19.4 2.2 18.5 2.2 17.4 L2.2 9.4 C2.2 8.3 3.1 7.4 4.2 7.4 Z M8.6 12.6 A3.4 3.4 0 1 0 15.4 12.6 A3.4 3.4 0 1 0 8.6 12.6"/></svg></span>
     <span class="iconBtn" id="ideIconBtn" title="IDE 模式 / 资源管理器模式" onclick="toggleIdeMode()"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M8.2 7.2 L3.2 12 L8.2 16.8 M15.8 7.2 L20.8 12 L15.8 16.8 M13.8 5.6 L10.2 18.4"/></svg></span>
     <div class="spacer"></div>
     <span class="iconBtn" title="切换深浅色主题" onclick="toggleTheme()"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8 A4 4 0 1 0 12 16 A4 4 0 1 0 12 8 M12 2.2 L12 4.2 M12 19.8 L12 21.8 M2.2 12 L4.2 12 M19.8 12 L21.8 12 M5.1 5.1 L6.5 6.5 M17.5 17.5 L18.9 18.9 M18.9 5.1 L17.5 6.5 M6.5 17.5 L5.1 18.9"/></svg></span>
@@ -297,7 +297,16 @@
     </div>
   </div>
 
-  <!-- 行右键菜单（与桌面列表右键菜单同构） -->
+  <!-- 截图与录屏：分组与桌面 CapturePanel 一致；未接能力的按钮置灰并显示原因 -->
+  <div class="modal hidden" id="capturePanel">
+    <div class="panel">
+      <div class="panelHead">
+        <div class="panelTitle">截图与录屏</div>
+        <span class="btn" onclick="closeCapture()">关闭</span>
+      </div>
+      <div class="capBody" id="captureBody"></div>
+    </div>
+  </div>
   <div class="ctx hidden" id="ctx"></div>
 
   <div class="main" style="display:none"></div>

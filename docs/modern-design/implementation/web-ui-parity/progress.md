@@ -54,3 +54,92 @@
 - `WebPageHtml.cs` 内联回退页未同步本轮新增入口（与既有书签/右键缺口一并处理）。
 - 桌面端设置窗口未做逐项对照实测（只读代码核对），本轮以网页端实测为准。
 
+## 4. 第四轮（2026-11-09）：桌面入口补齐 + 截图面板 + `/api/settings`
+
+约束更新：尺寸/颜色令牌（`design/tokens/ui-tokens.json`、`Tokens.axaml`、`tokens.css`）由另一会话维护，本轮只消费、不改动；`app.css` 按 `theme-tokens-progress.md` 清单逐选择器替换为 `--tte-*` 令牌，未新增 px 字面量。
+
+### 4.1 桌面端补「预览」「任务中心」（已完成，构建 0 错误）
+
+- [MainWindow.axaml](file:///d:/TabTaskExplorer/src/TabTaskExplorer.App/Views/MainWindow.axaml)：工具栏「显示详细信息窗格」之后、「刷新」之前新增两个入口，顺序与网页端一致：
+  - `Kind="eye"`「预览」，`Click="OnToolbarPreviewClick"`，提示「预览选中文件（空格）」。
+  - `Kind="board"`「任务中心」，`Click="OnToolbarTaskCenterClick"`，提示「任务中心（复制 / 移动 / 删除与远程传输）」。
+- [MainWindow.axaml.cs](file:///d:/TabTaskExplorer/src/TabTaskExplorer.App/Views/MainWindow.axaml.cs)：新增 `taskCenterWindow` 字段与两个 handler。
+  - 预览：无标签 / 未勾选 / 文件夹均给出中文提示并写日志；文件调用既有 `QuickLookWindow.ShowFor(this, path)`，不复制预览逻辑。
+  - 任务中心：单实例；已打开则 `Activate()`，否则 `new TaskCenterWindow(viewModel).Show(this)`，关闭时置空。
+- 新增 [TaskCenterWindow.cs](file:///d:/TabTaskExplorer/src/TabTaskExplorer.App/Views/TaskCenterWindow.cs)：纯代码窗口（900×560，1 秒刷新），复用 `MainWindowViewModel.GetFileTasks("") / CancelFileTask / RetryFileTask / ResolveFileTaskConflict`。
+  - 分组：顶部统计（共 N / 运行中 / 等待冲突）+ 刷新；中部任务行（类型、状态、进度、源→目标、消息、冲突）；底部取消 / 重试 / 合并 / 替换 / 逐项处理 / 改名共存 + 「本批统一」+ 关闭；底部状态文字。
+  - 文件夹冲突才启用「合并 / 逐项处理」，文件冲突只启用「替换 / 改名共存」；操作后写日志并刷新。
+- 构建：`dotnet build -c Debug` → **0 错误 / 192 警告**（均为既有警告）。
+
+### 4.2 网页端截图 / 录屏面板壳 + `app.css` 令牌化（已完成）
+
+- `index.html`：`#captureEntry` 去掉置灰与 `aria-disabled`，改为 `openCapture()`；新增 `#capturePanel` 弹层（`modal` / `panel` / `panelHead` / `panelTitle` / `btn` 复用现有类）。
+- `views.js`：侧栏「截图与录屏」由 `desktopOnly(...)` 改为 `openCapture()`，不再置灰。
+- `panels.js`：新增 `openCapture / closeCapture / loadCaptureState / renderCapture / captureAction`，分组与桌面 `CapturePanel.axaml` 对齐：
+  1. 截图：已接 `fullscreen`、`region`、`pin`；主屏 / 滚动长截图 / 活动窗口 / 上次区域 / 屏幕取色置灰，原因「网页端尚未接入该截图方式，请在桌面端使用」。
+  2. 截图选项：`pinSave` 可写；自动打开文件夹 / 自动打开标注编辑器 / 包含鼠标指针 / 采集后端置灰，原因「该选项由桌面端截图管线读取，网页端暂不可改」。
+  3. 录屏：开始 / 停止 / 目标 / 麦克风 / 帧率质量全部置灰，原因「网页端尚未接入录屏，请在桌面端录制」。
+  4. 产物历史：缩略图（`thumbnailUrl`，失败回退图标）+ 文件名 / 时间 / 大小；删除、复制可点；打开、标注置灰说明。每 2 秒刷新，关闭面板即停。
+  5. 输出：保存目录、命名模板、格式。
+  - `403` 单独提示「当前端口未放行修改权限，无法执行该截图操作」，不与会话内能力缺失混淆。
+- `boot.js`：Esc 顺序改为「任务中心 → 截图面板 → 设置」。
+- `app.css`：
+  - 按 `theme-tokens-progress.md` 逐选择器替换尺寸令牌：`px` 字面量 **566 → 242 处**；`--tte-*` 使用 **69 / 89 个已定义令牌**，CSS 变量闭包检查 0 未定义。
+  - 令牌覆盖范围外的 5 类刻意保留：组件固有尺寸（logo 22、缩略图 32、`ideGutter` 54、`ideTree` 230、`.panel.small` 等）、非 4 梯度间距（5/7/9/10/14/18/20）、阴影、历史颜色字面量、10px/9px 字号。
+  - `#contentMain.compact tr.row td` 的 `padding-top/bottom:1px` 保留字面量（`row-padding-compact` 为 `1px 2px` 简写，拆成纵向长写会改变横向内边距）；`line-height` 已替换为 `--tte-line-height-body`。
+  - 新增截图 / 设置行样式（`.cap*`、`.set*`）全部使用令牌，无新增 px。
+- `node --check`：`panels.js`、`boot.js`、`views.js` 语法通过。
+
+### 4.3 `/api/settings` 与设置面板接线（已完成）
+
+- [WebWorkspace.cs](file:///d:/TabTaskExplorer/src/TabTaskExplorer.App/Services/WebWorkspace.cs)：`IWebWorkspaceBridge` 新增 `GetSettingsJson()` / `ApplySettingsJson(string json)`。
+- [MainWindowViewModel.cs](file:///d:/TabTaskExplorer/src/TabTaskExplorer.App/ViewModels/MainWindowViewModel.cs)：
+  - `GetSettingsJson()`：返回 `values`（23 个白名单键）、`editable`、`locked`（6 组中文原因：shortcuts / web / startup / openwith / media / shellmenu）。
+  - `ApplySettingsJson()`：逐键白名单校验（布尔 / 枚举 / 范围：字号 8–48、制表 1–8、截图延迟 0–30、字体 ≤200 字符），未知键与越界值进 `rejected` 并附中文原因；通过项在 UI 线程赋值，主题同时应用，最后 `SaveSettingsAndApply()` 一次；日志只记键名数量，不记敏感值。
+- [WebServiceHost.cs](file:///d:/TabTaskExplorer/src/TabTaskExplorer.App/Services/WebServiceHost.cs)：
+  - `/api/settings` GET / POST 路由；POST 先判 `profile.AllowModify`，未放行返回 403「该端口未放行修改权限」；空 body 返回 400「设置格式不正确」。
+  - `/api/version` 的 `features` 增加 `settings = true`。
+- `panels.js`：`openSettings()` 触发 `loadSettings()`；读取失败显示「读取设置失败：<原因>」与「重新读取」，不显示假值。
+  - 可写分组：基本（主题 / 扩展名 / 隐藏条目 / 紧凑 / 托盘 / 双击关闭 / 工具栏 / 书签栏 / 恢复标签）、编辑器（字体 / 字号 / 制表宽度 / 插入空格 / 自动换行 / 显示空白）、截图（贴图保存 / 自动打开目录 / 自动打开编辑器 / 含指针 / 延迟 / 后端）。
+  - 只读分组：文件/文件夹（桌面专属）、快捷操作（快捷键表 + 桌面端修改原因）、打开方式 / 媒体 / 网页端 / 右键菜单 / 启动项（`locked` 中文原因 + 置灰按钮）、关于（诊断包置灰 + 网页诊断入口）。
+  - POST 403 时提示「当前端口未放行修改权限，无法修改设置」并回读真实值；`rejected` 逐条展示中文原因。
+
+### 4.4 内联回退页收敛（已完成）
+
+- [WebPageHtml.cs](file:///d:/TabTaskExplorer/src/TabTaskExplorer.App/Services/WebPageHtml.cs)：**4034 行 → 200 行**。
+- 保留：`Content` 常量、`__PORT__` 占位符、`TTE-TOKENS-BEGIN/END` 令牌块（与 `tokens.css` 同源）。
+- 入口名称与顺序与静态页一致（标题栏 / 书签栏 / 工具栏 / 导航栏 / 侧栏 / 内容区 / 信息窗格 / 状态栏，`#settings` 与 `#capturePanel` 骨架保留）。
+- 移除全部内联业务 CSS / JS；改为诊断页：探测 `/app.css`、`/tokens.css`、`core/views/panels/actions/ide/boot.js` 是否可访问，显示缺失列表与「重新加载」。
+
+### 4.5 实测证据（2026-11-09 09:37 - 09:44，产物 `output\TabTaskExplorer.exe`，端口 15919）
+
+复现步骤：启动 `output\TabTaskExplorer.exe` → Chrome 打开 `http://127.0.0.1:15919/` → 点标题栏「截图与录屏」/ 侧栏「截图与录屏」→ 关闭后再点「设置」。
+
+- 构建/发布：`dotnet publish ... -c Release -r win-x64` 成功；进程监听 `127.0.0.1:15919`；`GET /api/version` → `features.settings = True`。
+- 走静态资源（非诊断回退页）：页面存在 `#capturePanel`、`#settings`，`typeof openCapture === 'function'`、`typeof loadSettings === 'function'`，样式表为 `/assets/web/tokens.css?v=…` 与 `/assets/web/app.css?v=…`。
+- 截图面板：`#capturePanel` 正常打开，`.capGroup` **5 个**（截图 / 截图选项 / 录屏 / 产物历史（14）/ 输出）；可点按钮 3 个（全屏截图 / 区域截图 / 贴图截图，另有刷新、复制到剪贴板、删除）；置灰按钮 **42 个**，`title` 分三类可读原因：
+  - 「网页端尚未接入该截图方式，请在桌面端使用」（主屏 / 滚动长截图 / 活动窗口 / 上次区域 / 屏幕取色）
+  - 「该选项由桌面端截图管线读取，网页端暂不可改」（自动打开文件夹 / 标注编辑器 / 含指针 / 采集后端）
+  - 「网页端尚未接入录屏，请在桌面端录制」（录屏 5 项）
+- 截图写入（临时放行修改权限时）：点「全屏截图」→ 产物历史 14 → **15**，最新项 `截图_20261109_094014.png`；说明 `POST /api/capture/action?a=fullscreen` 与产物刷新均通。
+- 设置面板：`#settingsNav` **11 个分组**，其中 7 个带「仅桌面」角标（快捷操作 / 文件/文件夹 / 打开方式 / 媒体 / 网页端 / 右键菜单 / 启动项管理）；快捷操作页 25 行快捷键表；「网页端」分组显示 `当前地址：http://127.0.0.1:15919`。
+- 设置写入（临时放行修改权限时）：编辑器字号 13 → 14 → 15，两次连续保存均返回「已应用 1 项设置」且回填为新值，无需手动刷新；随后改回 13。
+- 只读 profile（`AllowModify=false`，当前默认）：字号改 20 被拒，提示「当前端口未放行修改权限，无法修改设置」，回读仍为 13（未显示假成功）；截图动作仍可执行（截图不写用户文件，不受 AllowModify 限制），与「权限不足 / 能力缺失」分开提示一致。
+
+### 4.6 实测中发现并修复：CSRF 令牌失效被误报为权限不足
+
+- 现象：保存设置后服务重启监听，旧会话/CSRF 令牌失效；下一次写请求返回 **403「缺少或错误的 CSRF 令牌」**，而 `panels.js` 把所有 403 显示为「当前端口未放行修改权限」，日志审计亦只见 CSRF 拒绝。
+- 修复：[core.js](file:///d:/TabTaskExplorer/src/TabTaskExplorer.App/Assets/web/core.js) 的 `apiFetch` 在 403 时读取响应体，若含 `CSRF` 则清空令牌、重新 `GET /api/session` 后**重试一次**（服务端在 CSRF 校验阶段即拒绝，未执行写操作，重试安全）；真实权限 403 不重试、仍显示权限文案。
+- 复测：放行修改权限后，连续两次保存（14 → 15）均成功；审计日志可见 09:42:01、09:42:07 各一次 CSRF 拒绝，随后重试成功。
+
+### 4.7 状态还原与未实测清单
+
+- 权限已还原：`%APPDATA%\TabTaskExplorer\settings.json` 的 `WebAccessProfiles[0].AllowModify` 已由临时 `true` 改回 **false**，备份 `settings.json.bak-tte` 已删除；`EditorFontSize=13`、`CaptureDelaySeconds=0`，应用已用最终发布包重启（只读 profile）。
+- 令牌口径复核：`app.css` 现 **242 处 px / 377 行**，使用 `--tte-*` **69 / 89**，变量闭包 0 未定义；未改 `design/tokens/ui-tokens.json`、`Themes/Tokens.axaml`、`Assets/web/tokens.css`（工作区中这三处改动来自令牌任务，非本轮）。
+- 未实测（缺少桌面自动化工具，仅代码 + 构建验证）：
+  - 桌面端工具栏「预览」「任务中心」的点击行为与任务中心窗口布局/刷新；
+  - 任务取消 / 重试 / 冲突处理的界面操作；
+  - Ctrl+Tab、空格预览等桌面回归；
+  - 诊断回退页的真实触发（需移除 `Assets/web` 静态资源）。
+
+

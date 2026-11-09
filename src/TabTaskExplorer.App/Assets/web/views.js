@@ -90,7 +90,7 @@ function renderSidebar() {
     + '<div class="navitem" onclick="clickBtn(null,\'openprocess\')"><span class="ico">' + uiIcon('activity', 15, '#E8A317') + '</span>进程监控</div>'
     + '<div class="navitem" onclick="clickBtn(null,\'openstartup\')"><span class="ico">' + uiIcon('power', 15, '#E8A317') + '</span>启动项管理</div>'
     + '<div class="navitem" title="该功能仅桌面端可用" style="opacity:.45;cursor:not-allowed" onclick="desktopOnly(\'右键管理\')"><span class="ico">' + uiIcon('sliders', 15, '#8A8F99') + '</span>右键管理</div>'
-    + '<div class="navitem" title="该功能仅桌面端可用" style="opacity:.45;cursor:not-allowed" onclick="desktopOnly(\'截图与录屏\')"><span class="ico">' + uiIcon('camera', 15, '#8A8F99') + '</span>截图与录屏</div>'
+    + '<div class="navitem" onclick="openCapture()"><span class="ico">' + uiIcon('camera', 15, '#E8A317') + '</span>截图与录屏</div>'
     + '<div class="navitem" onclick="clickBtn(null,\'openboard\')"><span class="ico">' + uiIcon('board', 15, '#E8A317') + '</span>任务看板</div>';
   document.getElementById('sidebar').innerHTML = html;
 }

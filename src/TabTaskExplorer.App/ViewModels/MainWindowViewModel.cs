@@ -3152,6 +3152,298 @@ public class MainWindowViewModel : INotifyPropertyChanged, IWebWorkspaceBridge
             + " 说明=" + outcome.Message);
     }
 
+    /// <summary>网页端读取设置：白名单取值 + 可编辑键 + 仅桌面分组的中文原因（JSON 文本）。</summary>
+    public string GetSettingsJson()
+    {
+        AppSettings settings = this.Settings;
+        Dictionary<string, object?> values = new Dictionary<string, object?>();
+        values["theme"] = settings.Theme;
+        values["showFileExtensions"] = settings.ShowFileExtensions;
+        values["showHiddenFiles"] = settings.ShowHiddenFiles;
+        values["fileCompactMode"] = settings.FileCompactMode;
+        values["closeToTray"] = settings.CloseToTray;
+        values["doubleClickTabClose"] = settings.DoubleClickTabClose;
+        values["showToolbar"] = settings.ShowToolbar;
+        values["showBookmarkBar"] = settings.ShowBookmarkBar;
+        values["logLevel"] = settings.LogLevel;
+        values["restoreLastTabs"] = settings.RestoreLastTabs;
+        values["defaultOpenMode"] = settings.DefaultOpenMode;
+        values["editorFontFamily"] = settings.EditorFontFamily;
+        values["editorFontSize"] = settings.EditorFontSize;
+        values["editorTabWidth"] = settings.EditorTabWidth;
+        values["editorInsertSpaces"] = settings.EditorInsertSpaces;
+        values["editorWordWrap"] = settings.EditorWordWrap;
+        values["editorShowWhitespace"] = settings.EditorShowWhitespace;
+        values["capturePinShotSaveFile"] = settings.CapturePinShotSaveFile;
+        values["captureOpenFolderAfter"] = settings.CaptureOpenFolderAfter;
+        values["captureOpenEditorAfter"] = settings.CaptureOpenEditorAfter;
+        values["captureIncludeCursor"] = settings.CaptureIncludeCursor;
+        values["captureDelaySeconds"] = settings.CaptureDelaySeconds;
+        values["captureBackend"] = settings.CaptureBackend;
+
+        Dictionary<string, string> locked = new Dictionary<string, string>();
+        locked["shortcuts"] = "快捷键在桌面端配置，网页端只读展示";
+        locked["web"] = "网页服务地址与端口需在桌面端修改并重启服务";
+        locked["startup"] = "启动项需要写入系统注册表 / 启动目录，仅桌面端可用";
+        locked["openwith"] = "默认打开方式需要系统文件关联，仅桌面端可用";
+        locked["media"] = "播放器设置由桌面内置播放器读取，网页端不使用";
+        locked["shellmenu"] = "系统右键菜单项仅桌面端可枚举与启停";
+
+        return System.Text.Json.JsonSerializer.Serialize(new
+        {
+            values = values,
+            editable = new List<string>(values.Keys),
+            locked = locked,
+        });
+    }
+
+    /// <summary>网页端应用设置：逐键白名单校验，通过项在 UI 线程赋值并保存，返回 applied / rejected。</summary>
+    public string ApplySettingsJson(string json)
+    {
+        List<string> applied = new List<string>();
+        List<object> rejected = new List<object>();
+        try
+        {
+            using System.Text.Json.JsonDocument document = System.Text.Json.JsonDocument.Parse(json);
+            System.Text.Json.JsonElement root = document.RootElement;
+            if (root.ValueKind != System.Text.Json.JsonValueKind.Object)
+            {
+                return System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    ok = false,
+                    message = "设置格式不正确",
+                    applied = applied,
+                    rejected = rejected,
+                });
+            }
+            System.Text.Json.JsonElement valuesElement = root;
+            if (root.TryGetProperty("values", out System.Text.Json.JsonElement nested)
+                && nested.ValueKind == System.Text.Json.JsonValueKind.Object)
+            {
+                valuesElement = nested;
+            }
+
+            Action apply = delegate
+            {
+                this.ApplySettingsValues(valuesElement, applied, rejected);
+            };
+            if (Avalonia.Threading.Dispatcher.UIThread.CheckAccess())
+            {
+                apply();
+            }
+            else
+            {
+                Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(apply).GetTask().GetAwaiter().GetResult();
+            }
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return System.Text.Json.JsonSerializer.Serialize(new
+            {
+                ok = false,
+                message = "设置格式不正确",
+                applied = applied,
+                rejected = rejected,
+            });
+        }
+
+        bool ok = rejected.Count == 0 || applied.Count > 0;
+        string message = applied.Count == 0 && rejected.Count == 0
+            ? "没有可应用的设置项"
+            : "已应用 " + applied.Count + " 项设置"
+                + (rejected.Count > 0 ? "，忽略 " + rejected.Count + " 项" : string.Empty);
+        UiLogger.Log("配置更改", "网页端应用设置：成功项=" + string.Join("、", applied)
+            + " 忽略项=" + rejected.Count);
+        return System.Text.Json.JsonSerializer.Serialize(new
+        {
+            ok = ok,
+            message = message,
+            applied = applied,
+            rejected = rejected,
+        });
+    }
+
+    /// <summary>在 UI 线程按白名单把网页提交的设置写入 AppSettings（必须在 UI 线程调用）。</summary>
+    private void ApplySettingsValues(System.Text.Json.JsonElement values, List<string> applied, List<object> rejected)
+    {
+        AppSettings settings = this.Settings;
+        bool themeChanged = false;
+        foreach (System.Text.Json.JsonProperty property in values.EnumerateObject())
+        {
+            string key = property.Name;
+            System.Text.Json.JsonElement value = property.Value;
+            switch (key)
+            {
+                case "theme":
+                    {
+                        string? theme = value.ValueKind == System.Text.Json.JsonValueKind.String ? value.GetString() : null;
+                        if (theme == "Dark" || theme == "Light")
+                        {
+                            settings.Theme = theme;
+                            themeChanged = true;
+                            applied.Add(key);
+                        }
+                        else
+                        {
+                            rejected.Add(new { key = key, reason = "主题只支持 Dark 或 Light" });
+                        }
+                        break;
+                    }
+                case "showFileExtensions":
+                case "showHiddenFiles":
+                case "fileCompactMode":
+                case "closeToTray":
+                case "doubleClickTabClose":
+                case "showToolbar":
+                case "showBookmarkBar":
+                case "restoreLastTabs":
+                case "editorInsertSpaces":
+                case "editorWordWrap":
+                case "editorShowWhitespace":
+                case "capturePinShotSaveFile":
+                case "captureOpenFolderAfter":
+                case "captureOpenEditorAfter":
+                case "captureIncludeCursor":
+                    {
+                        if (value.ValueKind != System.Text.Json.JsonValueKind.True
+                            && value.ValueKind != System.Text.Json.JsonValueKind.False)
+                        {
+                            rejected.Add(new { key = key, reason = "需要布尔值 true / false" });
+                            break;
+                        }
+                        bool flag = value.GetBoolean();
+                        if (key == "showFileExtensions") { settings.ShowFileExtensions = flag; }
+                        else if (key == "showHiddenFiles") { settings.ShowHiddenFiles = flag; }
+                        else if (key == "fileCompactMode") { settings.FileCompactMode = flag; }
+                        else if (key == "closeToTray") { settings.CloseToTray = flag; }
+                        else if (key == "doubleClickTabClose") { settings.DoubleClickTabClose = flag; }
+                        else if (key == "showToolbar") { settings.ShowToolbar = flag; }
+                        else if (key == "showBookmarkBar") { settings.ShowBookmarkBar = flag; }
+                        else if (key == "restoreLastTabs") { settings.RestoreLastTabs = flag; }
+                        else if (key == "editorInsertSpaces") { settings.EditorInsertSpaces = flag; }
+                        else if (key == "editorWordWrap") { settings.EditorWordWrap = flag; }
+                        else if (key == "editorShowWhitespace") { settings.EditorShowWhitespace = flag; }
+                        else if (key == "capturePinShotSaveFile") { settings.CapturePinShotSaveFile = flag; }
+                        else if (key == "captureOpenFolderAfter") { settings.CaptureOpenFolderAfter = flag; }
+                        else if (key == "captureOpenEditorAfter") { settings.CaptureOpenEditorAfter = flag; }
+                        else { settings.CaptureIncludeCursor = flag; }
+                        applied.Add(key);
+                        break;
+                    }
+                case "logLevel":
+                    {
+                        string? level = value.ValueKind == System.Text.Json.JsonValueKind.String ? value.GetString() : null;
+                        if (level == "Debug" || level == "Info" || level == "Warn" || level == "Error")
+                        {
+                            settings.LogLevel = level;
+                            applied.Add(key);
+                        }
+                        else
+                        {
+                            rejected.Add(new { key = key, reason = "日志级别只支持 Debug / Info / Warn / Error" });
+                        }
+                        break;
+                    }
+                case "defaultOpenMode":
+                    {
+                        string? mode = value.ValueKind == System.Text.Json.JsonValueKind.String ? value.GetString() : null;
+                        if (mode == "Explorer" || mode == "Ide")
+                        {
+                            settings.DefaultOpenMode = mode;
+                            applied.Add(key);
+                        }
+                        else
+                        {
+                            rejected.Add(new { key = key, reason = "默认打开模式只支持 Explorer 或 Ide" });
+                        }
+                        break;
+                    }
+                case "editorFontFamily":
+                    {
+                        string? family = value.ValueKind == System.Text.Json.JsonValueKind.String ? value.GetString() : null;
+                        if (!string.IsNullOrWhiteSpace(family) && family.Length <= 200)
+                        {
+                            settings.EditorFontFamily = family;
+                            applied.Add(key);
+                        }
+                        else
+                        {
+                            rejected.Add(new { key = key, reason = "字体名称不能为空且不超过 200 个字符" });
+                        }
+                        break;
+                    }
+                case "editorFontSize":
+                    {
+                        if (value.ValueKind != System.Text.Json.JsonValueKind.Number
+                            || !value.TryGetDouble(out double fontSize)
+                            || fontSize < 8
+                            || fontSize > 48)
+                        {
+                            rejected.Add(new { key = key, reason = "编辑器字号需在 8 到 48 之间" });
+                            break;
+                        }
+                        settings.EditorFontSize = fontSize;
+                        applied.Add(key);
+                        break;
+                    }
+                case "editorTabWidth":
+                    {
+                        if (value.ValueKind != System.Text.Json.JsonValueKind.Number
+                            || !value.TryGetInt32(out int tabWidth)
+                            || tabWidth < 1
+                            || tabWidth > 8)
+                        {
+                            rejected.Add(new { key = key, reason = "制表宽度需在 1 到 8 之间" });
+                            break;
+                        }
+                        settings.EditorTabWidth = tabWidth;
+                        applied.Add(key);
+                        break;
+                    }
+                case "captureDelaySeconds":
+                    {
+                        if (value.ValueKind != System.Text.Json.JsonValueKind.Number
+                            || !value.TryGetInt32(out int delay)
+                            || delay < 0
+                            || delay > 30)
+                        {
+                            rejected.Add(new { key = key, reason = "截图延迟需在 0 到 30 秒之间" });
+                            break;
+                        }
+                        settings.CaptureDelaySeconds = delay;
+                        applied.Add(key);
+                        break;
+                    }
+                case "captureBackend":
+                    {
+                        string? backend = value.ValueKind == System.Text.Json.JsonValueKind.String ? value.GetString() : null;
+                        if (backend == "auto" || backend == "wgc" || backend == "gdi")
+                        {
+                            settings.CaptureBackend = backend;
+                            applied.Add(key);
+                        }
+                        else
+                        {
+                            rejected.Add(new { key = key, reason = "采集后端只支持 auto / wgc / gdi" });
+                        }
+                        break;
+                    }
+                default:
+                    rejected.Add(new { key = key, reason = "未知设置项（网页端不开放）" });
+                    break;
+            }
+        }
+
+        if (themeChanged)
+        {
+            this.ApplyThemeValue(settings.Theme);
+        }
+        if (applied.Count > 0)
+        {
+            this.SaveSettingsAndApply();
+        }
+    }
+
     /// <summary>构建桌面当前标签的系统右键菜单层级（跨线程安全，网页端请求线程调用）。</summary>
     public WebContextMenuResult BuildDesktopContextMenu(IReadOnlyList<string> paths, bool isBackground)
     {
