@@ -206,8 +206,22 @@ temp/
 # ---------- 本地参考项目（克隆的开源仓库，仅供阅读，不入库） ----------
 references/
 
-# ---------- 本地工具目录（个人脚本，不入库） ----------
-tools/
+# ---------- 本地工具目录（默认忽略，仅纳入被源码/文档引用的生成器与构建诊断入口） ----------
+tools/*
+# 令牌生成器：design/tokens/ui-tokens.json 的唯一来源，生成 Tokens.axaml / tokens.css / 回退页颜色块
+!tools/gen-design-tokens.ps1
+# 图标生成器：TabTaskExplorer.App.csproj 构建前 Exec 步骤直接调用
+!tools/generate-app-icon.ps1
+# 菜单弹层残留检测：ctxmenu 进度文档的验证步骤
+!tools/count-app-windows.ps1
+# 任务栏诊断：taskbar 进度文档与状态看板的下一步骤引用
+!tools/diagnose-taskbar.ps1
+# 构建与 REA 分析启动器：进度文档与逆向记录引用的可复现入口
+!tools/rea/
+!tools/rea/*.ps1
+# 状态看板生成器：docs/status/BOARD.md 由此脚本生成
+!tools/status/
+!tools/status/*.ps1
 
 # ---------- 本地个人工具文件（不入库） ----------
 
